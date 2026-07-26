@@ -1,0 +1,30 @@
+{
+  "main": "index.html",
+  "logo": "logo.png",
+  "preload": "preload/services.js",
+  "pluginSetting": {
+    "height": 600
+  },
+  "features": [
+    {
+      "code": "cctoggle",
+      "explain": "SkillNest - 统一管理 AI skill 并一键切换 API 供应商",
+      "icon": "logo.png",
+      "cmds": [
+        "skillnest",
+        "sn",
+        "cctoggle",
+        "cct",
+        "skill管理",
+        "skill切换",
+        "供应商切换",
+        "AI切换"
+      ]
+    }
+  ],
+  "development": {
+    "main": "http://localhost:5173"
+  },
+  "author": "dfy",
+  "homepage": ""
+}

@@ -1,0 +1,491 @@
+﻿// public/preload/proxy-daemon.js
+// 后台隐藏窗口的 preload：起 http 代理，支持 failover + 健康检查 + 熔断
+// 通过 IPC 接收主窗口指令，通过 utools.sendToParent 上报状态/日志
+
+const http = require("http");
+const https = require("https");
+const { URL } = require("url");
+const { ipcRenderer } = require("electron");
+
+let group = null;              // 当前路由组配置
+let members = [];              // { providerId, name, baseUrl, apiKey, priority, weight, state, fails, openUntil, latency, up }
+let server = null;
+let healthTimer = null;
+let rrIdx = 0;                 // round-robin 游标
+let startedAt = 0;              // server listen 时刻
+let activeConn = 0;             // 活跃连接数
+let reqTotal = 0;               // 总请求
+let reqSuccess = 0;             // 成功请求 (<500)
+let reqFail = 0;                // 失败请求 (>=500 或 upstream error)
+let lastMemberId = null;        // 最近一次转发命中的成员
+
+function log(level, msg, meta) {
+  try {
+    utools.sendToParent("proxy-log", {
+      ts: Date.now(), level: level, msg: msg, meta: meta || null,
+    });
+  } catch (e) {}
+}
+
+function stat() {
+  try {
+    utools.sendToParent("proxy-stat", {
+      running: !!server,
+      port: group ? group.listenPort : 0,
+      startedAt: startedAt,
+      activeConn: activeConn,
+      reqTotal: reqTotal,
+      reqSuccess: reqSuccess,
+      reqFail: reqFail,
+      lastMemberId: lastMemberId,
+      members: members.map(function (m) {
+        return { id: m.providerId, name: m.name, state: m.state, fails: m.fails, openUntil: m.openUntil, latency: m.latency, up: m.up };
+      }),
+    });
+  } catch (e) {}
+}
+
+function maskKey(k) {
+  if (!k) return "";
+  if (k.length <= 10) return "***";
+  return k.slice(0, 6) + "***" + k.slice(-4);
+}
+
+// —— 用量统计采集 ——
+// 归一化不同上游的 usage 结构为统一计数
+function normalizeUsage(u) {
+  if (!u || typeof u !== "object") return null;
+  var promptDetails = u.prompt_tokens_details || u.input_tokens_details || {};
+  var input = Number(u.input_tokens != null ? u.input_tokens : u.prompt_tokens) || 0;
+  var output = Number(u.output_tokens != null ? u.output_tokens : u.completion_tokens) || 0;
+  // 缓存读取命中：OpenAI(cached_tokens) / Anthropic(cache_read_input_tokens)
+  var cacheRead = Number(
+    promptDetails.cached_tokens != null ? promptDetails.cached_tokens :
+    (u.cache_read_input_tokens != null ? u.cache_read_input_tokens : 0)
+  ) || 0;
+  // 缓存创建：Anthropic(cache_creation_input_tokens)
+  var cacheCreate = Number(u.cache_creation_input_tokens != null ? u.cache_creation_input_tokens : 0) || 0;
+  var total = Number(u.total_tokens) || (input + output);
+  if (!input && !output && !total && !cacheRead && !cacheCreate) return null;
+  return { input: input, output: output, cacheRead: cacheRead, cacheCreate: cacheCreate, total: total };
+}
+
+// 上报一次用量（每完成一个请求调用一次）
+function reportUsage(member, usage) {
+  var n = normalizeUsage(usage);
+  if (!n) return;
+  try {
+    utools.sendToParent("proxy-usage", {
+      ts: Date.now(),
+      appType: member ? (member.appType || "") : "",
+      providerId: member ? member.providerId : "",
+      name: member ? member.name : "",
+      model: (member && member.model) || "",
+      input: n.input, output: n.output,
+      cacheRead: n.cacheRead, cacheCreate: n.cacheCreate,
+      total: n.total,
+    });
+  } catch (e) {}
+}
+
+// 从 SSE 文本片段中提取最后一个带 usage 的 data 事件（用于透传场景）
+// 返回 usage 对象或 null；scanner 维护跨 chunk 的残行
+function makeUsageScanner() {
+  return { leftover: "", usage: null };
+}
+function scanSseForUsage(scanner, text) {
+  scanner.leftover += text;
+  var idx = scanner.leftover.lastIndexOf("\n");
+  if (idx < 0) return;
+  var complete = scanner.leftover.slice(0, idx + 1);
+  scanner.leftover = scanner.leftover.slice(idx + 1);
+  if (complete.indexOf("usage") < 0) return;
+  complete.split(/\r?\n/).forEach(function (line) {
+    var s = line.indexOf("data:");
+    if (s !== 0) return;
+    var payload = line.slice(5).trim();
+    if (!payload || payload === "[DONE]") return;
+    try {
+      var d = JSON.parse(payload);
+      var u = d.usage || (d.response && d.response.usage) || (d.type === "message_delta" && d.usage) || null;
+      if (u) scanner.usage = u;
+    } catch (e) {}
+  });
+}
+
+// —— 熔断状态机 ——
+function noteSuccess(m) {
+  m.fails = 0;
+  if (m.state === "half-open" || m.state === "open") {
+    m.state = "closed"; m.openUntil = 0;
+    log("info", "breaker closed", { id: m.providerId });
+  }
+}
+function noteFailure(m) {
+  m.fails = (m.fails || 0) + 1;
+  const th = (group.breaker && group.breaker.failThreshold) || 3;
+  if (m.state !== "open" && m.fails >= th) {
+    const cd = (group.breaker && group.breaker.cooldownMs) || 60000;
+    m.state = "open"; m.openUntil = Date.now() + cd;
+    log("warn", "breaker open", { id: m.providerId, cooldownMs: cd });
+  }
+}
+function tickBreaker() {
+  const now = Date.now();
+  members.forEach(function (m) {
+    if (m.state === "open" && now >= m.openUntil) {
+      m.state = "half-open"; m.fails = 0;
+      log("info", "breaker half-open", { id: m.providerId });
+    }
+  });
+}
+
+// —— 选择上游 ——
+function eligible() {
+  tickBreaker();
+  return members.filter(function (m) { return m.state !== "open"; });
+}
+function pickMember() {
+  const list = eligible();
+  if (list.length === 0) return null;
+  const strategy = (group && group.strategy) || "failover";
+  if (strategy === "round_robin") {
+    const m = list[rrIdx % list.length]; rrIdx++;
+    return m;
+  }
+  if (strategy === "weighted") {
+    const total = list.reduce(function (s, m) { return s + (m.weight || 1); }, 0);
+    let r = Math.random() * total;
+    for (let i = 0; i < list.length; i++) {
+      r -= (list[i].weight || 1);
+      if (r <= 0) return list[i];
+    }
+    return list[list.length - 1];
+  }
+  // failover: priority 小的优先，其次健康
+  list.sort(function (a, b) { return (a.priority || 99) - (b.priority || 99); });
+  return list[0];
+}
+
+// —— 协议转换器 ——
+let converter = null;
+try { converter = require("./proxy-converter.js"); } catch (e) { log("warn", "converter load failed", { err: String(e && e.message) }); }
+
+function joinUrl(baseUrl, reqPath) {
+  // 保留 baseUrl 的路径前缀（如 /v1），再拼上 reqPath
+  var b = baseUrl.replace(/\/+$/, "");
+  var m = b.match(/^(https?:\/\/[^/]+)(\/.*)?$/i);
+  if (!m) return new URL(reqPath, baseUrl);
+  var origin = m[1];
+  var basePath = (m[2] || "").replace(/\/+$/, "");
+  var q = reqPath.indexOf("?");
+  var pathOnly = q >= 0 ? reqPath.slice(0, q) : reqPath;
+  var search = q >= 0 ? reqPath.slice(q) : "";
+  // 若 reqPath 已包含 basePath 则不重复
+  var full = (basePath && pathOnly.indexOf(basePath) === 0) ? pathOnly : basePath + pathOnly;
+  return new URL(origin + full + search);
+}
+
+function wantsConvert(member, reqPath) {
+  if (!converter) return false;
+  var af = member.apiFormat || "";
+  if (af !== "openai_chat" && af !== "anthropic") return false;
+  // 仅转换 Codex 的 Responses 请求
+  var p = reqPath.split("?")[0];
+  return /\/responses\/?$/.test(p) || member.appType === "codex";
+}
+
+// —— 转发 ——
+function forward(member, req, res, attemptsLeft, reqBody) {
+  return new Promise(function (resolve) {
+    lastMemberId = member.providerId;
+    var reqPath = req.url;
+    var doConvert = req.method === "POST" && wantsConvert(member, reqPath) && reqBody && reqBody.length;
+    var outBody = reqBody;
+    var upstream;
+
+    try {
+      if (doConvert) {
+        var parsed = JSON.parse(reqBody.toString("utf8"));
+        var conv = converter.convertRequest(member, parsed, reqPath);
+        // bodyOverride 合并
+        if (member.bodyOverride) {
+          try { var ov = JSON.parse(member.bodyOverride); var cb = JSON.parse(conv.body); Object.assign(cb, ov); conv.body = JSON.stringify(cb); } catch (e) {}
+        }
+        outBody = Buffer.from(conv.body, "utf8");
+        upstream = joinUrl(member.baseUrl, conv.path);
+      } else {
+        upstream = joinUrl(member.baseUrl, reqPath);
+      }
+    } catch (e) {
+      log("error", "convert request failed", { err: String(e && e.message) });
+      upstream = joinUrl(member.baseUrl, reqPath);
+      outBody = reqBody;
+      doConvert = false;
+    }
+
+    var client = upstream.protocol === "https:" ? https : http;
+    var headers = Object.assign({}, req.headers);
+    delete headers.host;
+    delete headers["content-length"];
+    delete headers["accept-encoding"]; // 避免上游 gzip 干扰转换
+    if (member.apiKey) {
+      var af = member.apiFormat || "";
+      if (af === "anthropic") {
+        headers["x-api-key"] = member.apiKey;
+        headers["anthropic-version"] = headers["anthropic-version"] || "2023-06-01";
+      } else {
+        headers["authorization"] = "Bearer " + member.apiKey;
+        headers["x-api-key"] = member.apiKey;
+      }
+    }
+    if (member.impersonateClaudeCode) {
+      // 伪装 Claude Code 客户端：网关限制只能通过 Claude Code 使用时开启
+      headers["user-agent"] = member.customUserAgent || "claude-cli/1.0.0 (external, cli)";
+      headers["x-app"] = "cli";
+      headers["anthropic-beta"] = headers["anthropic-beta"] || "claude-code-20250219,oauth-2025-04-20";
+    }
+    if (member.customUserAgent) headers["user-agent"] = member.customUserAgent;
+    if (member.headersOverride) {
+      try { var ho = JSON.parse(member.headersOverride); Object.keys(ho).forEach(function (k) { headers[k.toLowerCase()] = ho[k]; }); } catch (e) {}
+    }
+    if (outBody) {
+      headers["content-length"] = Buffer.byteLength(outBody);
+      if (doConvert) headers["content-type"] = "application/json";
+    }
+
+    var t0 = Date.now();
+    var reqOpt = {
+      method: req.method,
+      hostname: upstream.hostname,
+      port: upstream.port || (upstream.protocol === "https:" ? 443 : 80),
+      path: upstream.pathname + upstream.search,
+      headers: headers,
+      timeout: (group && group.timeoutMs) || 120000,
+    };
+
+    var upReq = client.request(reqOpt, function (upRes) {
+      var latency = Date.now() - t0;
+      var sc = upRes.statusCode || 0;
+      if (sc >= 500) {
+        noteFailure(member); reqFail++;
+        log("warn", "upstream 5xx", { id: member.providerId, sc: sc, url: reqPath });
+        upRes.resume();
+        if (attemptsLeft > 0) {
+          var next = pickMember();
+          if (next && next.providerId !== member.providerId) {
+            return forward(next, req, res, attemptsLeft - 1, reqBody).then(resolve);
+          }
+        }
+        if (!res.headersSent) res.writeHead(sc, { "content-type": "application/json" });
+        return void res.end('{"error":"upstream 5xx"}');
+      }
+      noteSuccess(member); reqSuccess++; member.latency = latency;
+      log("info", "forward ok", { id: member.providerId, sc: sc, ms: latency, url: reqPath, convert: doConvert });
+
+      var ct = (upRes.headers["content-type"] || "").toLowerCase();
+      var isSse = ct.indexOf("text/event-stream") >= 0;
+
+      if (doConvert && isSse) {
+        // 流式：Chat/Anthropic SSE → Responses SSE
+        var outHeaders = { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", "connection": "keep-alive" };
+        res.writeHead(sc, outHeaders);
+        // 先发 response.created
+        try {
+          res.write("event: response.created\n");
+          res.write("data: " + JSON.stringify({ type: "response.created", response: { id: "resp_" + Date.now(), object: "response", status: "in_progress", model: member.model || "", output: [] } }) + "\n\n");
+        } catch (e) {}
+        var state = { text: "", toolCalls: {}, responseJson: {} };
+        var leftover = "";
+        upRes.setEncoding("utf8");
+        upRes.on("data", function (chunk) {
+          leftover += chunk;
+          var idx = leftover.lastIndexOf("\n");
+          if (idx < 0) return;
+          var complete = leftover.slice(0, idx + 1);
+          leftover = leftover.slice(idx + 1);
+          try {
+            var converted = converter.convertSse(member, complete, state);
+            if (converted) res.write(converted.replace(/\n(event:)/g, "\n\n$1").replace(/\n$/, "\n\n"));
+          } catch (e) { log("error", "sse convert", { err: String(e && e.message) }); }
+        });
+        upRes.on("end", function () {
+          if (leftover.trim()) {
+            try { var c2 = converter.convertSse(member, leftover + "\n", state); if (c2) res.write(c2); } catch (e) {}
+          }
+          try { reportUsage(member, state.responseJson && state.responseJson.usage); } catch (e) {}
+          res.end();
+          resolve();
+        });
+        return;
+      }
+
+      if (doConvert) {
+        // 非流式 JSON → Responses JSON
+        var buf = [];
+        upRes.on("data", function (c) { buf.push(c); });
+        upRes.on("end", function () {
+          var raw = Buffer.concat(buf).toString("utf8");
+          var out = raw;
+          try { out = converter.convertResponse(member, raw, false); } catch (e) {}
+          try {
+            var pj = JSON.parse(out);
+            reportUsage(member, pj && pj.usage);
+          } catch (e) {}
+          res.writeHead(sc, { "content-type": "application/json" });
+          res.end(out);
+          resolve();
+        });
+        return;
+      }
+
+      // 透传（同时扫描 usage 用于统计，不改动转发内容）
+      res.writeHead(sc, upRes.headers);
+      var ctPass = (upRes.headers["content-type"] || "").toLowerCase();
+      var isSsePass = ctPass.indexOf("text/event-stream") >= 0;
+      var isJsonPass = ctPass.indexOf("application/json") >= 0;
+      if (isSsePass) {
+        var scanner = makeUsageScanner();
+        upRes.on("data", function (chunk) {
+          res.write(chunk);
+          try { scanSseForUsage(scanner, chunk.toString("utf8")); } catch (e) {}
+        });
+        upRes.on("end", function () {
+          try { scanSseForUsage(scanner, "\n"); reportUsage(member, scanner.usage); } catch (e) {}
+          res.end(); resolve();
+        });
+      } else if (isJsonPass) {
+        var jbuf = [];
+        upRes.on("data", function (chunk) { res.write(chunk); jbuf.push(chunk); });
+        upRes.on("end", function () {
+          try {
+            var pj = JSON.parse(Buffer.concat(jbuf).toString("utf8"));
+            reportUsage(member, pj && pj.usage);
+          } catch (e) {}
+          res.end(); resolve();
+        });
+      } else {
+        upRes.pipe(res).on("finish", resolve);
+      }
+    });
+
+    upReq.on("error", function (err) {
+      noteFailure(member); reqFail++;
+      log("error", "upstream error", { id: member.providerId, err: String(err && err.message || err) });
+      if (attemptsLeft > 0) {
+        var next = pickMember();
+        if (next && next.providerId !== member.providerId) {
+          return forward(next, req, res, attemptsLeft - 1, reqBody).then(resolve);
+        }
+      }
+      if (!res.headersSent) { res.writeHead(502); res.end("upstream error"); }
+      resolve();
+    });
+    upReq.on("timeout", function () { upReq.destroy(new Error("timeout")); });
+
+    if (outBody && outBody.length) upReq.end(outBody);
+    else upReq.end();
+  });
+}
+
+// —— HTTP 服务 ——
+function startServer() {
+  return new Promise(function (resolve, reject) {
+    if (server) { try { server.close(); } catch (e) {} server = null; }
+    const port = (group && group.listenPort) || 8788;
+    server = http.createServer(function (req, res) {
+      reqTotal++;
+      activeConn++;
+      res.on("close", function () { activeConn = Math.max(0, activeConn - 1); });
+      const m = pickMember();
+      if (!m) { reqFail++; res.writeHead(503); return res.end("no available upstream"); }
+      const maxAttempts = Math.max(1, members.length);
+      // 缓冲请求体（转换需要完整 body）
+      var chunks = [];
+      req.on("data", function (c) { chunks.push(c); });
+      req.on("end", function () {
+        var body = chunks.length ? Buffer.concat(chunks) : null;
+        forward(m, req, res, maxAttempts - 1, body);
+      });
+    });
+    server.on("error", function (err) {
+      log("error", "server error", { err: String(err.message || err) });
+      reject(err);
+    });
+    server.listen(port, "127.0.0.1", function () {
+      startedAt = Date.now();
+      activeConn = 0; reqTotal = 0; reqSuccess = 0; reqFail = 0; lastMemberId = null;
+      log("info", "proxy listening", { port: port });
+      stat();
+      resolve();
+    });
+  });
+}
+
+// —— 健康检查 ——
+function pingOnce(m) {
+  return new Promise(function (resolve) {
+    let u;
+    try { u = new URL((group.health && group.health.path) || "/", m.baseUrl); }
+    catch (e) { m.up = false; return resolve(); }
+    const client = u.protocol === "https:" ? https : http;
+    const t0 = Date.now();
+    const req = client.request({
+      method: "GET",
+      hostname: u.hostname, port: u.port || (u.protocol === "https:" ? 443 : 80),
+      path: u.pathname + u.search,
+      timeout: (group.health && group.health.timeoutMs) || 5000,
+      headers: m.apiKey ? { authorization: "Bearer " + m.apiKey, "x-api-key": m.apiKey } : {},
+    }, function (r) {
+      m.latency = Date.now() - t0;
+      m.up = (r.statusCode || 0) < 500;
+      r.resume();
+      resolve();
+    });
+    req.on("error", function () { m.up = false; resolve(); });
+    req.on("timeout", function () { m.up = false; req.destroy(); resolve(); });
+    req.end();
+  });
+}
+function startHealth() {
+  if (healthTimer) clearInterval(healthTimer);
+  const interval = (group.health && group.health.intervalMs) || 30000;
+  const run = function () {
+    Promise.all(members.map(pingOnce)).then(function () { stat(); });
+  };
+  run();
+  healthTimer = setInterval(run, interval);
+}
+
+// —— IPC 指令 ——
+ipcRenderer.on("cfg", function (_e, payload) {
+  group = payload.group;
+  members = (payload.members || []).map(function (m) {
+    return {
+      providerId: m.providerId, name: m.name,
+      baseUrl: m.baseUrl, apiKey: m.apiKey,
+      priority: m.priority || 1, weight: m.weight || 1,
+      // 协议转换参数
+      appType: m.appType || "", apiFormat: m.apiFormat || "", model: m.model || "",
+      maxOutputTokens: m.maxOutputTokens || "", customUserAgent: m.customUserAgent || "",
+      headersOverride: m.headersOverride || "", bodyOverride: m.bodyOverride || "",
+      authField: m.authField || "",
+      state: "closed", fails: 0, openUntil: 0, latency: 0, up: true,
+    };
+  });
+  log("info", "cfg received", { group: group.name, members: members.map(function (m) { return { id: m.providerId, key: maskKey(m.apiKey) }; }) });
+  startServer().then(startHealth).catch(function () {});
+});
+
+ipcRenderer.on("stop", function () {
+  try { if (server) server.close(); server = null; } catch (e) {}
+  if (healthTimer) { clearInterval(healthTimer); healthTimer = null; }
+  startedAt = 0;
+  log("info", "stopped");
+  stat();
+});
+
+// 定时上报 stat（1s 一次），保证统计实时刷新
+setInterval(function () { if (server) stat(); }, 1000);
+
+ipcRenderer.on("stat", function () { stat(); });
