@@ -275,7 +275,7 @@ function saveProvider(appType, providerData) {
   const id = providerData.id || generateId();
   const key = getProviderKey(appType, id);
 
-  // 閸掑棛顬囬弫蹇斿妳鐎涙顔?  const apiKey = providerData.apiKey || "";
+  const apiKey = providerData.apiKey || "";
   delete providerData.apiKey;
 // 更新已有文档必须带上 _rev，否则 uTools(PouchDB) 会以 conflict 静默失败，编辑不生效
   const existing = utools.db.get(key);
@@ -458,14 +458,14 @@ function switchProviderOpenclaw(provider) {
 
   config.agents = config.agents || {};
   config.agents.defaults = config.agents.defaults || {};
-  if (sd && sd.model && sd.model.primary) {
+  if (provider.suggestedDefaults && provider.suggestedDefaults.model && provider.suggestedDefaults.model.primary) {
     config.agents.defaults.model = {
-      primary: _ocRebaseRef(sd.model.primary, key),
-      fallbacks: (sd.model.fallbacks || []).map(function (r) { return _ocRebaseRef(r, key); }),
+      primary: _ocRebaseRef(provider.suggestedDefaults.model.primary, key),
+      fallbacks: (provider.suggestedDefaults.model.fallbacks || []).map(function (r) { return _ocRebaseRef(r, key); }),
     };
-    if (sd.modelCatalog) {
+    if (provider.suggestedDefaults.modelCatalog) {
       const cat = {};
-      Object.keys(sd.modelCatalog).forEach(function (r) { cat[_ocRebaseRef(r, key)] = sd.modelCatalog[r]; });
+      Object.keys(provider.suggestedDefaults.modelCatalog).forEach(function (r) { cat[_ocRebaseRef(r, key)] = provider.suggestedDefaults.modelCatalog[r]; });
       config.agents.defaults.models = Object.assign({}, config.agents.defaults.models, cat);
     }
   } else {
