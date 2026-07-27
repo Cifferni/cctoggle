@@ -1,4 +1,4 @@
-﻿// uTools ccToggle - preload.js
+// uTools ccToggle - preload.js
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -364,6 +364,9 @@ function switchProviderCodex(provider) {
     }
   }
 
+  const hasCatalog = Array.isArray(provider.modelCatalog) && provider.modelCatalog.length;
+  const catalogFileName = "utoolscctoggle-model-catalog.json";
+
   // 构建 config.toml
   let configToml = provider.extraConfig || "";
   if (!configToml) {
@@ -373,24 +376,29 @@ function switchProviderCodex(provider) {
     const model = provider.model || "gpt-4o";
     const wireApi = provider.wireApi || "responses";
     const effort = provider.reasoningEffort || "high";
-    configToml = [
+    const lines = [
       'model_provider = "' + cleanName + '"',
       'model = "' + model + '"',
       'model_reasoning_effort = "' + effort + '"',
       'disable_response_storage = true',
+    ];
+    // 有多模型目录时写入引用，Codex 的 /model 菜单据此展示可选模型
+    if (hasCatalog) lines.push('model_catalog_json = "' + catalogFileName + '"');
+    lines.push(
       '',
       '[model_providers.' + cleanName + ']',
       'name = "' + cleanName + '"',
       'base_url = "' + baseUrl + '"',
       'wire_api = "' + wireApi + '"',
-      'requires_openai_auth = true',
-    ].join("\n");
+      'requires_openai_auth = true'
+    );
+    configToml = lines.join("\n");
   }
 
-  if (Array.isArray(provider.modelCatalog) && provider.modelCatalog.length) {
+  if (hasCatalog) {
     try {
       const catalogJson = JSON.stringify({ object: "model_catalog", models: provider.modelCatalog }, null, 2);
-      const catalogPath = path.join(getHomeDir(), ".codex", "cc-switch-model-catalog.json");
+      const catalogPath = path.join(getHomeDir(), ".codex", catalogFileName);
       ensureDir(catalogPath);
       fs.writeFileSync(catalogPath, catalogJson, "utf8");
     } catch (e) { /* ignore */ }
