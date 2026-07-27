@@ -1429,8 +1429,8 @@ function takeoverApp(appType, listenPort) {
     const fake = {
       id: "__proxy__",
       appType: appType,
-      name: "ccswitch-proxy",
-      apiKey: "sk-cctoggle-proxy", // 占位，daemon 会用真实成员 key 转发
+      name: "utoolscctoggle-proxy",
+      apiKey: "sk-utoolscctoggle-proxy", // 占位，daemon 会用真实成员 key 转发
       model: "gpt-4o", // 用户可自行 override
       configType: appType === "claude" ? "anthropic" : (appType === "gemini" ? "gemini" : (appType === "openclaw" ? "openclaw" : "openai")),
       extraConfig: "",
