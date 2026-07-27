@@ -446,16 +446,18 @@ function switchProviderClaude(provider) {
   }
   settings.env = settings.env || {};
 
-// 兼容旧字段
+  // 兼容旧字段
   if (provider.model) settings.env.ANTHROPIC_MODEL = provider.model;
-// 写入 apiKey 到指定认证字段（默认 ANTHROPIC_AUTH_TOKEN）
+  // 写入 apiKey 到指定认证字段（默认 ANTHROPIC_AUTH_TOKEN）；未提供 apiKey 时不写，避免污染为 undefined
+  if (provider.apiKey) {
     const field = provider.authField || (settings.env.ANTHROPIC_API_KEY !== undefined ? "ANTHROPIC_API_KEY" : "ANTHROPIC_AUTH_TOKEN");
     settings.env[field] = provider.apiKey;
-// 合并 extraConfig（JSON）
-    try {
-      const extra = JSON.parse(provider.extraConfig);
-      Object.assign(settings, extra);
-    } catch (e) { /* ignore */ }
+  }
+  // 合并 extraConfig（JSON）
+  try {
+    const extra = JSON.parse(provider.extraConfig);
+    Object.assign(settings, extra);
+  } catch (e) { /* ignore */ }
 
   writeClaudeSettings(settings);
   return true;
