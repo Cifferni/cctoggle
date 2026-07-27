@@ -14,7 +14,7 @@ let cancelled = false;
 
 async function runSearch(q) {
   const myId = ++reqId;
-  const fn = window.ccSwitch?.searchSkills || (() => Promise.resolve([]));
+  const fn = window.utoolsCctoggle?.searchSkills || (() => Promise.resolve([]));
   loading.value = true;
   try {
     const data = await fn(q || "");
@@ -42,8 +42,8 @@ onBeforeUnmount(function() {
 
 // 加载已安装的 skill 列表，填充 installedNames
 onMounted(function() {
-  if (window.skillNest?.listNestSkills) {
-    var list = window.skillNest.listNestSkills();
+  if (window.utoolsCctoggle?.listNestSkills) {
+    var list = window.utoolsCctoggle.listNestSkills();
     if (Array.isArray(list)) {
       installedNames.value = new Set(list.map(function(s) { return skillKey(s); }));
     }
@@ -63,13 +63,13 @@ function skillKey(s) {
 
 function install(skill) {
   installing.value = skillKey(skill);
-  const fn = window.skillNest?.installSkill || window.ccSwitch?.installSkill || (() => ({ success: false }));
+  const fn = window.utoolsCctoggle?.installSkill || (() => ({ success: false }));
   const result = fn(skill.name, skill.repo || "", skill.path || "", "");
   setTimeout(function() {
     if (result.success) {
       installedNames.value = new Set([...installedNames.value, skillKey(skill)]);
-      if (window.skillNest?.listNestSkills) {
-        window.skillNest.listNestSkills();
+      if (window.utoolsCctoggle?.listNestSkills) {
+        window.utoolsCctoggle.listNestSkills();
       }
     }
     else if (result.error) { toast.error(result.error); }

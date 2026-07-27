@@ -17,9 +17,9 @@ export const APP_ICONS = {
   gemini: "\u{1F48E}",
 };
 
-// Safe accessor for skillNest API with fallback stubs
+// Safe accessor for window.utoolsCctoggle API with fallback stubs
 export function getSkillNest() {
-  return window.skillNest || {
+  return window.utoolsCctoggle || {
     listProviders: () => [],
     switchProvider: () => ({ success: false, error: "not in uTools" }),
     saveProvider: () => "",

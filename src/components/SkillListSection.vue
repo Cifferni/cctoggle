@@ -20,7 +20,7 @@ function doDelete() {
   var skillName = confirmTarget.value;
   confirmTarget.value = null;
   deleting.value = skillName;
-  var fn = window.skillNest?.removeNestSkill || window.ccSwitch?.removeNestSkill || (function() { return { success: false, error: "not available" }; });
+  var fn = window.utoolsCctoggle?.removeNestSkill || (function() { return { success: false, error: "not available" }; });
   var result = fn(skillName);
   if (result.success) {
     loadNestSkills();

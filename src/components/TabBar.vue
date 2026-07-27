@@ -16,7 +16,7 @@ function onToggleProxy() {
   // 开启方向：检查是否有已激活的供应商
   if (!proxyOn.value) {
     try {
-      const list = window.skillNest?.listProviders?.(app) || [];
+      const list = window.utoolsCctoggle?.listProviders?.(app) || [];
       if (!list.length) {
         toast.warn("当前 App 还没有供应商，请先添加供应商");
         return;

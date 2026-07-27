@@ -6,7 +6,7 @@ export function setupDynamicCommands() {
       const parts = code.replace("switch_", "").split("_");
       const app = parts[0];
       const id = parts.slice(1).join("_");
-      const result = window.skillNest?.switchProvider(app, id);
+      const result = window.utoolsCctoggle?.switchProvider(app, id);
       if (result?.success) {
         utools.showNotification(`已切换到 ${result.providerName}`);
         utools.outPlugin();
@@ -14,14 +14,14 @@ export function setupDynamicCommands() {
       return;
     }
 
-    if (!window.skillNest) return;
+    if (!window.utoolsCctoggle) return;
 
     const apps = ["codex", "claude", "gemini"];
     const appLabels = { codex: "Codex", claude: "Claude", gemini: "Gemini" };
     const prefixes = { codex: "cx", claude: "cc", gemini: "gm" };
 
     for (const app of apps) {
-      const providers = window.skillNest.listProviders(app) || [];
+      const providers = window.utoolsCctoggle.listProviders(app) || [];
       for (const p of providers) {
         utools.setFeature({
           code: `switch_${app}_${p.id}`,

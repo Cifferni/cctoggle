@@ -14,7 +14,7 @@ const sectionOpen = ref(false);
 const expanded = ref(null);
 const newProjectPath = ref("");
 const nestDir = computed(function() {
-  var fn = window.skillNest?.getNestDir || window.ccSwitch?.getNestDir;
+  var fn = window.utoolsCctoggle?.getNestDir;
   return fn ? fn() : "~/.skillnest/skills";
 });
 const newProjectLabel = ref("");
@@ -26,7 +26,7 @@ function onChange(app, e) {
   saveStoragePaths({ ...storagePaths.value, [app]: e.target.value });
 }
 function resetDefault(app) {
-  const fn = window.skillNest?.getDefaultSkillDirs || (() => ({}));
+  const fn = window.utoolsCctoggle?.getDefaultSkillDirs || (() => ({}));
   const defaults = fn();
   saveStoragePaths({ ...storagePaths.value, [app]: defaults[app] || `~/.generic/skills`.replace("generic", app) });
 }

@@ -1,7 +1,7 @@
 import { ref } from "vue";
 
-// Use skillNest if available, fallback to ccSwitch for backward compat
-const _ccs = () => window.skillNest || window.ccSwitch || {
+// Access window.utoolsCctoggle API with fallback stubs
+const _ccs = () => window.utoolsCctoggle || {
   getSkillStoragePaths: () => ({}),
   setSkillStoragePaths: () => {},
   listAllSkills: () => ({}),

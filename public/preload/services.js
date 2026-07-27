@@ -1146,7 +1146,7 @@ function pruneStats() {
   } catch (e) {}
 }
 
-window.skillNest = window.ccSwitch = {
+window.utoolsCctoggle = {
   // Paths
   paths: {
     home: getHomeDir(),
@@ -1532,20 +1532,20 @@ function toggleProxyQuick(appType) {
 }
 
 // 暴露到 window
-if (window.skillNest) {
-  window.skillNest.listRouteGroups = listRouteGroups;
-  window.skillNest.getRouteGroup = getRouteGroup;
-  window.skillNest.saveRouteGroup = saveRouteGroup;
-  window.skillNest.deleteRouteGroup = deleteRouteGroup;
-  window.skillNest.startProxy = startProxy;
-  window.skillNest.stopProxy = stopProxy;
-  window.skillNest.getProxyStatus = getProxyStatus;
-  window.skillNest.onProxyEvent = onProxyEvent;
-  window.skillNest.takeoverApp = takeoverApp;
-  window.skillNest.restoreApp = restoreApp;
-  window.skillNest.toggleProxyQuick = toggleProxyQuick;
-  window.skillNest.getProxyPort = getProxyPort;
-  window.skillNest.setProxyPort = setProxyPort;
+if (window.utoolsCctoggle) {
+  window.utoolsCctoggle.listRouteGroups = listRouteGroups;
+  window.utoolsCctoggle.getRouteGroup = getRouteGroup;
+  window.utoolsCctoggle.saveRouteGroup = saveRouteGroup;
+  window.utoolsCctoggle.deleteRouteGroup = deleteRouteGroup;
+  window.utoolsCctoggle.startProxy = startProxy;
+  window.utoolsCctoggle.stopProxy = stopProxy;
+  window.utoolsCctoggle.getProxyStatus = getProxyStatus;
+  window.utoolsCctoggle.onProxyEvent = onProxyEvent;
+  window.utoolsCctoggle.takeoverApp = takeoverApp;
+  window.utoolsCctoggle.restoreApp = restoreApp;
+  window.utoolsCctoggle.toggleProxyQuick = toggleProxyQuick;
+  window.utoolsCctoggle.getProxyPort = getProxyPort;
+  window.utoolsCctoggle.setProxyPort = setProxyPort;
 }
 
 
