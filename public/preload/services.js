@@ -32,7 +32,6 @@ function getOpenClawConfigPath() {
 }
 // 纯路径展开（~ → homeDir）
 function expandHome(p) {
-// 绾喕绻氶惄顔肩秿鐎涙ê婀?function expandHome(p) {
   if (!p) return p;
   if (p === "~") return getHomeDir();
   if (p.indexOf("~/") === 0 || p.indexOf("~\\") === 0) return path.join(getHomeDir(), p.slice(2));
@@ -117,32 +116,35 @@ function mergeCodexConfig(existing, incoming) {
   const newTop = newBlocks.find(function (b) { return b.header === null; }) || { lines: [] };
   const incomingKeys = topLevelKeys(newTop);
   const incomingTables = {};
-// 本次是否声明了 model_providers.* 表；若声明则清除旧的所有 provider 表，避免切换后残留废弃 pro
-// 本次是否声明了 model_providers.* 表；若声明则清除旧的所有 provider 表，避免切换后残留废弃
+  newBlocks.forEach(function (b) {
+    if (b.header !== null && b.tableName) incomingTables[b.tableName] = true;
+  });
+  // 本次是否声明了 model_providers.* 表；若声明则清除旧的所有 provider 表，避免残留废弃项
   const incomingHasProvider = Object.keys(incomingTables).some(function (t) {
     return t.indexOf("model_providers.") === 0;
   });
-// 1) 合并顶层键区：保留旧文件里本次未声明的顶层键，覆盖新增本次声明的键
+
+  // 1) 合并顶层键区：保留旧文件里本次未声明的顶层键，覆盖本次声明的键
   const oldTop = oldBlocks.find(function (b) { return b.header === null; }) || { lines: [] };
   const mergedTopLines = [];
   oldTop.lines.forEach(function (line) {
     const km = line.match(/^\s*([A-Za-z0-9_.-]+)\s*=/);
-    if (km && incomingKeys[km[1]]) return; // 本次会重新写入，跳过旧值
+    if (km && incomingKeys[km[1]]) return;
     mergedTopLines.push(line);
   });
-// 去掉尾部多余空行后追加本次顶层键
   while (mergedTopLines.length && mergedTopLines[mergedTopLines.length - 1].trim() === "") mergedTopLines.pop();
   newTop.lines.forEach(function (line) { mergedTopLines.push(line); });
-// 2) 表段：本次声明的表用新内容替换；旧文件里其余表原样保留
+
+  // 2) 表段：本次声明的表用新内容替换；旧文件里其余表原样保留
+  const outParts = [];
   const topText = mergedTopLines.join("\n").replace(/\n+$/, "");
   if (topText.trim()) outParts.push(topText);
-// 保留旧表（未被本次覆盖的）
   oldBlocks.forEach(function (b) {
     if (b.header === null) return;
-// 本次写入了 provider，则丢弃旧的所有 provider 表（由插件统一管理）
+    if (incomingTables[b.tableName]) return;
+    if (incomingHasProvider && b.tableName && b.tableName.indexOf("model_providers.") === 0) return;
     outParts.push([b.header].concat(b.lines).join("\n").replace(/\n+$/, ""));
   });
-// 追加本次声明的表
   newBlocks.forEach(function (b) {
     if (b.header === null) return;
     outParts.push([b.header].concat(b.lines).join("\n").replace(/\n+$/, ""));
@@ -219,8 +221,8 @@ function listProviders(appType) {
   try {
     const docs = utools.db.allDocs(DB_PREFIX + appType + "_") || [];
     return docs.map(function (doc) {
+      // 空白占位 apiKey（列表不含明文，通过 getProvider 单独读取）
       const provider = { id: doc._id.replace(DB_PREFIX + appType + "_", ""), name: doc.name, baseUrl: doc.baseUrl, model: doc.model, models: doc.models || [], websiteUrl: doc.websiteUrl, icon: doc.icon, iconColor: doc.iconColor, category: doc.category, configType: doc.configType, isCurrent: doc.isCurrent, sortOrder: doc.sortOrder, createdAt: doc.createdAt, apiFormat: doc.apiFormat || "", wireApi: doc.wireApi || "" };
-// 空白占位 apiKey
       return provider;
     });
   } catch (e) {
@@ -350,7 +352,7 @@ function deleteProvider(appType, providerId) {
   return true;
 }
 function switchProviderCodex(provider) {
-  // 鏋勫缓 auth.json
+  // 构建 auth.json
   const auth = Object.assign({}, provider.authData || {});
   if (provider.apiKey) {
     if (Object.keys(auth).length === 0) {
@@ -362,13 +364,13 @@ function switchProviderCodex(provider) {
     }
   }
 
-  // 鏋勫缓 config.toml
+  // 构建 config.toml
   let configToml = provider.extraConfig || "";
   if (!configToml) {
     const cleanName = (provider.name || "custom")
       .toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/^_+|_+$/g, "") || "custom";
     const baseUrl = provider.baseUrl || "https://api.openai.com/v1";
-    const model = provider.model || "gpt-5.4";
+    const model = provider.model || "gpt-4o";
     const wireApi = provider.wireApi || "responses";
     const effort = provider.reasoningEffort || "high";
     configToml = [
@@ -385,13 +387,14 @@ function switchProviderCodex(provider) {
     ].join("\n");
   }
 
+  if (Array.isArray(provider.modelCatalog) && provider.modelCatalog.length) {
     try {
       const catalogJson = JSON.stringify({ object: "model_catalog", models: provider.modelCatalog }, null, 2);
       const catalogPath = path.join(getHomeDir(), ".codex", "cc-switch-model-catalog.json");
       ensureDir(catalogPath);
       fs.writeFileSync(catalogPath, catalogJson, "utf8");
-// 在 config.toml 中引用
     } catch (e) { /* ignore */ }
+  }
 
   writeCodexConfig(auth, configToml);
   return true;
@@ -422,12 +425,12 @@ function switchProviderClaude(provider) {
 }
 
 function switchProviderGemini(provider) {
-  // 鏀堕泦 env
+  // 收集 env
   const env = Object.assign({}, (provider.settingsConfig && provider.settingsConfig.env) || {});
   if (provider.baseUrl) env.GOOGLE_GEMINI_BASE_URL = provider.baseUrl;
   if (provider.model) env.GEMINI_MODEL = provider.model;
   if (provider.apiKey) env.GEMINI_API_KEY = provider.apiKey;
-  // 搴忓垪鍖?KEY=VALUE
+  // 序列化 KEY=VALUE
   const lines = Object.keys(env).map(function (k) { return k + "=" + (env[k] == null ? "" : env[k]); });
   writeGeminiEnv(lines.join("\n") + "\n");
   return true;
@@ -524,7 +527,6 @@ function switchProvider(appType, providerId) {
 }
 // 标记当前供应商（isCurrent 键纯内存标记）
 function markCurrent(appType, providerId) {
-// 标记当前供应商（isCurrent 键纯内存标记）
   const all = listProviders(appType);
   all.forEach(function (p) {
     const key = getProviderKey(appType, p.id);
@@ -537,7 +539,6 @@ function markCurrent(appType, providerId) {
 }
 // 读取当前供应商
 function getCurrentProviderId(appType) {
-// 读取当前供应商
   const all = listProviders(appType);
   const current = all.find(function (p) { return p.isCurrent; });
   return current ? current.id : null;
@@ -1024,8 +1025,8 @@ function _statDayKey(d) {
 function _statDocKey(appType, dayStr) {
   return STAT_PREFIX + appType + "_" + dayStr;
 }
-function recordUsage(evt) {
 // 记录一次用量（来自 proxy-usage 事件），按 应用 聚合
+function recordUsage(evt) {
   if (!evt) return;
   var appType = evt.appType || "unknown";
   var ts = evt.ts ? new Date(evt.ts) : new Date();
@@ -1280,7 +1281,8 @@ function saveRouteGroup(group) {
 
 function deleteRouteGroup(appType, id) {
   try {
-stopProxy(appType); // 若在跑先停
+    stopProxy(appType); // 若在跑先停
+    utools.db.remove(_routeKey(appType, id));
     return true;
   } catch (e) { return false; }
 }
@@ -1365,8 +1367,8 @@ function onProxyEvent(cb) {
   try {
     const { ipcRenderer } = require("electron");
     ipcRenderer.removeAllListeners("parent-message");
-    ipcRenderer.on("parent-message", function (_event) {
-// uTools 独立窗口 sendToParent 落地为 parent-message 事件
+    ipcRenderer.on("parent-message", function (_event, ...args) {
+      // uTools 独立窗口 sendToParent 落地为 parent-message 事件
       const [channel, data] = args;
       try {
         if (channel === "proxy-stat" && data) {
@@ -1401,7 +1403,6 @@ function onProxyEvent(cb) {
 }
 // —— 接管 / 还原 ——
 function _backupCurrent(appType) {
-// —— 接管 / 还原 ——
   const cur = getCurrentProviderId(appType);
   const doc = utools.db.get(BACKUP_KEY) || { _id: BACKUP_KEY };
   doc[appType] = { previousProviderId: cur, at: new Date().toISOString() };
@@ -1421,9 +1422,8 @@ function takeoverApp(appType, listenPort) {
       id: "__proxy__",
       appType: appType,
       name: "ccswitch-proxy",
-        apiKey: "sk-cctoggle-proxy", // 占位，daemon 会用真实成员 key 转发
-        apiKey: "sk-cctoggle-proxy", // 占位，daemon 会用真实成员 key 转发
-      model: "gpt-4o", // 鐢ㄦ埛鍙嚜琛?override
+      apiKey: "sk-cctoggle-proxy", // 占位，daemon 会用真实成员 key 转发
+      model: "gpt-4o", // 用户可自行 override
       configType: appType === "claude" ? "anthropic" : (appType === "gemini" ? "gemini" : (appType === "openclaw" ? "openclaw" : "openai")),
       extraConfig: "",
     };
