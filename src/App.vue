@@ -1,6 +1,7 @@
 ﻿<script setup>
 import { ref, onMounted } from "vue";
 import AppFooter from "./components/AppFooter.vue";
+import ToastHost from "./components/ToastHost.vue";
 
 const isDark = ref(window.matchMedia("(prefers-color-scheme: dark)").matches);
 onMounted(() => {
@@ -14,6 +15,7 @@ onMounted(() => {
       <router-view />
     </main>
     <AppFooter />
+    <ToastHost />
   </div>
 </template>
 

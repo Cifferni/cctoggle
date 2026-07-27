@@ -325,8 +325,8 @@ function close() {
 <div class="field"><label>API 类型</label>
             <select v-model="form.configType">
 <option value="openai">OpenAI 兼容</option>
-              <option value="anthropic">Anthropic 鍘熺敓</option>
-              <option value="gemini">Gemini 鍘熺敓</option>
+              <option value="anthropic">Anthropic 原生</option>
+              <option value="gemini">Gemini 原生</option>
               <option value="openclaw">OpenClaw</option>
             </select>
           </div>
@@ -390,7 +390,7 @@ function close() {
               </select>
               <p class="tip">供应商原生 Responses 默认；Chat / Anthropic Messages 需開启代理路由接管才能转换。</p>
             </div>
-            <div class="field" style="margin-top:10px"><label>连接协议 <small>(wire_api)</small></label>
+            <div class="field" style="margin-top:10px"><label>连接协议 <small>(wire_api)</small></label>
               <select v-model="form.wireApi">
                 <option value="responses">Responses (OpenAI 官方 / gpt-5 系</option>
               <option value="chat">Chat Completions (方舟/DeepSeek/通义/Kimi 等)</option>
@@ -448,7 +448,7 @@ function close() {
           </template>
 
           <template v-else-if="tab==='openclaw'">
-            <div class="field"><label>API 协议</label>
+            <div class="field"><label>API 协议</label>
               <select v-model="form.apiProtocol">
                 <option value="openai-completions">OpenAI Completions</option>
                 <option value="openai-responses">OpenAI Responses</option>

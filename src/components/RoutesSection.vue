@@ -1,7 +1,8 @@
-<script setup>
+﻿<script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { useProviders } from "../composables/useProviders.js";
 import { useRoutes } from "../composables/useRoutes.js";
+import { toast } from "../composables/useToast.js";
 
 const { APP_LABELS, activeTab, providers, loadProviders } = useProviders();
 const { runtime, refreshStatus, getProxyPort, setProxyPort } = useRoutes();
@@ -12,21 +13,17 @@ const isRunning = computed(() => !!rt.value.running);
 
 // —— 端口编辑 ——
 const portInput = ref(8788);
-const saveMsg = ref("");
 
 function syncPort() {
   portInput.value = isRunning.value ? (rt.value.port || getProxyPort(currentApp.value)) : getProxyPort(currentApp.value);
 }
 
 function onSavePort() {
-  saveMsg.value = "";
   const r = setProxyPort(currentApp.value, Number(portInput.value));
   if (r.success) {
-    saveMsg.value = "已保存";
-    window.utools?.showNotification?.("代理端口已保存：" + r.port);
-    setTimeout(() => (saveMsg.value = ""), 2000);
+    toast.success("代理端口已保存：" + r.port);
   } else {
-    saveMsg.value = r.error === "proxy is running" ? "运行中无法修改" : ("保存失败：" + (r.error || "unknown"));
+    toast.error(r.error === "proxy is running" ? "运行中无法修改" : ("保存失败：" + (r.error || "unknown")));
   }
 }
 
@@ -113,7 +110,6 @@ watch(isRunning, syncPort);
           <input v-model.number="portInput" type="number" min="1024" max="65535" class="port-input" />
           <button class="btn" @click="copyUrl">{{ copied ? "已复制" : "复制" }}</button>
           <button class="btn btn--primary" @click="onSavePort">保存</button>
-          <span v-if="saveMsg" class="save-msg">{{ saveMsg }}</span>
         </template>
       </div>
       <div class="hint" v-if="isRunning">运行中不可修改，关闭代理后可编辑端口。</div>

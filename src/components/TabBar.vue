@@ -3,6 +3,7 @@ import { computed } from "vue";
 import { useRouter } from "vue-router";
 import { useProviders } from "../composables/useProviders.js";
 import { useRoutes } from "../composables/useRoutes.js";
+import { toast } from "../composables/useToast.js";
 
 const { APP_TYPES, APP_LABELS, APP_ICONS, activeTab, setActiveTab } = useProviders();
 const { runtime, toggleQuick } = useRoutes();
@@ -11,13 +12,28 @@ const router = useRouter();
 const proxyOn = computed(() => !!runtime[activeTab()]?.running);
 
 function onToggleProxy() {
-  const r = toggleQuick(activeTab());
-  if (!r.success && r.error === "no providers") {
-    window.utools?.showNotification?.("当前 App 还没有供应商，请先在「供应商」页添加");
+  const app = activeTab();
+  // 开启方向：检查是否有已激活的供应商
+  if (!proxyOn.value) {
+    try {
+      const list = window.skillNest?.listProviders?.(app) || [];
+      if (!list.length) {
+        toast.warn("当前 App 还没有供应商，请先添加供应商");
+        return;
+      }
+      if (!list.some(p => p.isCurrent)) {
+        toast.warn("当前 App 没有已激活的供应商，请先点击「切换」激活一个供应商");
+        return;
+      }
+    } catch (e) {}
+  }
+  const r = toggleQuick(app);
+  if (!r.success && (r.error === "no providers" || r.error === "no members")) {
+    toast.warn("当前 App 还没有可用的供应商，请先添加供应商");
   } else if (!r.success) {
-    window.utools?.showNotification?.("操作失败：" + (r.error || "unknown"));
+    toast.error("操作失败：" + (r.error || "unknown"));
   } else {
-    window.utools?.showNotification?.(r.running ? "路由已开启" : "路由已关闭");
+    toast.success(r.running ? "路由已开启" : "路由已关闭");
   }
 }
 </script>
@@ -38,7 +54,6 @@ function onToggleProxy() {
     </button>
     <span class="tab-divider"></span>
 
-    <!-- 代理开关：打开即为当前 App 开启代理 -->
     <label
       class="proxy-switch"
       :title="proxyOn ? APP_LABELS[activeTab()] + ' 代理运行中，点击关闭' : '打开以为 ' + APP_LABELS[activeTab()] + ' 开启代理'"
@@ -96,7 +111,6 @@ function onToggleProxy() {
   font-size: 12px;
 }
 
-/* 代理开关 */
 .proxy-switch {
   display: flex;
   align-items: center;

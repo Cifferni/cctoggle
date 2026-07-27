@@ -8,8 +8,8 @@ onMounted(() => {
   loadProjectTargets();
 });
 
-const agents = ALL_APPS.filter(a => ["codex", "claude", "gemini"].includes(a));
-const icons = { codex: "\u26A1", claude: "\u{1F9E0}", gemini: "\u{1F48E}" };
+const agents = ALL_APPS.filter(a => ["codex", "claude", "gemini", "openclaw"].includes(a));
+const icons = { codex: "\u26A1", claude: "\u{1F9E0}", gemini: "\u{1F48E}", openclaw: "\u{1F43E}" };
 const sectionOpen = ref(false);
 const expanded = ref(null);
 const newProjectPath = ref("");

@@ -327,11 +327,28 @@ function saveProvider(appType, providerData) {
 function deleteProvider(appType, providerId) {
   utools.db.remove(getProviderKey(appType, providerId));
   utools.dbCryptoStorage.removeItem("apikey_" + appType + "_" + providerId);
+  try {
+    var groups = listRouteGroups(appType);
+    groups.forEach(function (g) {
+      var before = (g.members || []).length;
+      g.members = (g.members || []).filter(function (m) { return m.providerId !== providerId; });
+      if (g.members.length !== before) {
+        g.appType = appType;
+        if (g.members.length === 0) {
+          deleteRouteGroup(appType, g.id);
+          // 路由组清空 + 代理正在运行 → 自动停掉代理
+          if (proxyRuntime._active === appType) {
+            stopProxy(appType);
+            restoreApp(appType);
+          }
+        } else {
+          saveRouteGroup(g);
+        }
+      }
+    });
+  } catch (e) {}
   return true;
 }
-
-// ———————————————————————————————————
-
 function switchProviderCodex(provider) {
   // 鏋勫缓 auth.json
   const auth = Object.assign({}, provider.authData || {});
@@ -381,8 +398,7 @@ function switchProviderCodex(provider) {
 }
 
 // 优先使用预设 settingsConfig，其次回退旧字段
-function switchProviderClaude(id) {
-  const provider = getProvider("claude", id);
+function switchProviderClaude(provider) {
   if (!provider) return { success: false, error: "provider not found" };
   let settings = {};
   if (provider.settingsConfig && Object.keys(provider.settingsConfig).length) {
@@ -1246,8 +1262,7 @@ function saveRouteGroup(group) {
   const doc = {
     _id: key,
     _rev: existing ? existing._rev : undefined,
-        name: group.name || "未命名路由组",
-      name: group.name || "未命名路由组",
+    name: group.name || "未命名路由组",
     listenPort: group.listenPort || 8788,
     strategy: group.strategy || "failover",
     members: (group.members || []).map(function (m) {
@@ -1281,7 +1296,6 @@ function _resolveMembers(appType, group) {
       apiKey: p.apiKey || "",
       priority: m.priority || 1,
       weight: m.weight || 1,
-// 路由转换参数
       appType: appType,
       apiFormat: p.apiFormat || "",
       model: p.model || "",
@@ -1294,14 +1308,11 @@ function _resolveMembers(appType, group) {
     };
   }).filter(Boolean);
 }
-
 function startProxy(appType, groupId) {
   const group = getRouteGroup(appType, groupId);
   if (!group) return { success: false, error: "group not found" };
-// 如已运行则先停
   const members = _resolveMembers(appType, group);
   if (members.length === 0) return { success: false, error: "no members" };
-
   try {
     const win = utools.createBrowserWindow(
       "preload/proxy-daemon.html",
@@ -1319,7 +1330,6 @@ function startProxy(appType, groupId) {
     return { success: false, error: e.message };
   }
 }
-
 function stopProxy(appType) {
   const win = daemonWins[appType];
   if (win) {
@@ -1466,27 +1476,31 @@ function setProxyPort(appType, port) {
 // 保证存在一个可用路由组：没有则用当前 App 下全部供应商自动生成
 function ensureDefaultGroup(appType) {
   const groups = listRouteGroups(appType);
-// 已有组：同步补齐新加的供应商成员 & 端口
-    const g = groups[0];
+  const all = listProviders(appType);
   if (groups.length) {
+    const g = groups[0];
+    g.appType = appType;
+    if (!all.length) {
+      deleteRouteGroup(appType, g.id);
+      return null;
+    }
     const wantPort = getProxyPort(appType);
     if (g.listenPort !== wantPort) { g.listenPort = wantPort; }
-    const all = listProviders(appType);
+    const allIds = {};
+    all.forEach(function (p) { allIds[p.id] = true; });
+    g.members = (g.members || []).filter(function (m) { return allIds[m.providerId]; });
     const have = {};
-    (g.members || []).forEach(function (m) { have[m.providerId] = true; });
-    let changed = false;
-    all.forEach(function (p, i) {
-      if (!have[p.id]) { g.members.push({ providerId: p.id, priority: (g.members.length + 1), weight: 1 }); changed = true; }
+    g.members.forEach(function (m) { have[m.providerId] = true; });
+    all.forEach(function (p) {
+      if (!have[p.id]) { g.members.push({ providerId: p.id, priority: (g.members.length + 1), weight: 1 }); }
     });
-    if (changed) saveRouteGroup(g);
+    saveRouteGroup(g);
     return getRouteGroup(appType, g.id);
   }
-  const all = listProviders(appType);
   if (!all.length) return null;
   const id = saveRouteGroup({
-      name: "默认路由（自动）",
-      name: "默认路由（自动）",
-    listenPort: getProxyPort(appType),
+    appType: appType,
+    name: "默认路由（自动）",
     strategy: "failover",
     members: all.map(function (p, i) { return { providerId: p.id, priority: i + 1, weight: 1 }; }),
     health: { intervalMs: 30000, timeoutMs: 5000, path: appType === "claude" ? "/v1/models" : "/models" },
@@ -1495,14 +1509,15 @@ function ensureDefaultGroup(appType) {
   });
   return getRouteGroup(appType, id);
 }
-
 function toggleProxyQuick(appType) {
 // 点击当前已开启的 App = 关闭
   if (proxyRuntime._active === appType) {
     stopProxy(appType);
     restoreApp(appType);
     return { success: true, running: false };
-// 全局只允许一个 daemon：切换到别的 App 前先关旧的
+  }
+  // 全局只允许一个 daemon：切换到别的 App 前先关旧的
+  if (proxyRuntime._active) {
     stopProxy(proxyRuntime._active);
     restoreApp(proxyRuntime._active);
   }

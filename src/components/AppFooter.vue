@@ -5,7 +5,7 @@ const { paths } = useProviders();
 
 <template>
   <footer class="app-footer">
-    <span>SkillNest ccToggle | {{ paths.codexConfig || '配置文件路径緞' }}</span>
+    <span>SkillNest ccToggle | {{ paths.codexConfig || '配置文件路径' }}</span>
   </footer>
 </template>
 

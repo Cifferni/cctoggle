@@ -1,6 +1,7 @@
-<script setup>
+﻿<script setup>
 import { computed, onMounted, ref } from "vue";
 import { useSkills } from "../composables/useSkills.js";
+import { toast } from "../composables/useToast.js";
 const { ALL_APPS, APP_LABELS, nestSkills, deployments, allSkills, loadNestSkills, loadDeployments, loadAllSkills, deploy, undeploy, syncMode } = useSkills();
 
 onMounted(() => {
@@ -25,7 +26,7 @@ function doDelete() {
     loadNestSkills();
     loadDeployments();
   } else {
-    try { window.utools?.showNotification(result.error || "删除失败"); } catch (e) {}
+    toast.error(result.error || "删除失败");
   }
   deleting.value = null;
 }
@@ -81,7 +82,7 @@ const agentStats = computed(() => {
 });
 
 const displayTargets = computed(() => {
-  return ALL_APPS.slice(0, 3); // codex, claude, gemini
+  return ALL_APPS.filter(a => ["codex", "claude", "gemini", "openclaw"].includes(a));
 });
 </script>
 

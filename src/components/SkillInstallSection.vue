@@ -1,5 +1,6 @@
 ﻿<script setup>
 import { ref, watch, onMounted, onBeforeUnmount } from "vue";
+import { toast } from "../composables/useToast.js";
 
 const searchQuery = ref("");
 const installing = ref(null);
@@ -71,7 +72,7 @@ function install(skill) {
         window.skillNest.listNestSkills();
       }
     }
-    else if (result.error) { try { window.utools?.showNotification(result.error); } catch (e) {} }
+    else if (result.error) { toast.error(result.error); }
     installing.value = null;
   }, 300);
 }
