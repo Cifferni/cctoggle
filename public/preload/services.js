@@ -397,7 +397,11 @@ function switchProviderCodex(provider) {
 
   if (hasCatalog) {
     try {
-      const catalogJson = JSON.stringify({ object: "model_catalog", models: provider.modelCatalog }, null, 2);
+      // 补 slug 字段（Codex 以 slug 作为模型标识；前端仅存 model，此处对齐）
+      const catalogModels = provider.modelCatalog.map(function (m) {
+        return Object.assign({ slug: m.slug || m.model }, m);
+      });
+      const catalogJson = JSON.stringify({ object: "model_catalog", models: catalogModels }, null, 2);
       const catalogPath = path.join(getHomeDir(), ".codex", catalogFileName);
       ensureDir(catalogPath);
       fs.writeFileSync(catalogPath, catalogJson, "utf8");
