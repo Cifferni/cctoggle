@@ -1,4 +1,4 @@
-﻿<script setup>
+<script setup>
 import { reactive, watch, ref, computed } from "vue";
 const props = defineProps({ visible: Boolean, initialData: Object });
 const emit = defineEmits(["close", "save"]);
@@ -33,7 +33,7 @@ const CATEGORIES = [
 
 const form = reactive({
   name: "", baseUrl: "https://api.openai.com/v1", apiKey: "", model: "gpt-5.4",
-  models: "", websiteUrl: "", configType: "openai",
+  models: "", websiteUrl: "", remark: "", configType: "openai",
   apiKeyHeader: "Authorization", apiKeyPrefix: "Bearer ",
   reasoningEffort: "high", maxTokens: "", temperature: "", extraHeaders: "", extraConfig: "",
   wireApi: "responses", apiFormat: "", apiKeyUrl: "", category: "custom",
@@ -48,6 +48,9 @@ const form = reactive({
   impersonateClaudeCode: false,
 // OpenClaw 专属
   apiProtocol: "openai-completions",
+  verbosity: "low",
+  reasoningSummary: "none",
+  webSearch: true,
 });
 // modelCatalog 行编辑器（Codex）
 const catalogRows = ref([]); // { model, displayName, contextWindow }
@@ -70,7 +73,7 @@ watch(() => props.visible, v => {
   Object.assign(form, {
     name: d?.name || "", baseUrl: d?.baseUrl || "https://api.openai.com/v1",
     apiKey: d?.apiKey || "", model: stripOneM(claudeModel) || "gpt-5.4",
-    models: (d?.models || []).join(", "), websiteUrl: d?.websiteUrl || "",
+    models: (d?.models || []).join(", "), websiteUrl: d?.websiteUrl || "", remark: d?.remark || "",
     configType: d?.configType || "openai",
     apiKeyHeader: d?.apiKeyHeader || "Authorization", apiKeyPrefix: d?.apiKeyPrefix || "Bearer ",
     reasoningEffort: d?.reasoningEffort || "high", maxTokens: d?.maxTokens || "",
@@ -89,6 +92,9 @@ watch(() => props.visible, v => {
     authMethod: d?.authMethod || "api_key",
     impersonateClaudeCode: !!d?.impersonateClaudeCode,
     apiProtocol: d?.apiProtocol || d?.settingsConfig?.api || "openai-completions",
+    verbosity: d?.verbosity || "low",
+    reasoningSummary: d?.reasoningSummary || "none",
+    webSearch: d?.webSearch !== false,
   });
   openclawRows.value = ((d?.settingsConfig?.models) || []).map(function (m) {
     return { id: m.id || "", name: m.name || "", contextWindow: m.contextWindow || "" };
@@ -244,6 +250,9 @@ function fillPreset(preset) {
     authMethod: preset.authMethod || "api_key",
     impersonateClaudeCode: !!preset.impersonateClaudeCode,
     apiProtocol: d.apiProtocol || d.settingsConfig?.api || "openai-completions",
+    verbosity: d.verbosity || "low",
+    reasoningSummary: d.reasoningSummary || "none",
+    webSearch: d.webSearch !== false,
   });
   openclawRows.value = ((d.settingsConfig?.models) || []).map(function (m) {
     return { id: m.id || "", name: m.name || "", contextWindow: m.contextWindow || "" };
@@ -304,6 +313,7 @@ function close() {
             <div class="field"><label>名称</label><input v-model="form.name" placeholder="如 NewAPI"></div>
             <div class="field"><label>官网</label><input v-model="form.websiteUrl" placeholder="https://..."></div>
           </div>
+          <div class="field" style="margin-top:10px"><label>备注</label><input v-model="form.remark" :placeholder="'选填，例如：个人账号 / 充值到期 / 限速说明'"></div>
           <div class="row-2" style="margin-top:10px">
 <div class="field"><label>分类</label>
               <select v-model="form.category">
@@ -355,7 +365,7 @@ function close() {
               打开 OAuth 登录页            </button>
           </div>
           <div class="field" style="margin-top:10px">
-            <label>API Key <a v-if="form.apiKeyUrl" :href="form.apiKeyUrl" target="_blank" class="link">获取 Key</a></label>
+            <label>API Key</label>
             <div class="apikey-wrap"><input v-model="form.apiKey" :type="showApiKey ? 'text' : 'password'" placeholder="sk-..."><button type="button" class="btn-eye" @click="showApiKey = !showApiKey" :title="showApiKey ? '隐藏' : '显示'"><svg v-if="!showApiKey" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button></div>
           </div>
           <div v-if="tab==='claude'" class="field" style="margin-top:10px"><label>认证字段 <small>(写入哪个环境变量)</small></label>
@@ -427,6 +437,30 @@ function close() {
               </table>
               <button type="button" class="btn-add" @click="addCatalogRow">+ 添加模型</button>
               <p class="tip">修改后需重启 Codex 刷新 /model 列表。</p>
+            </div>
+            <div class="field" style="margin-top:10px">
+              <label>模型偏好 <small>(可选, 写入模型目录)</small></label>
+              <div class="row-2">
+                <div class="field">
+                  <label>输出详细度</label>
+                  <select v-model="form.verbosity">
+                    <option value="low">简洁 (low)</option>
+                    <option value="medium">适中 (medium)</option>
+                    <option value="high">详细 (high)</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>推理摘要</label>
+                  <select v-model="form.reasoningSummary">
+                    <option value="none">不显示 (none)</option>
+                    <option value="auto">自动 (auto)</option>
+                  </select>
+                </div>
+              </div>
+              <label class="ck" style="margin-top:8px">
+                <input type="checkbox" v-model="form.webSearch">
+                启用联网搜索<small>(web_search 工具)</small>
+              </label>
             </div>
           </template>
 

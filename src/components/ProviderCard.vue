@@ -1,4 +1,4 @@
-﻿<script setup>
+<script setup>
 import { computed } from "vue";
 const props = defineProps({ provider: Object });
 const emit = defineEmits(["switch", "edit", "delete"]);
@@ -41,6 +41,7 @@ const CAT_LABELS = {
         <span class="card-model">{{ provider.model }}</span>
         <span v-if="provider.models && provider.models.length" class="card-extras">+{{ provider.models.length }} 模型</span>
       </div>
+      <div v-if="provider.remark" class="card-remark" :title="provider.remark">{{ provider.remark }}</div>
     </div>
     <div class="card-actions">
       <button class="btn btn--switch" :class="{ 'btn--active': provider.isCurrent }" @click="emit('switch', provider.id)" :disabled="provider.isCurrent">
@@ -103,6 +104,7 @@ const CAT_LABELS = {
 .card-url { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-model { font-family: "SF Mono", "Fira Code", monospace; font-size: 11px; color: var(--text-secondary); }
 .card-extras { color: var(--primary); font-size: 11px; }
+.card-remark { margin-top: 4px; font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .card-actions { display: flex; gap: 6px; flex-shrink: 0; margin-left: 8px; }
 

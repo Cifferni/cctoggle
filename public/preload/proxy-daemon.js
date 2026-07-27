@@ -18,6 +18,22 @@ let reqTotal = 0;               // 总请求
 let reqSuccess = 0;             // 成功请求 (<500)
 let reqFail = 0;                // 失败请求 (>=500 或 upstream error)
 let lastMemberId = null;        // 最近一次转发命中的成员
+let authToken = "";             // 本地代理访问令牌：仅持有者可用本代理转发
+
+// 请求体上限：仅防御异常/恶意撑爆内存，正常大对话/多模态请求远达不到
+const MAX_REQUEST_BYTES = 50 * 1024 * 1024;
+// 非流式响应扫描 usage 时保留的尾部字节上限（usage 一般在响应末尾）
+const USAGE_TAIL_BYTES = 256 * 1024;
+
+// 校验请求携带的本地令牌；未配置 token 时放行（兼容旧行为）
+function isAuthed(req) {
+  if (!authToken) return true;
+  var auth = req.headers["authorization"] || "";
+  var bearer = auth.indexOf("Bearer ") === 0 ? auth.slice(7).trim() : "";
+  var xkey = req.headers["x-api-key"] || "";
+  var xkeyStr = Array.isArray(xkey) ? xkey[0] : xkey;
+  return bearer === authToken || (xkeyStr && xkeyStr.trim() === authToken);
+}
 
 function log(level, msg, meta) {
   try {
@@ -355,13 +371,24 @@ function forward(member, req, res, attemptsLeft, reqBody) {
           res.end(); resolve();
         });
       } else if (isJsonPass) {
+        // 边转发边只保留尾部片段用于扫 usage，避免大响应整体缓冲堆内存
         var jbuf = [];
-        upRes.on("data", function (chunk) { res.write(chunk); jbuf.push(chunk); });
+        var jbufBytes = 0;
+        upRes.on("data", function (chunk) {
+          res.write(chunk);
+          jbuf.push(chunk);
+          jbufBytes += chunk.length;
+          // 超出尾部窗口时丢弃最早的片段（usage 通常位于响应末尾）
+          while (jbufBytes > USAGE_TAIL_BYTES && jbuf.length > 1) {
+            jbufBytes -= jbuf[0].length;
+            jbuf.shift();
+          }
+        });
         upRes.on("end", function () {
           try {
             var pj = JSON.parse(Buffer.concat(jbuf).toString("utf8"));
             reportUsage(member, pj && pj.usage);
-          } catch (e) {}
+          } catch (e) { /* 尾部截断的大响应无法解析 usage，属预期 */ }
           res.end(); resolve();
         });
       } else {
@@ -397,13 +424,36 @@ function startServer() {
       reqTotal++;
       activeConn++;
       res.on("close", function () { activeConn = Math.max(0, activeConn - 1); });
+      if (!isAuthed(req)) {
+        reqFail++;
+        log("warn", "unauthorized request rejected", { url: req.url });
+        res.writeHead(401, { "content-type": "application/json" });
+        return res.end('{"error":"unauthorized: invalid proxy token"}');
+      }
       const m = pickMember();
       if (!m) { reqFail++; res.writeHead(503); return res.end("no available upstream"); }
       const maxAttempts = Math.max(1, members.length);
       // 缓冲请求体（转换需要完整 body）
       var chunks = [];
-      req.on("data", function (c) { chunks.push(c); });
+      var received = 0;
+      var aborted = false;
+      req.on("data", function (c) {
+        if (aborted) return;
+        received += c.length;
+        if (received > MAX_REQUEST_BYTES) {
+          aborted = true;
+          reqFail++;
+          chunks = [];
+          log("warn", "request body too large", { url: req.url, bytes: received });
+          if (!res.headersSent) res.writeHead(413, { "content-type": "application/json" });
+          res.end('{"error":"request entity too large"}');
+          req.destroy();
+          return;
+        }
+        chunks.push(c);
+      });
       req.on("end", function () {
+        if (aborted) return;
         var body = chunks.length ? Buffer.concat(chunks) : null;
         forward(m, req, res, maxAttempts - 1, body);
       });
@@ -460,6 +510,7 @@ function startHealth() {
 // —— IPC 指令 ——
 ipcRenderer.on("cfg", function (_e, payload) {
   group = payload.group;
+  authToken = (payload.authToken || (group && group.authToken) || "") + "";
   members = (payload.members || []).map(function (m) {
     return {
       providerId: m.providerId, name: m.name,

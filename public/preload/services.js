@@ -45,6 +45,30 @@ function ensureDir(filePath) {
   }
 }
 
+// Codex model_catalog_json requires base_instructions on each model (or parsing fails).
+// Hardcoded minimal instructions, always written on switch/proxy; no external file dependency.
+const CODEX_BASE_INSTRUCTIONS = [
+  "You are Codex, a coding agent that collaborates with the user in a shared workspace until the task is genuinely handled.",
+  "",
+  "Working style:",
+  "- Read the relevant code before changing it. Prefer the repo's existing patterns, frameworks, and helpers over inventing new abstractions.",
+  "- Keep edits tightly scoped to the request. Do not revert or refactor unrelated changes the user made.",
+  "- Use apply_patch for file edits; do not write files via shell tricks. Use rg / rg --files for search.",
+  "- Default to ASCII unless the file already uses other characters.",
+  "- If the user asks a question or wants a plan, answer it; otherwise implement the change and try to work through blockers yourself.",
+  "- If you could not run or verify something (e.g. tests), say so.",
+  "",
+  "Communication:",
+  "- Be concise and direct. Use short paragraphs; add lists or headers only when they help.",
+  "- Reference real files as clickable markdown links with absolute paths, e.g. [file.js](/abs/path/file.js:12).",
+  "- Wrap commands, paths, and code identifiers in backticks; put multi-line code in fenced blocks.",
+  "- The user does not see command output, so summarize important results.",
+  "- Do not use emojis or em dashes unless asked.",
+].join("\n");
+function getCodexInstructions() {
+  return { base_instructions: CODEX_BASE_INSTRUCTIONS, instructions_variables: {} };
+}
+
 // ———————————————————————————————————
 
 function readCodexConfig() {
@@ -222,7 +246,7 @@ function listProviders(appType) {
     const docs = utools.db.allDocs(DB_PREFIX + appType + "_") || [];
     return docs.map(function (doc) {
       // 空白占位 apiKey（列表不含明文，通过 getProvider 单独读取）
-      const provider = { id: doc._id.replace(DB_PREFIX + appType + "_", ""), name: doc.name, baseUrl: doc.baseUrl, model: doc.model, models: doc.models || [], websiteUrl: doc.websiteUrl, icon: doc.icon, iconColor: doc.iconColor, category: doc.category, configType: doc.configType, isCurrent: doc.isCurrent, sortOrder: doc.sortOrder, createdAt: doc.createdAt, apiFormat: doc.apiFormat || "", wireApi: doc.wireApi || "" };
+      const provider = { id: doc._id.replace(DB_PREFIX + appType + "_", ""), name: doc.name, baseUrl: doc.baseUrl, model: doc.model, models: doc.models || [], websiteUrl: doc.websiteUrl, remark: doc.remark || "", icon: doc.icon, iconColor: doc.iconColor, category: doc.category, configType: doc.configType, isCurrent: doc.isCurrent, sortOrder: doc.sortOrder, createdAt: doc.createdAt, apiFormat: doc.apiFormat || "", wireApi: doc.wireApi || "" };
       return provider;
     });
   } catch (e) {
@@ -244,6 +268,7 @@ function getProvider(appType, providerId) {
       model: doc.model,
       models: doc.models || [],
       websiteUrl: doc.websiteUrl,
+      remark: doc.remark || "",
       icon: doc.icon,
       iconColor: doc.iconColor,
       category: doc.category,
@@ -291,6 +316,7 @@ function saveProvider(appType, providerData) {
     model: providerData.model || "",
     models: providerData.models || [],
     websiteUrl: providerData.websiteUrl || "",
+    remark: providerData.remark || "",
     icon: providerData.icon || "",
     iconColor: providerData.iconColor || "",
     category: providerData.category || "custom", authType: providerData.authType || "api_key", apiKeyHeader: providerData.apiKeyHeader || "Authorization", apiKeyPrefix: providerData.apiKeyPrefix || "Bearer ", reasoningEffort: providerData.reasoningEffort || "high", maxTokens: providerData.maxTokens || "", temperature: providerData.temperature || "", extraHeaders: providerData.extraHeaders || "",
@@ -374,7 +400,8 @@ function switchProviderCodex(provider) {
       .toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/^_+|_+$/g, "") || "custom";
     const baseUrl = provider.baseUrl || "https://api.openai.com/v1";
     const model = provider.model || "gpt-4o";
-    const wireApi = provider.wireApi || "responses";
+    const apiFormat = provider.apiFormat || "";
+    const wireApi = provider.wireApi || (apiFormat === "openai_chat" ? "chat" : "responses");
     const effort = provider.reasoningEffort || "high";
     const lines = [
       'model_provider = "' + cleanName + '"',
@@ -390,7 +417,7 @@ function switchProviderCodex(provider) {
       'name = "' + cleanName + '"',
       'base_url = "' + baseUrl + '"',
       'wire_api = "' + wireApi + '"',
-      'requires_openai_auth = true'
+      'requires_openai_auth = ' + (/^https?:\/\/(127\.0\.0\.1|localhost)/.test(baseUrl) ? 'false' : 'true')
     );
     configToml = lines.join("\n");
   }
@@ -403,6 +430,7 @@ function switchProviderCodex(provider) {
         const slug = m.slug || m.model || "";
         const displayName = m.display_name || m.displayName || slug;
         const ctx = Number(m.context_window || m.contextWindow) || 128000;
+        const instr = getCodexInstructions();
         return {
           slug: slug,
           display_name: displayName,
@@ -411,6 +439,8 @@ function switchProviderCodex(provider) {
           max_context_window: Number(m.max_context_window) || ctx,
           input_modalities: ["text"],
           default_reasoning_level: provider.reasoningEffort || "medium",
+          base_instructions: instr.base_instructions,
+          instructions_variables: instr.instructions_variables,
           supported_reasoning_levels: [
             { effort: "low", description: "Fast responses with lighter reasoning" },
             { effort: "medium", description: "Balances speed and reasoning depth for everyday tasks" },
@@ -423,7 +453,22 @@ function switchProviderCodex(provider) {
           shell_type: "shell_command",
           supported_in_api: true,
           priority: 1000,
-          visibility: "list"
+          visibility: "list",
+          // 补齐 Codex 期望的其余字段默认值（此版本几乎全部必填）
+          additional_speed_tiers: [],
+          availability_nux: null,
+          // 以下三项为用户偏好：优先用 provider 上的设置，未设置时回退默认
+          default_reasoning_summary: provider.reasoningSummary || "none",
+          default_verbosity: provider.verbosity || "low",
+          effective_context_window_percent: 95,
+          experimental_supported_tools: [],
+          model_messages: { instructions_template: instr.base_instructions, instructions_variables: instr.instructions_variables },
+          service_tiers: [],
+          support_verbosity: true,
+          supports_image_detail_original: true,
+          truncation_policy: { limit: 10000, mode: "tokens" },
+          upgrade: null,
+          web_search_tool_type: provider.webSearch === false ? "none" : "text_and_image"
         };
       });
       const catalogJson = JSON.stringify({ models: catalogModels }, null, 2);
@@ -583,6 +628,32 @@ function getCurrentProviderId(appType) {
   return current ? current.id : null;
 }
 
+// 进入插件时重新应用已激活的供应商：将真实配置文件强制写回本软件的版本（覆盖外部工具的修改）
+// 仅处理数据库中确实标记了 isCurrent 的 app；代理正在运行时跳过该 app，避免破坏代理接管状态
+// 记录/读取用户上次使用的 agent（下次进入插件只需重新激活这一个）
+function setLastActiveApp(appType) {
+  try { utools.dbStorage.setItem("cctoggle_last_active_app", appType); } catch (e) {}
+  return true;
+}
+function getLastActiveApp() {
+  try { return utools.dbStorage.getItem("cctoggle_last_active_app") || ""; } catch (e) { return ""; }
+}
+function reapplyCurrent(onlyAppType) {
+  const result = {};
+  const apps = onlyAppType ? [onlyAppType] : ["codex", "claude", "gemini", "openclaw"];
+  apps.forEach(function (appType) {
+    try {
+      const rt = proxyRuntime[appType];
+      if (rt && rt.running) { result[appType] = { skipped: "proxy running" }; return; }
+      const id = getCurrentProviderId(appType);
+      if (!id) { result[appType] = { skipped: "no current" }; return; }
+      const r = switchProvider(appType, id);
+      result[appType] = r;
+    } catch (e) { result[appType] = { success: false, error: e.message }; }
+  });
+  return result;
+}
+
 // ———————————————————————————————————
 
 function exportAllProviders() {
@@ -620,6 +691,24 @@ function getNestDir() {
   var nest = path.join(home, ".skillnest", "skills");
   ensureDir(nest);
   return nest;
+}
+
+// 校验技能名合法：非空、无路径分隔符、无 ".."，避免目录穿越
+function _safeSkillName(name) {
+  if (!name || typeof name !== "string") return false;
+  if (name.indexOf("/") >= 0 || name.indexOf("\\") >= 0) return false;
+  if (name === "." || name === "..") return false;
+  if (name.indexOf("\0") >= 0) return false;
+  return true;
+}
+// 断言 target 落在 root 目录内（防止拼接出的路径逃逸后被递归删除）
+function _assertInside(root, target) {
+  var r = path.resolve(root);
+  var t = path.resolve(target);
+  var rel = path.relative(r, t);
+  if (rel === "" || rel === ".." || rel.indexOf(".." + path.sep) === 0 || path.isAbsolute(rel)) {
+    throw new Error("unsafe path outside target root: " + target);
+  }
 }
 
 // --- Nest Skill Listing ---
@@ -685,6 +774,7 @@ function listDeployments() {
 // --- Create Link (Win junction / Unix symlink) ---
 
 function createLink(src, dest) {
+  _assertInside(path.dirname(dest), dest);
   ensureDir(dest);
   if (fs.existsSync(dest)) {
     fs.rmSync(dest, { recursive: true, force: true });
@@ -709,6 +799,9 @@ function createLink(src, dest) {
 
 function deploySkill(skillName, target) {
   var nest = getNestDir();
+  if (!_safeSkillName(skillName)) {
+    return { success: false, error: "invalid skill name: " + skillName };
+  }
   var srcPath = path.join(nest, skillName);
   if (!fs.existsSync(srcPath) || !fs.existsSync(path.join(srcPath, "SKILL.md"))) {
     return { success: false, error: "skill not found in nest: " + skillName };
@@ -727,6 +820,7 @@ function deploySkill(skillName, target) {
   }
   ensureDir(destDir);
   var destPath = path.join(destDir, skillName);
+  _assertInside(destDir, destPath);
 
   var mode = getSyncMode();
 
@@ -759,6 +853,9 @@ function deploySkill(skillName, target) {
 // --- Undeploy Skill ---
 
 function undeploySkill(skillName, target) {
+  if (!_safeSkillName(skillName)) {
+    return { success: false, error: "invalid skill name: " + skillName };
+  }
   var allPaths = getSkillStoragePaths();
   var destDir = expandHome(allPaths[target]);
   if (!destDir) {
@@ -769,6 +866,7 @@ function undeploySkill(skillName, target) {
   if (!destDir) return { success: false, error: "unknown target: " + target };
 
   var destPath = path.join(destDir, skillName);
+  _assertInside(destDir, destPath);
   if (!fs.existsSync(destPath)) {
     return { success: false, error: "not deployed to " + target };
   }
@@ -987,9 +1085,10 @@ function listAllSkills() {
 
 function installSkill(name, repo, subPath, branch) {
   try {
-    if (!name) return { success: false, error: "missing name" };
+    if (!_safeSkillName(name)) return { success: false, error: "invalid skill name" };
     var nest = getNestDir();
     var target = path.join(nest, name);
+    _assertInside(nest, target);
     if (fs.existsSync(target) && fs.existsSync(path.join(target, "SKILL.md"))) {
       return { success: false, error: "already installed" };
     }
@@ -1008,9 +1107,10 @@ function installSkill(name, repo, subPath, branch) {
 }
 
 function removeNestSkill(skillName) {
-  if (!skillName) return { success: false, error: "missing name" };
+  if (!_safeSkillName(skillName)) return { success: false, error: "invalid skill name" };
   var nest = getNestDir();
   var target = path.join(nest, skillName);
+  _assertInside(nest, target);
   try {
     // Undeploy from all targets first
     var reg = getDeployRegistry();
@@ -1212,6 +1312,9 @@ window.utoolsCctoggle = {
   // Switch
   switchProvider: switchProvider,
   getCurrentProviderId: getCurrentProviderId,
+  reapplyCurrent: reapplyCurrent,
+  setLastActiveApp: setLastActiveApp,
+  getLastActiveApp: getLastActiveApp,
 
   // Usage stats
   getStats: getStats,
@@ -1277,6 +1380,19 @@ const proxyRuntime = {}; // { [appType]: { running, port, groupId, members, logs
 
 function _routeKey(appType, id) { return ROUTE_PREFIX + appType + "_" + id; }
 
+// 生成本地代理访问令牌（仅本机持有者可用代理转发）
+function _genProxyToken() {
+  return "utct-" + generateId() + generateId() + Math.random().toString(36).slice(2, 10);
+}
+// 确保路由组有 authToken，没有则生成并持久化，返回 token
+function _ensureRouteToken(appType, group) {
+  if (group.authToken) return group.authToken;
+  group.authToken = _genProxyToken();
+  group.appType = group.appType || appType;
+  saveRouteGroup(group);
+  return group.authToken;
+}
+
 function listRouteGroups(appType) {
   try {
     const docs = utools.db.allDocs(ROUTE_PREFIX + appType + "_") || [];
@@ -1311,6 +1427,7 @@ function saveRouteGroup(group) {
     health: Object.assign({ intervalMs: 30000, timeoutMs: 5000, path: "/models" }, group.health || {}),
     breaker: Object.assign({ failThreshold: 3, cooldownMs: 60000, halfOpenProbe: 1 }, group.breaker || {}),
     timeoutMs: group.timeoutMs || 30000,
+    authToken: group.authToken || (existing && existing.authToken) || "",
     updatedAt: new Date().toISOString(),
     createdAt: existing ? existing.createdAt : new Date().toISOString(),
   };
@@ -1354,13 +1471,14 @@ function startProxy(appType, groupId) {
   if (!group) return { success: false, error: "group not found" };
   const members = _resolveMembers(appType, group);
   if (members.length === 0) return { success: false, error: "no members" };
+  const token = _ensureRouteToken(appType, group);
   try {
     const win = utools.createBrowserWindow(
       "preload/proxy-daemon.html",
       { show: false, webPreferences: { preload: "preload/proxy-daemon.js" } },
       function () {
         try {
-          win.webContents.send("cfg", { group: group, members: members });
+          win.webContents.send("cfg", { group: group, members: members, authToken: token });
         } catch (e) {}
       }
     );
@@ -1456,13 +1574,44 @@ function takeoverApp(appType, listenPort) {
   try {
     _backupCurrent(appType);
     const baseUrl = "http://127.0.0.1:" + (listenPort || 8788);
+    // 客户端配置里写入代理令牌作为 key；daemon 校验后再换成真实上游 key 转发
+    let proxyToken = "sk-utoolscctoggle-proxy";
+    try {
+      const rt0 = proxyRuntime[appType];
+      const g0 = rt0 && rt0.groupId ? getRouteGroup(appType, rt0.groupId) : ensureDefaultGroup(appType);
+      if (g0) proxyToken = _ensureRouteToken(appType, g0);
+    } catch (e) { /* 回退到占位符 */ }
+    let proxyModel = "";
+    const proxyCatalog = [];
+    const proxyCatalogSeen = {};
+    try {
+      const rt = proxyRuntime[appType];
+      const g = rt && rt.groupId ? getRouteGroup(appType, rt.groupId) : ensureDefaultGroup(appType);
+      (g && g.members ? g.members : []).forEach(function (mem) {
+        const prov = getProvider(appType, mem.providerId);
+        if (!prov) return;
+        if (!proxyModel && prov.model) proxyModel = prov.model;
+        (Array.isArray(prov.modelCatalog) ? prov.modelCatalog : []).forEach(function (m) {
+          const slug = m.slug || m.model || "";
+          if (!slug || proxyCatalogSeen[slug]) return;
+          proxyCatalogSeen[slug] = true;
+          proxyCatalog.push(m);
+        });
+        if (prov.model && !proxyCatalogSeen[prov.model] && (!prov.modelCatalog || prov.modelCatalog.length === 0)) {
+          proxyCatalogSeen[prov.model] = true;
+          proxyCatalog.push({ model: prov.model, displayName: prov.name || prov.model });
+        }
+      });
+    } catch (e) { /* ignore */ }
 // 用一个虚拟 provider 走原版 switch 逻辑写入配置
     const fake = {
       id: "__proxy__",
       appType: appType,
       name: "utoolscctoggle-proxy",
-      apiKey: "sk-utoolscctoggle-proxy", // 占位，daemon 会用真实成员 key 转发
-      model: "gpt-4o", // 用户可自行 override
+      baseUrl: appType === "codex" ? baseUrl + "/v1" : baseUrl,
+      apiKey: proxyToken, // 代理令牌；daemon 校验后再用真实成员 key 转发
+      model: proxyModel || "gpt-4o",
+      modelCatalog: proxyCatalog, // 用户可自行 override
       configType: appType === "claude" ? "anthropic" : (appType === "gemini" ? "gemini" : (appType === "openclaw" ? "openclaw" : "openai")),
       extraConfig: "",
     };

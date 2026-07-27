@@ -1,3 +1,5 @@
+import { refreshOnEnter } from "./composables/useProviders.js";
+
 export function setupDynamicCommands() {
   if (typeof utools === "undefined" || typeof utools.onPluginEnter !== "function") return;
 
@@ -15,6 +17,9 @@ export function setupDynamicCommands() {
     }
 
     if (!window.utoolsCctoggle) return;
+
+    // 进入插件：重新应用已激活供应商并刷新列表
+    refreshOnEnter();
 
     const apps = ["codex", "claude", "gemini"];
     const appLabels = { codex: "Codex", claude: "Claude", gemini: "Gemini" };

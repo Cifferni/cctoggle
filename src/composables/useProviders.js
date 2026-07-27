@@ -7,7 +7,14 @@ import { APP_TYPES, APP_LABELS, APP_ICONS, getSkillNest, toPlain } from "./share
 const PRESETS = BUILT_IN_PRESETS;
 
 const providers = ref([]);
-const _activeTab = ref("codex");
+function _initActiveTab() {
+  try {
+    const last = window.utoolsCctoggle?.getLastActiveApp?.();
+    if (last && APP_TYPES.includes(last)) return last;
+  } catch (e) {}
+  return "codex";
+}
+const _activeTab = ref(_initActiveTab());
 
 function activeTab() { return _activeTab.value; }
 
@@ -33,6 +40,7 @@ function setActiveTab(t) {
   if (t !== _activeTab.value) {
     stopCurrentProxy();
     _activeTab.value = t;
+    try { window.utoolsCctoggle?.setLastActiveApp?.(t); } catch (e) {}
     loadProviders();
   }
 }
@@ -45,10 +53,23 @@ function loadProviders() {
 }
 
 function switchProvider(id) {
-  const r = getSkillNest().switchProvider(activeTab(), id);
+  const tab = activeTab();
+  const target = providers.value.find(pv => pv.id === id);
+  const r = getSkillNest().switchProvider(tab, id);
   if (r.success) {
+    try { getSkillNest().setLastActiveApp?.(tab); } catch (e) {}
     loadProviders();
     toast.success("\u5DF2\u5207\u6362\u5230 " + r.providerName);
+    // Codex direct connect: anthropic must use proxy; openai_chat can direct-connect but proxy recommended
+    const fmt = target && target.apiFormat;
+    if (tab === "codex" && (fmt === "openai_chat" || fmt === "anthropic")) {
+      let proxyRunning = false;
+      try { proxyRunning = !!useRoutes().runtime[tab]?.running; } catch (e) {}
+      if (!proxyRunning) {
+        const msg = fmt === "anthropic" ? "该供应商为 Anthropic 协议，Codex 无法直连，请开启代理后使用" : "该供应商为 Chat 协议，直连需将连接协议选为 Chat，或开启代理获得自动转换";
+        toast.warn(msg, { duration: 5000 });
+      }
+    }
   }
   return r;
 }
@@ -118,6 +139,19 @@ const paths = {
   get openclawConfig() { return getSkillNest().paths?.openclawConfig || ""; },
   get geminiEnv() { return getSkillNest().paths?.geminiEnv || ""; },
 };
+
+// 供 onPluginEnter 调用：插件每次进入时刷新当前列表，
+// 让 isCurrent 依据最新真实配置重算（覆盖用户在 cc-switch 等外部工具切换后再进入的场景）
+export function refreshOnEnter() {
+  try {
+    // 按方案 B：进入插件时，将已激活的供应商重新应用一次，
+    // 把真实配置文件强制写回本软件的完整版本（修复外部工具可能写不完整的配置）
+    getSkillNest().reapplyCurrent?.(activeTab());
+    loadProviders();
+    const { refreshStatus } = useRoutes();
+    APP_TYPES.forEach(function (appType) { refreshStatus(appType); });
+  } catch (e) {}
+}
 
 export function useProviders() {
   return {
