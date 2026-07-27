@@ -397,11 +397,36 @@ function switchProviderCodex(provider) {
 
   if (hasCatalog) {
     try {
-      // 补 slug 字段（Codex 以 slug 作为模型标识；前端仅存 model，此处对齐）
+      // 将前端精简字段(model/displayName/contextWindow)映射为 Codex 模型目录真实格式(下划线命名)，
+      // 并补齐 Codex 期望的字段默认值；前端若已填同名字段则以其为准。
       const catalogModels = provider.modelCatalog.map(function (m) {
-        return Object.assign({ slug: m.slug || m.model }, m);
+        const slug = m.slug || m.model || "";
+        const displayName = m.display_name || m.displayName || slug;
+        const ctx = Number(m.context_window || m.contextWindow) || 128000;
+        return {
+          slug: slug,
+          display_name: displayName,
+          description: m.description || displayName,
+          context_window: ctx,
+          max_context_window: Number(m.max_context_window) || ctx,
+          input_modalities: ["text"],
+          default_reasoning_level: provider.reasoningEffort || "medium",
+          supported_reasoning_levels: [
+            { effort: "low", description: "Fast responses with lighter reasoning" },
+            { effort: "medium", description: "Balances speed and reasoning depth for everyday tasks" },
+            { effort: "high", description: "Greater reasoning depth for complex problems" }
+          ],
+          supports_parallel_tool_calls: true,
+          supports_search_tool: true,
+          supports_reasoning_summaries: true,
+          apply_patch_tool_type: "freeform",
+          shell_type: "shell_command",
+          supported_in_api: true,
+          priority: 1000,
+          visibility: "list"
+        };
       });
-      const catalogJson = JSON.stringify({ object: "model_catalog", models: catalogModels }, null, 2);
+      const catalogJson = JSON.stringify({ models: catalogModels }, null, 2);
       const catalogPath = path.join(getHomeDir(), ".codex", catalogFileName);
       ensureDir(catalogPath);
       fs.writeFileSync(catalogPath, catalogJson, "utf8");
