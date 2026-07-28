@@ -2,10 +2,11 @@
 import { onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
 import { useStats } from "../composables/useStats.js";
+import { confirm } from "../composables/useConfirm.js";
 import EChart from "../components/EChart.vue";
 
 const router = useRouter();
-const { APP_TYPES, APP_LABELS, filter, stats, loadStats, setAppType, setDays, clearStats, cacheHitRate } = useStats();
+const { APP_TYPES, APP_LABELS, filter, stats, refreshing, refresh, setAppType, setDays, clearStats, cacheHitRate } = useStats();
 
 const DAY_OPTIONS = [
   { v: 7, label: "近 7 天" },
@@ -13,7 +14,8 @@ const DAY_OPTIONS = [
   { v: 0, label: "全部" },
 ];
 
-onMounted(() => loadStats());
+// 无缓存：进页直接扫描本地日志（异步不卡 UI），切换 agent/天数在内存中过滤
+onMounted(() => { refresh(); });
 
 function fmt(n) {
   n = Number(n) || 0;
@@ -25,10 +27,12 @@ function fmt(n) {
 const hitRate = computed(() => (cacheHitRate() * 100).toFixed(1));
 const hasData = computed(() => stats.value.totals.requests > 0);
 
-function onClear() {
-  if (window.confirm("确定清空" + APP_LABELS[filter.appType] + "的统计数据吗？此操作不可恢复。")) {
-    clearStats(filter.appType);
-  }
+async function onClear() {
+  const ok = await confirm(
+    "确定清除" + APP_LABELS[filter.appType] + "的统计数据吗？将隐藏此刻之前的历史用量，之后的用量会继续统计。",
+    { title: "清除统计", confirmText: "清除", danger: true }
+  );
+  if (ok) clearStats(filter.appType);
 }
 
 // ── 图表配置 ──
@@ -54,21 +58,21 @@ const trendOption = computed(() => {
   };
 });
 
-const providerOption = computed(() => {
-  const list = stats.value.providers.slice(0, 8).reverse();
+const modelBarOption = computed(() => {
+  const list = stats.value.models.slice(0, 8).reverse();
   return {
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, formatter: p => p[0].name + "<br/>Tokens: " + fmt(p[0].value) },
     grid: { left: 8, right: 24, top: 8, bottom: 4, containLabel: true },
     xAxis: { type: "value", axisLabel: { color: axisColor, formatter: v => fmt(v) }, splitLine: { lineStyle: { color: gridColor } } },
-    yAxis: { type: "category", data: list.map(p => p.name), axisLabel: { color: axisColor }, axisLine: { lineStyle: { color: gridColor } } },
-    series: [{ type: "bar", data: list.map(p => p.total), itemStyle: { color: "#6366f1", borderRadius: [0, 4, 4, 0] }, barWidth: "60%" }],
+    yAxis: { type: "category", data: list.map(m => m.model), axisLabel: { color: axisColor }, axisLine: { lineStyle: { color: gridColor } } },
+    series: [{ type: "bar", data: list.map(m => m.total), itemStyle: { color: "#6366f1", borderRadius: [0, 4, 4, 0] }, barWidth: "60%" }],
   };
 });
 
 const cacheOption = computed(() => {
   const t = stats.value.totals;
   const hit = t.cacheRead || 0;
-  const miss = Math.max(0, (t.input || 0) - hit);
+  const miss = t.input || 0; // 新增输入（非缓存）与缓存命中现为独立字段
   return {
     tooltip: { trigger: "item", formatter: p => p.name + ": " + fmt(p.value) + " (" + p.percent + "%)" },
     legend: { bottom: 0, textStyle: { color: axisColor } },
@@ -92,7 +96,12 @@ const cacheOption = computed(() => {
         <button class="back-btn" @click="router.push('/')" title="返回">←</button>
         <span class="stats-h1">用量统计</span>
       </div>
-      <button class="clear-btn" @click="onClear">清空统计</button>
+      <div class="stats-actions">
+        <button class="refresh-btn" :disabled="refreshing" @click="refresh">
+          <span :class="{ spin: refreshing }">↻</span> {{ refreshing ? "扫描中…" : "刷新" }}
+        </button>
+        <button class="clear-btn" @click="onClear">清除统计</button>
+      </div>
     </div>
 
     <div class="stats-filters">
@@ -121,13 +130,13 @@ const cacheOption = computed(() => {
           <div class="panel-title">Token 趋势</div>
           <EChart :option="trendOption" height="240px" />
         </div>
+        <div class="panel panel--wide">
+          <div class="panel-title">模型用量排行</div>
+          <EChart :option="modelBarOption" height="260px" />
+        </div>
         <div class="panel">
           <div class="panel-title">缓存命中占比</div>
           <EChart :option="cacheOption" height="240px" />
-        </div>
-        <div class="panel panel--wide">
-          <div class="panel-title">供应商用量排行</div>
-          <EChart :option="providerOption" height="260px" />
         </div>
         <div class="panel">
           <div class="panel-title">模型分布</div>
@@ -145,7 +154,7 @@ const cacheOption = computed(() => {
     <div v-else class="empty">
       <div class="empty-icon">📊</div>
       <div class="empty-title">暂无统计数据</div>
-      <div class="empty-desc">统计仅在使用「代理」转发请求时采集。<br/>开启代理并使用对应 CLI 后，这里会显示真实用量。</div>
+      <div class="empty-desc">用量数据来自 Claude Code / Codex 的本地会话日志。<br/>使用过对应 CLI 后，点击右上角「刷新」即可汇总用量。</div>
     </div>
   </div>
 </template>
@@ -160,6 +169,12 @@ const cacheOption = computed(() => {
 .stats-h1 { font-size: 15px; font-weight: 600; color: var(--text); }
 .clear-btn { border: 1px solid var(--border); background: none; color: #ef4444; padding: 5px 12px; border-radius: 7px; cursor: pointer; font-size: 12px; }
 .clear-btn:hover { background: rgba(239,68,68,.1); }
+.stats-actions { display: flex; align-items: center; gap: 8px; }
+.refresh-btn { border: 1px solid var(--border); background: none; color: var(--text-secondary); padding: 5px 12px; border-radius: 7px; cursor: pointer; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+.refresh-btn:hover:not(:disabled) { color: var(--text); background: var(--bg-hover); }
+.refresh-btn:disabled { opacity: .6; cursor: default; }
+.refresh-btn .spin { display: inline-block; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .stats-filters { display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 14px 8px; }
 .seg { display: flex; gap: 2px; background: var(--bg-hover); padding: 3px; border-radius: 9px; }

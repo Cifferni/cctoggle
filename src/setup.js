@@ -3,6 +3,9 @@ import { refreshOnEnter } from "./composables/useProviders.js";
 export function setupDynamicCommands() {
   if (typeof utools === "undefined" || typeof utools.onPluginEnter !== "function") return;
 
+  // 插件加载即清理历史动态注册的供应商快捷命令（曾经通过 setFeature 注册的 switch_*）
+  cleanupDynamicFeatures();
+
   utools.onPluginEnter(({ code, type, payload }) => {
     if (code && code.startsWith("switch_")) {
       const parts = code.replace("switch_", "").split("_");
@@ -16,24 +19,33 @@ export function setupDynamicCommands() {
       return;
     }
 
+    // 每次进入再兜底清理一次
+    cleanupDynamicFeatures();
+
     if (!window.utoolsCctoggle) return;
 
     // 进入插件：重新应用已激活供应商并刷新列表
     refreshOnEnter();
+  });
+}
 
-    const apps = ["codex", "claude", "gemini"];
-    const appLabels = { codex: "Codex", claude: "Claude", gemini: "Gemini" };
-    const prefixes = { codex: "cx", claude: "cc", gemini: "gm" };
-
-    for (const app of apps) {
-      const providers = window.utoolsCctoggle.listProviders(app) || [];
-      for (const p of providers) {
-        utools.setFeature({
-          code: `switch_${app}_${p.id}`,
-          explain: `${appLabels[app]} - ${p.name}` + (p.model ? ` (${p.model})` : ""),
-          cmds: [`${prefixes[app]} ${p.name}`, `${p.name} 切换`],
-        });
+function cleanupDynamicFeatures() {
+  try {
+    if (typeof utools.removeFeature !== "function") return;
+    let features = [];
+    if (typeof utools.getFeatures === "function") {
+      features = utools.getFeatures() || [];
+    }
+    let removed = 0;
+    for (const f of features) {
+      const code = f?.code || f;
+      if (typeof code === "string" && code.startsWith("switch_")) {
+        utools.removeFeature(code);
+        removed++;
       }
     }
-  });
+    console.log(`[cctoggle] cleanupDynamicFeatures: found ${features.length}, removed ${removed}`);
+  } catch (e) {
+    console.warn("[cctoggle] cleanupDynamicFeatures failed", e);
+  }
 }

@@ -8,17 +8,12 @@
   "features": [
     {
       "code": "cctoggle",
-      "explain": "SkillNest - 统一管理 AI skill 并一键切换 API 供应商",
+      "explain": "一键切换供应商：为 Codex、Claude、Gemini、OpenCode、OpenClaw 等主流 AI CLI 工具管理多套 API 配置，点击即可切换   baseUrl、模型、密钥等参数，无需手动改配置文件。",
       "icon": "logo.png",
       "cmds": [
-        "skillnest",
-        "sn",
         "cctoggle",
-        "cct",
-        "skill管理",
-        "skill切换",
-        "供应商切换",
-        "AI切换"
+        "cc",
+        "供应商切换"
       ]
     }
   ],

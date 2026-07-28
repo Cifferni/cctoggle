@@ -37,8 +37,8 @@ export function getSkillNest() {
     listRouteGroups: () => [],
     saveRouteGroup: () => "",
     deleteRouteGroup: () => false,
-    getStats: () => ({ totals: {}, daily: [], providers: [], models: [] }),
     clearStats: () => ({ success: false }),
+    scanUsageLogs: () => ({ daily: [] }),
     paths: {},
   };
 }

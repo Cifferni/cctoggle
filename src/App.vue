@@ -2,6 +2,7 @@
 import { ref, onMounted } from "vue";
 import AppFooter from "./components/AppFooter.vue";
 import ToastHost from "./components/ToastHost.vue";
+import ConfirmHost from "./components/ConfirmHost.vue";
 
 const isDark = ref(window.matchMedia("(prefers-color-scheme: dark)").matches);
 onMounted(() => {
@@ -16,6 +17,7 @@ onMounted(() => {
     </main>
     <AppFooter />
     <ToastHost />
+    <ConfirmHost />
   </div>
 </template>
 
