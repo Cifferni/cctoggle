@@ -212,7 +212,8 @@ function wantsConvert(member, reqPath) {
 }
 
 // —— 转发 ——
-function forward(member, req, res, attemptsLeft, reqBody) {
+// reasoningStripped: 自适应重试标记——上游拒绝 reasoning 参数后，剥离并重试一次时置真，防止无限重试
+function forward(member, req, res, attemptsLeft, reqBody, reasoningStripped) {
   return new Promise(function (resolve) {
     lastMemberId = member.providerId;
     var reqPath = req.url;
@@ -231,7 +232,15 @@ function forward(member, req, res, attemptsLeft, reqBody) {
         outBody = Buffer.from(conv.body, "utf8");
         upstream = joinUrl(member.baseUrl, conv.path);
       } else {
-        upstream = joinUrl(member.baseUrl, reqPath);
+        // 代理写入 Codex 配置时给 base_url 加了伪前缀 /v1（见 services.js），Codex 遂请求 /v1/responses。
+        // 该 /v1 仅用于让 Codex 接受端点；当上游 baseUrl 自带路径段（如火山 /api/plan/v3）时，
+        // 直接拼接会得到 /api/plan/v3/v1/responses 而 404，需先剥掉 /v1。纯域名上游（标准 OpenAI
+        // 端点需要 /v1）不剥；baseUrl 尾部本就是 /v1 的由 joinUrl 去重处理，剥不剥都正确。
+        var passPath = reqPath;
+        var hasBasePath = /^https?:\/\/[^/]+\/.+/.test(member.baseUrl || "");
+        if (member.appType === "codex" && hasBasePath) passPath = reqPath.replace(/^\/v1(\/|$)/, "/");
+        upstream = joinUrl(member.baseUrl, passPath);
+        // 自适应重试已剥离 reasoning 时，用剥离后的 body 转发（reqBody 已是剥离版，无需再处理）
       }
     } catch (e) {
       log("error", "convert request failed", { err: String(e && e.message) });
@@ -283,6 +292,36 @@ function forward(member, req, res, attemptsLeft, reqBody) {
     var upReq = client.request(reqOpt, function (upRes) {
       var latency = Date.now() - t0;
       var sc = upRes.statusCode || 0;
+      // 自适应重试：部分 Responses 兼容上游（如火山 ark-code-latest）不支持 reasoning 参数，返回 400。
+      // 捕获该错误，剥离 reasoning 后重试一次；官方支持 reasoning 的端点不会触发，功能不退化。
+      if (sc === 400 && !doConvert && !reasoningStripped && req.method === "POST" && reqBody && reqBody.length) {
+        var _eb = [];
+        upRes.on("data", function (c) { _eb.push(c); });
+        upRes.on("end", function () {
+          var errText = Buffer.concat(_eb).toString("utf8");
+          var canRetry = false;
+          var stripped = null;
+          if (/reasoning/i.test(errText)) {
+            try {
+              var pb = JSON.parse(reqBody.toString("utf8"));
+              if (pb && pb.reasoning !== undefined) {
+                delete pb.reasoning;
+                stripped = Buffer.from(JSON.stringify(pb), "utf8");
+                canRetry = true;
+              }
+            } catch (e) { /* 非 JSON 无法剥离 */ }
+          }
+          if (canRetry) {
+            log("info", "retry without reasoning", { id: member.providerId });
+            return forward(member, req, res, attemptsLeft, stripped, true).then(resolve);
+          }
+          // 非 reasoning 类 400，原样回给客户端
+          if (!res.headersSent) res.writeHead(sc, { "content-type": upRes.headers["content-type"] || "application/json" });
+          res.end(Buffer.concat(_eb));
+          resolve();
+        });
+        return;
+      }
       if (sc >= 500) {
         noteFailure(member); reqFail++;
         log("warn", "upstream 5xx", { id: member.providerId, sc: sc, url: reqPath });
