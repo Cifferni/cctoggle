@@ -165,7 +165,7 @@ watch(() => props.visible, v => {
   openclawRows.value = mapOpenclawRows(d?.settingsConfig?.models);
   catalogRows.value = mapCatalogRows(d?.modelCatalog);
   // 编辑已有供应商视为已确定协议，不自动覆盖；新建则允许按 base_url 自动推荐
-  wireApiTouched.value = !!(d && d.wireApi);
+  protocolTouched.value = !!(d && (d.apiFormat || d.wireApi));
   assignHidden(d);
   try { window.utools?.setExpendHeight(600); } catch {}
 });
@@ -193,12 +193,35 @@ function isChatOnlyUpstream(baseUrl, model) {
 function deriveWireApi(apiFormat) {
   return apiFormat === "openai_chat" ? "chat" : "responses";
 }
-// 记录用户是否手动改过协议
-const wireApiTouched = ref(false);
-watch(() => form.wireApi, () => { if (props.visible) wireApiTouched.value = true; });
+
+// 「上游协议」单一下拉 <-> 底层双字段(apiFormat/wireApi)的双向映射。
+// 底层仍存两字段（后端 config 生成与代理转换分别依赖），此处仅收敛成一个用户可见选项，
+// 消除“两字段可矛盾”的历史坑。选项值即 apiFormat 的规范取值（"" 代表原生 Responses 直连）。
+const PROTOCOL_FIELDS = {
+  "":                { apiFormat: "",                 wireApi: "responses" }, // 原生 Responses 直连
+  "openai_chat":     { apiFormat: "openai_chat",      wireApi: "chat" },      // Chat Completions（代理转换/直连均可）
+  "openai_responses":{ apiFormat: "openai_responses", wireApi: "responses" }, // Responses 兼容端点（透传，如火山 plan）
+  "anthropic":       { apiFormat: "anthropic",        wireApi: "responses" }, // Anthropic Messages（代理转换）
+};
+// 由已存的双字段反推下拉选项；未知组合回退到 apiFormat 本身（兼容任意历史数据）
+function fieldsToProtocol(apiFormat) {
+  const af = apiFormat || "";
+  return PROTOCOL_FIELDS[af] ? af : "";
+}
+const codexProtocol = computed({
+  get() { return fieldsToProtocol(form.apiFormat); },
+  set(v) {
+    const f = PROTOCOL_FIELDS[v] || PROTOCOL_FIELDS[""];
+    form.apiFormat = f.apiFormat;
+    form.wireApi = f.wireApi;
+    protocolTouched.value = true;
+  },
+});
+// 记录用户是否手动改过协议，改过则不再自动推荐
+const protocolTouched = ref(false);
 watch([() => form.baseUrl, () => form.model], () => {
   if (tab.value !== "codex") return;
-  if (wireApiTouched.value) return;
+  if (protocolTouched.value) return;
   // 上游为 chat-only 且尚未指定格式时，自动补 openai_chat：直连据此选 wire_api，走代理据此转换协议。
   // 仅在 apiFormat 为空时填充，避免覆盖预设已声明的 openai_responses / anthropic。
   if (!form.apiFormat && isChatOnlyUpstream(form.baseUrl, form.model)) {
@@ -207,10 +230,6 @@ watch([() => form.baseUrl, () => form.model], () => {
   // wire_api 始终与 apiFormat 保持一致，杜绝“上游格式 chat 但 wire_api responses”的矛盾组合
   form.wireApi = deriveWireApi(form.apiFormat);
 });
-// 用户手动切换“上游格式”时同步 wire_api：直连场景据此发对协议，走代理场景由 daemon 按 apiFormat 转换
-function onApiFormatChange() {
-  form.wireApi = deriveWireApi(form.apiFormat);
-}
 
 // 表单内实时提示：根据上游格式给出直连/代理结论，与卡片徽章呼应
 const codexProxyHint = computed(() => {
@@ -220,9 +239,9 @@ const codexProxyHint = computed(() => {
     return { level: "required", text: "该供应商为 Anthropic 协议，Codex 无法直连，必须开启代理路由接管才能使用。" };
   }
   if (af === "openai_chat") {
-    return { level: "optional", text: "该供应商仅支持 Chat Completions。可直连(连接协议选 Chat)，或走代理接管获得协议转换与多供应商切换。" };
+    return { level: "optional", text: "该供应商为 Chat Completions 协议。走代理接管可自动转换协议并支持多供应商切换。" };
   }
-  if (af === "openai_responses" || form.wireApi === "responses") {
+  if (af === "openai_responses" || af === "") {
     return { level: "ok", text: "该供应商原生支持 Responses，直连即可，无需代理。" };
   }
   return null;
@@ -445,21 +464,14 @@ function close() {
                 </select>
               </div>
             </div>
-            <div class="field" style="margin-top:10px"><label>上游格式 <small>(代理层转换</small></label>
-              <select v-model="form.apiFormat" @change="onApiFormatChange">
-                <option value="">默认 (Responses 直连)</option>
-                <option value="openai_chat">Chat Completions (需路由接管)</option>
-                <option value="openai_responses">Responses</option>
-                <option value="anthropic">Anthropic Messages (需路由接管)</option>
+            <div class="field" style="margin-top:10px"><label>上游协议 <small>(供应商 API 格式)</small></label>
+              <select v-model="codexProtocol">
+                <option value="">Responses（OpenAI 官方 / gpt-5 系，直连）</option>
+                <option value="openai_chat">Chat Completions（DeepSeek / 通义 / Kimi 等，走代理转换）</option>
+                <option value="openai_responses">Responses 兼容（火山 plan / 豆包等国产 Responses 端点）</option>
+                <option value="anthropic">Anthropic Messages（走代理转换）</option>
               </select>
-              <p class="tip">供应商原生 Responses 默认；Chat / Anthropic Messages 需開启代理路由接管才能转换。</p>
-            </div>
-            <div class="field" style="margin-top:10px"><label>连接协议 <small>(wire_api)</small></label>
-              <select v-model="form.wireApi">
-                <option value="responses">Responses (OpenAI 官方 / gpt-5 系</option>
-              <option value="chat">Chat Completions (方舟/DeepSeek/通义/Kimi 等)</option>
-              </select>
-                <p class="tip">直连只支持 Chat Completions 的供应商（如火山方舟 ark、DeepSeek、通义、Moonshot 等）。可直连(连接协议选 Chat)，或走代理路由接管获得协议转换与多供应商切换。</p>
+              <p class="tip">按供应商真实 API 协议选择。Chat / Anthropic 需开启代理路由接管才能转换；Responses 与 Responses 兼容端点可直连。</p>
             </div>
             <div v-if="codexProxyHint" class="proxy-hint" :class="'proxy-hint--' + codexProxyHint.level">
               {{ codexProxyHint.text }}
