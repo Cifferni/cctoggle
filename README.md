@@ -86,7 +86,7 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/your-username/utools-cctoggle.git
+git clone https://github.com/Cifferni/utools-cctoggle.git
 cd utools-cctoggle
 
 # 安装依赖
@@ -98,6 +98,18 @@ pnpm dev
 # 构建生产版本
 pnpm build
 ```
+
+### 开发技能
+
+本项目内置了 Claude Code 开发技能，克隆项目后在 Claude Code 中打开即可自动加载：
+
+- 项目架构与目录结构说明
+- Vue 3 / Composable 编码规范
+- 新增供应商、新增 Agent 的完整流程
+- Git 提交规范
+- 常见问题排查
+
+技能文件位于 `.claude/skills/utools-cctoggle-dev/SKILL.md`。
 
 ## 📖 使用说明
 
