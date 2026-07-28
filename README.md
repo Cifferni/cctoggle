@@ -171,6 +171,7 @@ utools-cctoggle/
 
 ## 🙏 致谢
 
+- [cc-switch](https://github.com/farion1231/cc-switch) - 本项目的灵感来源
 - [uTools](https://u.tools/) - 优秀的跨平台效率工具
 - [Vue.js](https://vuejs.org/) - 渐进式 JavaScript 框架
 - [Vite](https://vitejs.dev/) - 下一代前端构建工具
