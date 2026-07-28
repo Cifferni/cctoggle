@@ -12,8 +12,7 @@
       "icon": "logo.png",
       "cmds": [
         "cctoggle",
-        "cc",
-        "供应商切换"
+        "cc"
       ]
     }
   ],
