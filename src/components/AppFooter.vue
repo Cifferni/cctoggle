@@ -5,7 +5,7 @@ const { paths } = useProviders();
 
 <template>
   <footer class="app-footer">
-    <span>SkillNest ccToggle | {{ paths.codexConfig || '配置文件路径' }}</span>
+    <a href="https://github.com/Cifferni/cctoggle" target="_blank" rel="noopener">GitHub</a>
   </footer>
 </template>
 
@@ -17,5 +17,13 @@ const { paths } = useProviders();
   font-size: 10px;
   color: var(--text-muted);
   flex-shrink: 0;
+}
+a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--text);
+  text-decoration: underline;
 }
 </style>
