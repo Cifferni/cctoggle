@@ -5,7 +5,7 @@
 <h1 align="center">CCToggle</h1>
 
 <p align="center">
-  <strong>AI CLI 供应商一键切换工具</strong>
+  <strong>AI CLI 一键切换工具</strong>
 </p>
 
 <p align="center">
@@ -79,7 +79,7 @@
 ### 安装插件
 
 1. 打开 uTools
-2. 搜索 `cctoggle` 或 `供应商切换`
+2. 搜索 `cctoggle`
 3. 安装插件
 
 ### 开发环境
