@@ -5,7 +5,7 @@
 <h1 align="center">CCToggle</h1>
 
 <p align="center">
-  <strong>AI CLI 一键切换工具</strong>
+  <strong>uTools 插件 | AI CLI 一键切换工具</strong>
 </p>
 
 <p align="center">
@@ -180,5 +180,5 @@ utools-cctoggle/
 ---
 
 <p align="center">
-  Made with ❤️ by <a href="https://github.com/your-username">dfy</a>
+  Made with ❤️ by <a href="https://github.com/Cifferni">Cifferni</a>
 </p>
