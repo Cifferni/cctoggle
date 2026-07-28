@@ -184,9 +184,13 @@ const CHAT_ONLY_HINTS = [
   "siliconflow",                               // 硅基流动
   "hunyuan",                                   // 腾讯混元
 ];
-function guessWireApi(baseUrl, model) {
+function isChatOnlyUpstream(baseUrl, model) {
   const s = ((baseUrl || "") + " " + (model || "")).toLowerCase();
-  return CHAT_ONLY_HINTS.some(function (h) { return s.indexOf(h) !== -1; }) ? "chat" : "responses";
+  return CHAT_ONLY_HINTS.some(function (h) { return s.indexOf(h) !== -1; });
+}
+// wire_api 由上游格式派生：只有 Chat Completions 上游直连时才用 chat，其余一律 responses
+function deriveWireApi(apiFormat) {
+  return apiFormat === "openai_chat" ? "chat" : "responses";
 }
 // 记录用户是否手动改过协议
 const wireApiTouched = ref(false);
@@ -194,8 +198,18 @@ watch(() => form.wireApi, () => { if (props.visible) wireApiTouched.value = true
 watch([() => form.baseUrl, () => form.model], () => {
   if (tab.value !== "codex") return;
   if (wireApiTouched.value) return;
-  form.wireApi = guessWireApi(form.baseUrl, form.model);
+  // 上游为 chat-only 且尚未指定格式时，自动补 openai_chat：直连据此选 wire_api，走代理据此转换协议。
+  // 仅在 apiFormat 为空时填充，避免覆盖预设已声明的 openai_responses / anthropic。
+  if (!form.apiFormat && isChatOnlyUpstream(form.baseUrl, form.model)) {
+    form.apiFormat = "openai_chat";
+  }
+  // wire_api 始终与 apiFormat 保持一致，杜绝“上游格式 chat 但 wire_api responses”的矛盾组合
+  form.wireApi = deriveWireApi(form.apiFormat);
 });
+// 用户手动切换“上游格式”时同步 wire_api：直连场景据此发对协议，走代理场景由 daemon 按 apiFormat 转换
+function onApiFormatChange() {
+  form.wireApi = deriveWireApi(form.apiFormat);
+}
 
 // 表单内实时提示：根据上游格式给出直连/代理结论，与卡片徽章呼应
 const codexProxyHint = computed(() => {
@@ -431,7 +445,7 @@ function close() {
               </div>
             </div>
             <div class="field" style="margin-top:10px"><label>上游格式 <small>(代理层转换</small></label>
-              <select v-model="form.apiFormat">
+              <select v-model="form.apiFormat" @change="onApiFormatChange">
                 <option value="">默认 (Responses 直连)</option>
                 <option value="openai_chat">Chat Completions (需路由接管)</option>
                 <option value="openai_responses">Responses</option>
