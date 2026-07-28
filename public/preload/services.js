@@ -1498,7 +1498,14 @@ function startProxy(appType, groupId) {
       }
     );
     daemonWins[appType] = win;
-    proxyRuntime[appType] = { running: true, port: group.listenPort, groupId: groupId, members: [], logs: [] };
+    proxyRuntime[appType] = {
+      running: true, port: group.listenPort, groupId: groupId,
+      // 先用配置成员占位，不依赖首次 proxy-stat 事件，面板随开随显
+      members: members.map(function (m) {
+        return { id: m.providerId, name: m.name, state: "closed", fails: 0, openUntil: 0, latency: 0, up: true };
+      }),
+      logs: [],
+    };
     return { success: true };
   } catch (e) {
     return { success: false, error: e.message };
@@ -1513,12 +1520,82 @@ function stopProxy(appType) {
   }
   if (proxyRuntime[appType]) proxyRuntime[appType].running = false;
   if (proxyRuntime._active === appType) delete proxyRuntime._active;
+  // 通知可能的孤儿 daemon（无句柄）通过控制文档自停，释放端口
+  try {
+    const _ctl = "cctoggle_proxy_ctl_" + appType;
+    const prevCtl = utools.db.get(_ctl);
+    utools.db.put({ _id: _ctl, _rev: prevCtl ? prevCtl._rev : undefined, stop: true, ts: Date.now() });
+  } catch (e) {}
+  // 标记 db 实时状态为已停止，避免面板误显运行中
+  try {
+    const _id = "cctoggle_proxy_live_" + appType;
+    const prev = utools.db.get(_id);
+    if (prev) utools.db.put(Object.assign({}, prev, { running: false, updatedAt: Date.now() }));
+  } catch (e) {}
   return { success: true };
 }
 
+// 进入插件时对账：领养仍在服务的孤儿 daemon，清理已死/过期的残留状态
+function reconcileProxies() {
+  const apps = ["codex", "claude", "gemini", "openclaw"];
+  apps.forEach(function (appType) {
+    let live = null;
+    try { live = utools.db.get("cctoggle_proxy_live_" + appType); } catch (e) {}
+    if (!live) return;
+    const fresh = live.running && (Date.now() - (live.updatedAt || 0) < 5000);
+    const hasHandle = !!daemonWins[appType];
+    if (fresh && !hasHandle) {
+      // 孤儿 daemon 仍在转发：不杀，领养到内存状态，面板/指标继续从 db 读
+      proxyRuntime[appType] = {
+        running: true, port: live.port || 0, groupId: live.groupId || null,
+        members: [], logs: (proxyRuntime[appType] && proxyRuntime[appType].logs) || [],
+        adopted: true,
+      };
+      proxyRuntime._active = appType;
+    } else if (!fresh && live.running) {
+      // db 说运行但已不新鲜（daemon 已死）：清掉残留，避免面板误显运行中
+      try { utools.db.remove(live); } catch (e) {}
+      if (proxyRuntime[appType]) proxyRuntime[appType].running = false;
+    }
+  });
+}
+function _fallbackMembers(appType, groupId) {
+  if (!groupId) return [];
+  try {
+    const g = getRouteGroup(appType, groupId);
+    if (!g) return [];
+    return _resolveMembers(appType, g).map(function (m) {
+      return { id: m.providerId, name: m.name, state: "unknown", fails: 0, openUntil: 0, latency: 0, up: true };
+    });
+  } catch (e) { return []; }
+}
 function getProxyStatus(appType) {
-  const rt = proxyRuntime[appType];
-  if (!rt) return { running: false };
+  const rt = proxyRuntime[appType] || {};
+  // 优先从 utools.db 读 daemon 写入的实时状态（跨窗口/重载也能拿到）
+  let live = null;
+  try { live = utools.db.get("cctoggle_proxy_live_" + appType); } catch (e) {}
+  const liveFresh = live && live.running && (Date.now() - (live.updatedAt || 0) < 5000);
+  if (liveFresh) {
+    return {
+      running: true,
+      port: live.port || rt.port || 0,
+      groupId: live.groupId || rt.groupId,
+      startedAt: live.startedAt || 0,
+      activeConn: live.activeConn || 0,
+      reqTotal: live.reqTotal || 0,
+      reqSuccess: live.reqSuccess || 0,
+      reqFail: live.reqFail || 0,
+      lastMemberId: live.lastMemberId || null,
+      members: (live.members && live.members.length) ? live.members : _fallbackMembers(appType, live.groupId || rt.groupId),
+      logs: (rt.logs || []).slice(-200),
+    };
+  }
+  if (!proxyRuntime[appType]) return { running: false };
+  let members = rt.members || [];
+  // 傅底：运行中但尚未拿到实时状态时，直接用配置成员展示
+  if (rt.running && members.length === 0 && rt.groupId) {
+    members = _fallbackMembers(appType, rt.groupId);
+  }
   return {
     running: !!rt.running,
     port: rt.port,
@@ -1529,7 +1606,7 @@ function getProxyStatus(appType) {
     reqSuccess: rt.reqSuccess || 0,
     reqFail: rt.reqFail || 0,
     lastMemberId: rt.lastMemberId || null,
-    members: rt.members || [],
+    members: members,
     logs: (rt.logs || []).slice(-200),
   };
 }
@@ -1743,6 +1820,7 @@ if (window.utoolsCctoggle) {
   window.utoolsCctoggle.startProxy = startProxy;
   window.utoolsCctoggle.stopProxy = stopProxy;
   window.utoolsCctoggle.getProxyStatus = getProxyStatus;
+  window.utoolsCctoggle.reconcileProxies = reconcileProxies;
   window.utoolsCctoggle.onProxyEvent = onProxyEvent;
   window.utoolsCctoggle.takeoverApp = takeoverApp;
   window.utoolsCctoggle.restoreApp = restoreApp;

@@ -38,6 +38,7 @@ export function getSkillNest() {
     saveRouteGroup: () => "",
     deleteRouteGroup: () => false,
     clearStats: () => ({ success: false }),
+    reconcileProxies: () => {},
     scanUsageLogs: () => ({ daily: [] }),
     paths: {},
   };

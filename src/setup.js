@@ -24,6 +24,9 @@ export function setupDynamicCommands() {
 
     if (!window.utoolsCctoggle) return;
 
+    // 对账：领养孤儿代理、清理已死/过期的残留状态
+    try { window.utoolsCctoggle.reconcileProxies && window.utoolsCctoggle.reconcileProxies(); } catch (e) {}
+
     // 进入插件：重新应用已激活供应商并刷新列表
     refreshOnEnter();
   });

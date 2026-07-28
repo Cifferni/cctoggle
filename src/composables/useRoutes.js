@@ -49,6 +49,7 @@ function _wireEvents() {
 }
 
 function refreshStatus(appType) {
+  _wireEvents(); // 确保面板打开即监听 daemon 事件（即使本会话未手动开关代理）
   const s = getSkillNest().getProxyStatus(appType) || {};
   const rt = runtime[appType];
   Object.assign(rt, {

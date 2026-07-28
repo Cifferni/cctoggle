@@ -43,6 +43,38 @@ function log(level, msg, meta) {
   } catch (e) {}
 }
 
+// 将实时状态写入 utools.db（daemon 也能访问），避开多窗口 sendToParent 只能落主窗的陷阱
+function _liveDocId() {
+  var app = (group && group.appType) || (members[0] && members[0].appType) || "";
+  return app ? ("cctoggle_proxy_live_" + app) : "";
+}
+function persistLive(runningFlag) {
+  try {
+    if (typeof utools === "undefined" || !utools.db) return;
+    var id = _liveDocId();
+    if (!id) return;
+    var prev = utools.db.get(id);
+    utools.db.put({
+      _id: id,
+      _rev: prev ? prev._rev : undefined,
+      appType: (group && group.appType) || (members[0] && members[0].appType) || "",
+      running: !!runningFlag,
+      port: group ? group.listenPort : 0,
+      groupId: group ? group.id : null,
+      startedAt: startedAt,
+      activeConn: activeConn,
+      reqTotal: reqTotal,
+      reqSuccess: reqSuccess,
+      reqFail: reqFail,
+      lastMemberId: lastMemberId,
+      members: members.map(function (m) {
+        return { id: m.providerId, name: m.name, state: m.state, fails: m.fails, openUntil: m.openUntil, latency: m.latency, up: m.up };
+      }),
+      updatedAt: Date.now(),
+    });
+  } catch (e) {}
+}
+
 function stat() {
   try {
     utools.sendToParent("proxy-stat", {
@@ -59,6 +91,7 @@ function stat() {
       }),
     });
   } catch (e) {}
+  persistLive(!!server);
 }
 
 function maskKey(k) {
@@ -574,6 +607,35 @@ ipcRenderer.on("stop", function () {
   log("info", "stopped");
   stat();
 });
+
+// 守护进程启动时刻：用于判断控制指令是否针对本进程
+var _bootTs = Date.now();
+function _ctlDocId() {
+  var app = (group && group.appType) || (members[0] && members[0].appType) || "";
+  return app ? ("cctoggle_proxy_ctl_" + app) : "";
+}
+// 自停：关服务器释放端口 + 清定时器 + 标记 live 已停止，最后尝试关窗
+function selfStop(reason) {
+  try { if (server) server.close(); server = null; } catch (e) {}
+  if (healthTimer) { clearInterval(healthTimer); healthTimer = null; }
+  startedAt = 0;
+  log("info", "self-stopped", { reason: reason || "" });
+  persistLive(false);
+  try { window.close(); } catch (e) {}
+}
+// 轮询控制文档：主窗失联（重载/孤儿）时仍能通过 db 命令本 daemon 自停
+setInterval(function () {
+  try {
+    if (typeof utools === "undefined" || !utools.db) return;
+    var id = _ctlDocId();
+    if (!id) return;
+    var ctl = utools.db.get(id);
+    if (ctl && ctl.stop && (ctl.ts || 0) > _bootTs) {
+      selfStop("ctl");
+      try { utools.db.remove(ctl); } catch (e) {}
+    }
+  } catch (e) {}
+}, 1500);
 
 // 定时上报 stat（1s 一次），保证统计实时刷新
 setInterval(function () { if (server) stat(); }, 1000);
