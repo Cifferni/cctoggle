@@ -61,54 +61,112 @@ function promoteOpenclawRow(i) { if (i <= 0) return; const rows = openclawRows.v
 // 非表单直显字段：完整保留预设的差异化配置
 const hidden = reactive({ settingsConfig: {}, authData: {}, endpointCandidates: [] });
 
+// config.toml 实时预览：镜像后端 switchProviderCodex 的拼装逻辑（services.js），仅用于只读展示
+function slugifyName(name) {
+  return (name || "custom").toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/^_+|_+$/g, "") || "custom";
+}
+const codexConfigPreview = computed(() => {
+  if (tab.value !== "codex") return "";
+  const cleanName = slugifyName(form.name);
+  const baseUrl = form.baseUrl || "https://api.openai.com/v1";
+  const model = form.model || "gpt-4o";
+  const apiFormat = form.apiFormat || "";
+  const wireApi = form.wireApi || (apiFormat === "openai_chat" ? "chat" : "responses");
+  const effort = form.reasoningEffort || "high";
+  const isLocal = /^https?:\/\/(127\.0\.0\.1|localhost)/.test(baseUrl);
+  const hasCatalog = catalogRows.value.some(r => r.model);
+  const lines = [
+    `model_provider = "${cleanName}"`,
+    `model = "${model}"`,
+    `model_reasoning_effort = "${effort}"`,
+    `disable_response_storage = true`,
+  ];
+  if (hasCatalog) lines.push(`model_catalog_json = "utoolscctoggle-model-catalog.json"`);
+  lines.push(
+    ``,
+    `[model_providers.${cleanName}]`,
+    `name = "${cleanName}"`,
+    `base_url = "${baseUrl}"`,
+    `wire_api = "${wireApi}"`,
+    `requires_openai_auth = ${isLocal ? "false" : "true"}`,
+  );
+  return lines.join("\n");
+});
+
 const ONE_M = "[1M]";
 function stripOneM(s) { return typeof s === "string" && s.endsWith(ONE_M) ? s.slice(0, -ONE_M.length).trimEnd() : s || ""; }
 function applyOneM(s, on) { const base = stripOneM(s || ""); return on && base ? base + ONE_M : base; }
 
-watch(() => props.visible, v => {
-  if (!v) return;
-  const d = props.initialData;
+// —— 表单回填 helper：watch(visible) 与 fillPreset 共用，避免逻辑重复 ——
+function mapCatalogRows(list) {
+  return (list || []).map(m => ({
+    model: m.model || "", displayName: m.displayName || "", contextWindow: m.contextWindow || "",
+  }));
+}
+function mapOpenclawRows(list) {
+  return (list || []).map(m => ({
+    id: m.id || "", name: m.name || "", contextWindow: m.contextWindow || "",
+  }));
+}
+function deriveAuthField(env, stored) {
+  if (stored) return stored;
+  return env.ANTHROPIC_API_KEY !== undefined ? "ANTHROPIC_API_KEY" : "ANTHROPIC_AUTH_TOKEN";
+}
+function assignHidden(d) {
+  Object.assign(hidden, {
+    settingsConfig: d?.settingsConfig || {}, authData: d?.authData || {},
+    endpointCandidates: d?.endpointCandidates || [],
+  });
+}
+// 两条回填路径完全一致的字段（含 Claude 角色模型），差异字段由各调用方单独覆盖
+function commonFormFields(d) {
   const env = d?.settingsConfig?.env || {};
   const claudeModel = d?.model || env.ANTHROPIC_MODEL || "";
-  Object.assign(form, {
-    name: d?.name || "", baseUrl: d?.baseUrl || "https://api.openai.com/v1",
-    apiKey: d?.apiKey || "", model: stripOneM(claudeModel) || "gpt-5.4",
-    models: (d?.models || []).join(", "), websiteUrl: d?.websiteUrl || "", remark: d?.remark || "",
+  return {
+    models: (d?.models || []).join(", "),
     configType: d?.configType || "openai",
-    apiKeyHeader: d?.apiKeyHeader || "Authorization", apiKeyPrefix: d?.apiKeyPrefix || "Bearer ",
-    reasoningEffort: d?.reasoningEffort || "high", maxTokens: d?.maxTokens || "",
-    temperature: d?.temperature || "", extraHeaders: d?.extraHeaders || "", extraConfig: d?.extraConfig || "",
-    wireApi: d?.wireApi || "responses", apiFormat: d?.apiFormat || "", apiKeyUrl: d?.apiKeyUrl || "",
-    category: d?.category || "custom", icon: d?.icon || "", iconColor: d?.iconColor || "",
-    maxOutputTokens: d?.maxOutputTokens || "", customUserAgent: d?.customUserAgent || "",
-    headersOverride: d?.headersOverride || "", bodyOverride: d?.bodyOverride || "",
-    authField: d?.authField || (env.ANTHROPIC_API_KEY !== undefined ? "ANTHROPIC_API_KEY" : "ANTHROPIC_AUTH_TOKEN"),
+    reasoningEffort: d?.reasoningEffort || "high",
+    extraConfig: d?.extraConfig || "",
+    wireApi: d?.wireApi || "responses",
+    apiFormat: d?.apiFormat || "",
+    apiKeyUrl: d?.apiKeyUrl || "",
+    category: d?.category || "custom",
+    icon: d?.icon || "", iconColor: d?.iconColor || "",
+    maxOutputTokens: d?.maxOutputTokens || "",
+    authField: deriveAuthField(env, d?.authField),
+    apiProtocol: d?.apiProtocol || d?.settingsConfig?.api || "openai-completions",
+    verbosity: d?.verbosity || "low",
+    reasoningSummary: d?.reasoningSummary || "none",
+    webSearch: d?.webSearch !== false,
     sonnetModel: stripOneM(env.ANTHROPIC_DEFAULT_SONNET_MODEL || ""),
     opusModel: stripOneM(env.ANTHROPIC_DEFAULT_OPUS_MODEL || ""),
     haikuModel: env.ANTHROPIC_DEFAULT_HAIKU_MODEL || "",
     fableModel: stripOneM(env.ANTHROPIC_DEFAULT_FABLE_MODEL || ""),
     subagentModel: stripOneM(env.CLAUDE_CODE_SUBAGENT_MODEL || ""),
     supports1M: typeof claudeModel === "string" && claudeModel.endsWith(ONE_M),
+  };
+}
+
+watch(() => props.visible, v => {
+  if (!v) return;
+  const d = props.initialData;
+  const env = d?.settingsConfig?.env || {};
+  const claudeModel = d?.model || env.ANTHROPIC_MODEL || "";
+  Object.assign(form, commonFormFields(d), {
+    name: d?.name || "", baseUrl: d?.baseUrl || "https://api.openai.com/v1",
+    apiKey: d?.apiKey || "", model: stripOneM(claudeModel) || "gpt-5.4",
+    websiteUrl: d?.websiteUrl || "", remark: d?.remark || "",
+    apiKeyHeader: d?.apiKeyHeader || "Authorization", apiKeyPrefix: d?.apiKeyPrefix || "Bearer ",
+    maxTokens: d?.maxTokens || "", temperature: d?.temperature || "", extraHeaders: d?.extraHeaders || "",
+    customUserAgent: d?.customUserAgent || "", headersOverride: d?.headersOverride || "", bodyOverride: d?.bodyOverride || "",
     authMethod: d?.authMethod || "api_key",
     impersonateClaudeCode: !!d?.impersonateClaudeCode,
-    apiProtocol: d?.apiProtocol || d?.settingsConfig?.api || "openai-completions",
-    verbosity: d?.verbosity || "low",
-    reasoningSummary: d?.reasoningSummary || "none",
-    webSearch: d?.webSearch !== false,
   });
-  openclawRows.value = ((d?.settingsConfig?.models) || []).map(function (m) {
-    return { id: m.id || "", name: m.name || "", contextWindow: m.contextWindow || "" };
-  });
-  catalogRows.value = (d?.modelCatalog || []).map(m => ({
-    model: m.model || "", displayName: m.displayName || "",
-    contextWindow: m.contextWindow || "",
-  }));
+  openclawRows.value = mapOpenclawRows(d?.settingsConfig?.models);
+  catalogRows.value = mapCatalogRows(d?.modelCatalog);
   // 编辑已有供应商视为已确定协议，不自动覆盖；新建则允许按 base_url 自动推荐
   wireApiTouched.value = !!(d && d.wireApi);
-  Object.assign(hidden, {
-    settingsConfig: d?.settingsConfig || {}, authData: d?.authData || {},
-    endpointCandidates: d?.endpointCandidates || [],
-  });
+  assignHidden(d);
   try { window.utools?.setExpendHeight(600); } catch {}
 });
 
@@ -139,15 +197,15 @@ watch([() => form.baseUrl, () => form.model], () => {
   form.wireApi = guessWireApi(form.baseUrl, form.model);
 });
 
-    // 表单内实时提示：根据上游格式给出直连/代理结论，与卡片徽章呼应
+// 表单内实时提示：根据上游格式给出直连/代理结论，与卡片徽章呼应
 const codexProxyHint = computed(() => {
   if (tab.value !== "codex") return null;
-  var af = form.apiFormat || "";
+  const af = form.apiFormat || "";
   if (af === "anthropic") {
     return { level: "required", text: "该供应商为 Anthropic 协议，Codex 无法直连，必须开启代理路由接管才能使用。" };
   }
   if (af === "openai_chat") {
-    return { level: "optional", text: "该供应商仅支持 Chat Completions。可直连(连接协议选 Chat)，或走代理接管获得協議轉換與多供應商切換。" };
+    return { level: "optional", text: "该供应商仅支持 Chat Completions。可直连(连接协议选 Chat)，或走代理接管获得协议转换与多供应商切换。" };
   }
   if (af === "openai_responses" || form.wireApi === "responses") {
     return { level: "ok", text: "该供应商原生支持 Responses，直连即可，无需代理。" };
@@ -170,27 +228,32 @@ function save() {
     modelCatalog,
     models: form.models.split(",").map(s => s.trim()).filter(Boolean),
   };
+  // Codex 已改为纯表单配置，不再支持整篇自定义 toml；清空 extraConfig 以免旧数据残留旁路表单字段
+  if (t === "codex") payload.extraConfig = "";
   if (t === "claude") {
     const env = { ...(hidden.settingsConfig?.env || {}) };
-    const mainModel = applyOneM(form.model, form.supports1M);
+    const on = form.supports1M;
+    const mainModel = applyOneM(form.model, on);
     if (form.baseUrl) env.ANTHROPIC_BASE_URL = form.baseUrl;
     if (mainModel) env.ANTHROPIC_MODEL = mainModel;
-    if (form.sonnetModel) env.ANTHROPIC_DEFAULT_SONNET_MODEL = applyOneM(form.sonnetModel, form.supports1M);
-    if (form.opusModel)   env.ANTHROPIC_DEFAULT_OPUS_MODEL   = applyOneM(form.opusModel,   form.supports1M);
-if (form.haikuModel)  env.ANTHROPIC_DEFAULT_HAIKU_MODEL  = form.haikuModel; // H
-    if (form.fableModel)  env.ANTHROPIC_DEFAULT_FABLE_MODEL  = applyOneM(form.fableModel, form.supports1M);
-    if (form.subagentModel) env.CLAUDE_CODE_SUBAGENT_MODEL   = applyOneM(form.subagentModel, form.supports1M);
+    if (form.sonnetModel) env.ANTHROPIC_DEFAULT_SONNET_MODEL = applyOneM(form.sonnetModel, on);
+    if (form.opusModel) env.ANTHROPIC_DEFAULT_OPUS_MODEL = applyOneM(form.opusModel, on);
+    if (form.haikuModel) env.ANTHROPIC_DEFAULT_HAIKU_MODEL = form.haikuModel; // Haiku 作兜底，不追加 [1M]
+    if (form.fableModel) env.ANTHROPIC_DEFAULT_FABLE_MODEL = applyOneM(form.fableModel, on);
+    if (form.subagentModel) env.CLAUDE_CODE_SUBAGENT_MODEL = applyOneM(form.subagentModel, on);
     payload.model = mainModel;
     payload.settingsConfig = { ...(hidden.settingsConfig || {}), env };
   } else if (t === "openclaw") {
     const models = openclawRows.value
-      .map(function (r) {
+      .map(r => {
         const m = { id: (r.id || "").trim() };
-        if (r.name && String(r.name).trim()) m.name = String(r.name).trim();
-        if (r.contextWindow) { const n = Number(r.contextWindow); if (n) m.contextWindow = n; }
+        const name = String(r.name || "").trim();
+        if (name) m.name = name;
+        const ctx = Number(r.contextWindow);
+        if (ctx) m.contextWindow = ctx;
         return m;
       })
-      .filter(function (m) { return m.id; });
+      .filter(m => m.id);
     payload.settingsConfig = Object.assign({}, hidden.settingsConfig || {}, {
       baseUrl: form.baseUrl || "",
       apiKey: form.apiKey || "",
@@ -203,7 +266,7 @@ if (form.haikuModel)  env.ANTHROPIC_DEFAULT_HAIKU_MODEL  = form.haikuModel; // H
       payload.suggestedDefaults = {
         model: {
           primary: models[0].id,
-          fallbacks: models.slice(1).map(function (m) { return m.id; }),
+          fallbacks: models.slice(1).map(m => m.id),
         },
       };
     }
@@ -224,48 +287,17 @@ function fillPreset(preset) {
   const d = presetToProviderData ? presetToProviderData(preset) : preset;
   const env = d.settingsConfig?.env || {};
   const claudeModel = d.model || env.ANTHROPIC_MODEL || "";
-  Object.assign(form, {
+  Object.assign(form, commonFormFields(d), {
     name: d.name || preset.name,
     baseUrl: d.baseUrl || preset.baseUrl || "",
     model: stripOneM(claudeModel) || preset.model || "",
-    configType: d.configType || preset.configType || "openai",
-    wireApi: d.wireApi || "responses",
-    apiFormat: d.apiFormat || "",
-    apiKeyUrl: d.apiKeyUrl || "",
-    category: d.category || "custom",
-    icon: d.icon || "",
-    iconColor: d.iconColor || "",
     websiteUrl: d.websiteUrl || preset.websiteUrl || "",
-    reasoningEffort: d.reasoningEffort || "high",
-    extraConfig: d.extraConfig || "",
-    models: (d.models || []).join(", "),
-    sonnetModel: stripOneM(env.ANTHROPIC_DEFAULT_SONNET_MODEL || ""),
-    opusModel: stripOneM(env.ANTHROPIC_DEFAULT_OPUS_MODEL || ""),
-    haikuModel: env.ANTHROPIC_DEFAULT_HAIKU_MODEL || "",
-    fableModel: stripOneM(env.ANTHROPIC_DEFAULT_FABLE_MODEL || ""),
-    subagentModel: stripOneM(env.CLAUDE_CODE_SUBAGENT_MODEL || ""),
-    supports1M: typeof claudeModel === "string" && claudeModel.endsWith(ONE_M),
-    authField: env.ANTHROPIC_API_KEY !== undefined ? "ANTHROPIC_API_KEY" : "ANTHROPIC_AUTH_TOKEN",
-    maxOutputTokens: d.maxOutputTokens || "",
     authMethod: preset.authMethod || "api_key",
     impersonateClaudeCode: !!preset.impersonateClaudeCode,
-    apiProtocol: d.apiProtocol || d.settingsConfig?.api || "openai-completions",
-    verbosity: d.verbosity || "low",
-    reasoningSummary: d.reasoningSummary || "none",
-    webSearch: d.webSearch !== false,
   });
-  openclawRows.value = ((d.settingsConfig?.models) || []).map(function (m) {
-    return { id: m.id || "", name: m.name || "", contextWindow: m.contextWindow || "" };
-  });
-  catalogRows.value = (d.modelCatalog || []).map(m => ({
-    model: m.model || "", displayName: m.displayName || "",
-    contextWindow: m.contextWindow || "",
-  }));
-  Object.assign(hidden, {
-    settingsConfig: d.settingsConfig || {},
-    authData: d.authData || {},
-    endpointCandidates: d.endpointCandidates || [],
-  });
+  openclawRows.value = mapOpenclawRows(d.settingsConfig?.models);
+  catalogRows.value = mapCatalogRows(d.modelCatalog);
+  assignHidden(d);
 }
 
 const overlayPressed = ref(false);
@@ -330,6 +362,13 @@ function close() {
             </div>
           </div>
         </fieldset>
+
+        <!-- Codex 专属：config.toml 实时预览（纯表单配置，预览由下方字段生成） -->
+        <details v-if="tab === 'codex'" class="config-preview">
+          <summary>预览 config.toml</summary>
+          <pre class="config-preview__code">{{ codexConfigPreview }}</pre>
+          <p class="tip">此预览由下方表单字段实时生成，切换供应商时写入 ~/.codex/config.toml。</p>
+        </details>
 
         <fieldset><legend>连接配置</legend>
 <div class="field"><label>API 类型</label>
@@ -537,10 +576,6 @@ function close() {
               <textarea v-model="form.bodyOverride" rows="2" class="mono" placeholder='{"max_output_tokens": 16384}'></textarea>
             </div>
           </template>
-
-          <div class="field" style="margin-top:10px"><label>自定义 config.toml <small>(Codex 直连/切换时写入)</small></label>
-            <textarea v-model="form.extraConfig" rows="4" placeholder="[model_providers.custom]&#10;name = &quot;custom&quot;" class="mono"></textarea>
-          </div>
         </fieldset>
       </div>
 
@@ -705,6 +740,27 @@ legend {
 }
 .btn-add:hover { border-color: var(--primary); color: var(--primary); }
 .oauth-box { margin-top: 10px; }
+.config-preview {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 8px 12px; background: var(--bg-card);
+}
+.config-preview summary {
+  cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-secondary);
+  user-select: none; list-style: none;
+}
+.config-preview summary::-webkit-details-marker { display: none; }
+.config-preview summary::before { content: "▸ "; color: var(--text-muted); }
+.config-preview[open] summary::before { content: "▾ "; }
+.config-preview__code {
+  margin: 8px 0 0; padding: 10px 12px; border-radius: 6px;
+  background: var(--bg); border: 1px solid var(--border);
+  font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; line-height: 1.5;
+  color: var(--text); white-space: pre-wrap; word-break: break-all; overflow-x: auto;
+}
+.field-select {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+  border-radius: 6px; font-size: 13px; background: var(--bg-card); color: var(--text);
+}
 .btn-oauth {
   margin-top: 4px; padding: 7px 14px; border: 1px solid var(--primary); border-radius: 6px;
   background: var(--primary-light); color: var(--primary); cursor: pointer; font-size: 12px; font-weight: 500;
