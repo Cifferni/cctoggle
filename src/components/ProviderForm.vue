@@ -174,9 +174,10 @@ function addCatalogRow() { catalogRows.value.push({ model: "", displayName: "", 
 function removeCatalogRow(i) { catalogRows.value.splice(i, 1); }
 function pickIcon(p) { form.icon = p.icon; form.iconColor = p.color; }
 
-// 只支持 Chat Completions 的常见供应商域名 / 模型关键词，用于自动推荐 wire_api
+// 只支持 Chat Completions 的常见供应商域名 / 模型关键词，用于自动推荐 wire_api。
+// 注意：不含火山方舟 —— 其 /api/plan/v3 是 Responses 端点、/api/coding/v3 才是 Chat，
+// 域名无法一刀切，故火山依赖预设声明的 apiFormat，不做自动推荐（误判会导致协议错配报错）。
 const CHAT_ONLY_HINTS = [
-  "ark.cn-", "volces.com", "volcengine",      // 火山方舟 / 豆包
   "deepseek.com",                              // DeepSeek
   "dashscope",                                 // 阿里通义千问
   "moonshot.cn",                               // Kimi / Moonshot
