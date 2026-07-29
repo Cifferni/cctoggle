@@ -6,6 +6,7 @@ const routes = [
   { path: "/", component: ProviderListPage },
   { path: "/skills", component: SkillsPage },
   { path: "/stats", component: () => import("../views/StatsPage.vue") },
+  { path: "/mcp", component: () => import("../views/McpPage.vue") },
   {
     path: "/settings",
     component: () => import("../views/SettingsPage.vue"),

@@ -31,6 +31,20 @@ function getOpenClawConfigPath() {
   return path.join(getHomeDir(), ".openclaw", "openclaw.json");
 }
 
+function getClaudeDesktopConfigPath() {
+  var appData;
+  try { appData = utools.getPath("appData"); } catch (e) { appData = ""; }
+  if (!appData || !appData.trim()) {
+    // fallback: macOS ~/Library/Application Support, Windows %APPDATA%
+    if (process.platform === "darwin") {
+      appData = path.join(getHomeDir(), "Library", "Application Support");
+    } else {
+      appData = process.env.APPDATA || path.join(getHomeDir(), "AppData", "Roaming");
+    }
+  }
+  return path.join(appData, "Claude", "claude_desktop_config.json");
+}
+
 // 纯路径展开（~ → homeDir）
 function expandHome(p) {
   if (!p) return p;
@@ -94,6 +108,7 @@ module.exports = {
   getClaudeSettingsPath: getClaudeSettingsPath,
   getGeminiEnvPath: getGeminiEnvPath,
   getOpenClawConfigPath: getOpenClawConfigPath,
+  getClaudeDesktopConfigPath: getClaudeDesktopConfigPath,
   expandHome: expandHome,
   ensureDir: ensureDir,
   generateId: generateId,

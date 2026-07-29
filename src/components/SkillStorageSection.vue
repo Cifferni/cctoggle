@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, h } from "vue";
 import { useSkills } from "../composables/useSkills.js";
+import { APP_ICONS } from "../composables/shared.js";
 const { ALL_APPS, APP_LABELS, storagePaths, nestSkills, projectTargets, loadStoragePaths, saveStoragePaths, loadNestSkills, loadProjectTargets, addProjectTarget, removeProjectTarget } = useSkills();
 onMounted(() => {
   loadStoragePaths();
@@ -9,7 +10,7 @@ onMounted(() => {
 });
 
 const agents = ALL_APPS.filter(a => ["codex", "claude", "gemini", "openclaw"].includes(a));
-const icons = { codex: "⚡", claude: "\u{1F9E0}", gemini: "\u{1F48E}", openclaw: "\u{1F43E}" };
+const icons = APP_ICONS;
 const sectionOpen = ref(false);
 const editingAgent = ref(null);
 const newProjectPath = ref("");
@@ -77,7 +78,7 @@ function addProject() {
           </div>
           <div class="flow__target">
             <n-space align="center" :size="6" style="margin-bottom: 2px;">
-              <span style="font-size: 14px;">{{ icons[a] }}</span>
+              <img :src="icons[a]" :alt="APP_LABELS[a]" style="width: 16px; height: 16px; object-fit: contain;" />
               <n-text strong style="font-size: 12px;">{{ APP_LABELS[a] }}</n-text>
             </n-space>
 

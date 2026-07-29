@@ -67,6 +67,7 @@ src/
 │   ├── useRoutes.js         # 代理路由管理
 │   ├── useSkills.js         # Skill 管理
 │   ├── useStats.js          # 用量统计
+│   ├── useTheme.js          # 主题管理（亮/暗模式、主题切换、CSS 变量同步）
 │   ├── useToast.js          # 通知提示
 │   ├── useConfirm.js        # 确认弹窗（Promise<boolean>）
 │   └── shared.js            # 共享常量、工具函数、getSkillNest()
@@ -86,11 +87,15 @@ src/
 │   ├── presets-claude.js    # Claude 专用预设
 │   ├── presets-openclaw.js  # OpenClaw 专用预设
 │   └── presets-gemini.js    # Gemini 专用预设
+├── themes/              # 主题系统
+│   ├── index.js             # 主题注册表，导出 themes 列表和工具函数
+│   ├── amber.js             # 琥珀暖光主题定义（当前默认）
+│   └── buildOverrides.js    # 生成 Naive UI themeOverrides
 ├── router/index.js      # Vue Router 配置（memory history）
 ├── setup.js             # uTools 动态命令注册
 ├── App.vue              # 根组件
 ├── main.js              # 入口文件
-└── style.css            # 全局 CSS 变量
+└── style.css            # 全局基础样式（圆角等，颜色由 useTheme 动态注入）
 
 public/
 ├── preload/
@@ -192,57 +197,59 @@ const displayName = computed(() => props.provider.name || "Unnamed");
 - 使用 BEM 风格：`.block__element--modifier`
 - 类名使用 kebab-case
 
-#### 色调：暖色系（Amber/Orange）
+#### 主题系统
 
-项目采用暖色调设计语言，主色为琥珀/橙色系，背景带有温暖的米白/棕色底调。
+项目采用模块化主题架构，支持亮/暗模式切换和主题持久化。
 
-#### CSS 变量（定义在 style.css）
-
-```css
-:root {
-  --bg: #fffbf5;              /* 暖白 */
-  --bg-card: #fff8f0;         /* 暖米 */
-  --bg-hover: #fef3e2;        /* 暖浅橙 */
-  --border: #f0dcc8;          /* 暖米边框 */
-  --text: #1c1410;            /* 暖深棕 */
-  --text-secondary: #6b5a4e;  /* 暖棕 */
-  --text-muted: #9a8a7e;      /* 暖灰棕 */
-  --primary: #d97706;         /* 琥珀 */
-  --primary-hover: #b45309;   /* 深琥珀 */
-  --primary-light: #fef3c7;   /* 琥珀浅底 */
-  --danger: #dc2626;
-  --danger-light: #fef2f2;
-  --success: #16a34a;
-  --radius: 8px;
-  --radius-lg: 12px;
-}
-
-.dark {
-  --bg: #1a1410;              /* 暖深棕 */
-  --bg-card: #231e18;         /* 暖暗棕 */
-  --bg-hover: #2e2720;        /* 暖暗 hover */
-  --border: #3d342a;          /* 暖暗边框 */
-  --text: #f5efe8;            /* 暖白文字 */
-  --text-secondary: #c4b5a5;  /* 暖灰 */
-  --text-muted: #8a7a6a;      /* 暖暗灰 */
-  --primary: #f59e0b;         /* 亮琥珀 */
-  --primary-hover: #d97706;
-  --primary-light: #3d2e10;   /* 暗琥珀底 */
-  --danger: #f87171;
-  --danger-light: #3b1a1a;
-  --success: #34d399;
-}
+**目录结构：**
+```
+src/themes/
+├── index.js          # 主题注册表，导出 themes 列表和工具函数
+├── amber.js          # 琥珀暖光主题定义（当前默认）
+└── buildOverrides.js # 生成 Naive UI themeOverrides
 ```
 
-#### Naive UI 主题覆盖（App.vue）
+**核心模块：**
+- `useTheme.js` — 主题 composable，管理当前主题、亮/暗模式、CSS 变量同步
+- `themes/index.js` — 主题注册表，新增主题在此添加到 `themes` 数组
+- `themes/amber.js` — 琥珀暖光主题，定义颜色和组件样式
+- `themes/buildOverrides.js` — 从主题定义生成 Naive UI themeOverrides
 
-Naive UI 组件的主题色需与 CSS 变量保持一致，关键配置：
-- `primaryColor` / `primaryColorHover` / `primaryColorPressed` 使用琥珀色系
-- `Card.color` / `List.color` 使用暖底色（亮 `#fff8f0` / 暗 `#231e18`）
-- `Input.borderFocus` / `boxShadowFocus` 使用琥珀色
-- `Code.color` 使用暖底色（亮 `#fef3e2` / 暗 `#2e2720`）
+**颜色变量（由 useTheme.js 动态注入 CSS 自定义属性）：**
 
-#### 硬编码颜色规范
+| 变量 | 亮色值 | 暗色值 | 说明 |
+|------|--------|--------|------|
+| `--bg` | `#fffbf5` | `#1a1410` | 页面背景 |
+| `--bg-card` | `#fff8f0` | `#231e18` | 卡片背景 |
+| `--bg-hover` | `#fef3e2` | `#2e2720` | 悬停背景 |
+| `--border` | `#f0dcc8` | `#3d342a` | 边框色 |
+| `--text` | `#1c1410` | `#f5efe8` | 主文字 |
+| `--text-secondary` | `#6b5a4e` | `#c4b5a5` | 次要文字 |
+| `--text-muted` | `#9a8a7e` | `#8a7a6a` | 弱化文字 |
+| `--primary` | `#d97706` | `#f59e0b` | 品牌主色（琥珀） |
+| `--primary-hover` | `#b45309` | `#fbbf24` | 品牌悬停 |
+| `--primary-pressed` | `#92400e` | `#d97706` | 品牌按下 |
+| `--primary-suppl` | `rgba(217,119,6,0.1)` | `rgba(245,158,11,0.15)` | 品牌辅助底 |
+| `--primary-light` | `#fef3c7` | `#3d2e10` | 品牌浅底 |
+| `--danger` | `#dc2626` | `#f87171` | 危险色 |
+| `--danger-light` | `#fef2f2` | `#3b1a1a` | 危险浅底 |
+| `--success` | `#16a34a` | `#34d399` | 成功色 |
+
+**Naive UI 主题覆盖（buildOverrides.js）：**
+
+自动从主题定义生成，关键映射：
+- `common.primaryColor*` → 品牌色系
+- `Card.color` / `List.color` → `bgCard`
+- `Input.borderFocus` / `boxShadowFocus` → 品牌色 + `primarySuppl`
+- `DataTable.thColor` → `primaryLight`
+- `Select.peers.InternalSelection` → 品牌色系
+
+**新增主题：**
+1. 在 `src/themes/` 创建 `xxx.js`，导出主题对象（参考 amber.js 结构）
+2. 在 `src/themes/index.js` 的 `themes` 数组中添加
+3. 主题对象需包含 `name`、`label`、`colors`（light/dark）、`components`
+
+**硬编码颜色规范：**
 
 组件中的 box-shadow、图表等硬编码颜色也需使用暖色：
 - 主色相关 shadow：`rgba(217,119,6, .1~.3)` 而非蓝色

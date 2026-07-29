@@ -28,6 +28,8 @@ function syncCssVars(colors) {
     '--text-muted': colors.textMuted,
     '--primary': colors.primary,
     '--primary-hover': colors.primaryHover,
+    '--primary-pressed': colors.primaryPressed,
+    '--primary-suppl': colors.primarySuppl,
     '--primary-light': colors.primaryLight,
     '--danger': colors.danger,
     '--danger-light': colors.dangerLight,

@@ -4,6 +4,7 @@
 import { PROVIDERS } from "./providers.js";
 import codexRaw from "./presets-codex.js";
 import claudeRaw from "./presets-claude.js";
+import claudeDesktopRaw from "./presets-claude-desktop.js";
 import openclawRaw from "./presets-openclaw.js";
 import geminiRaw from "./presets-gemini.js";
 
@@ -42,6 +43,14 @@ const OPENCLAW_DEFAULTS = {
 
 const GEMINI_DEFAULTS = {
   configType: "gemini",
+  baseUrl: "",
+  model: "",
+  endpointCandidates: [],
+  settingsConfig: { env: {} },
+};
+
+const CLAUDE_DESKTOP_DEFAULTS = {
+  configType: "anthropic",
   baseUrl: "",
   model: "",
   endpointCandidates: [],
@@ -109,6 +118,7 @@ function mergeSimple(entry, defaults) {
 export const PRESETS = {
   codex: codexRaw.map(mergeCodex),
   claude: claudeRaw.map((e) => mergeSimple(e, CLAUDE_DEFAULTS)),
+  "claude-desktop": claudeDesktopRaw.map((e) => mergeSimple(e, CLAUDE_DESKTOP_DEFAULTS)),
   openclaw: openclawRaw.map((e) => mergeSimple(e, OPENCLAW_DEFAULTS)),
   gemini: geminiRaw.map((e) => mergeSimple(e, GEMINI_DEFAULTS)),
 };

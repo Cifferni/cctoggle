@@ -1,20 +1,35 @@
 // Shared constants and utilities across composables
 
-export const APP_TYPES = ["codex", "claude", "openclaw", "gemini"];
+export const APP_TYPES = ["codex", "claude", "claude-desktop", "openclaw", "gemini"];
+
+export const APP_OPTIONS = [
+  { value: "claude", label: "Claude" },
+  { value: "claude-desktop", label: "Claude Desktop" },
+  { value: "codex", label: "Codex" },
+  { value: "openclaw", label: "OpenClaw" },
+];
 
 export const APP_LABELS = {
   codex: "Codex",
   claude: "Claude",
+  "claude-desktop": "Desktop",
   openclaw: "OpenClaw",
   gemini: "Gemini",
   all: "全部",
 };
 
+import codexIcon from "../assets/images/agents/codex.svg";
+import claudeIcon from "../assets/images/agents/claude.svg";
+import claudeDesktopIcon from "../assets/images/agents/claude-desktop.svg";
+import openclawIcon from "../assets/images/agents/openclaw.svg";
+import geminiIcon from "../assets/images/agents/gemini.svg";
+
 export const APP_ICONS = {
-  codex: "\u26A1",
-  claude: "\u{1F9E0}",
-  openclaw: "\u{1F43E}",
-  gemini: "\u{1F48E}",
+  codex: codexIcon,
+  claude: claudeIcon,
+  "claude-desktop": claudeDesktopIcon,
+  openclaw: openclawIcon,
+  gemini: geminiIcon,
 };
 
 // Safe accessor for window.utoolsCctoggle API with fallback stubs
@@ -40,6 +55,12 @@ export function getSkillNest() {
     clearStats: () => ({ success: false }),
     reconcileProxies: () => {},
     scanUsageLogs: () => ({ daily: [] }),
+    listMcpServers: () => [],
+    getMcpServer: () => null,
+    saveMcpServer: () => "",
+    deleteMcpServer: () => {},
+    toggleMcpServer: () => false,
+    syncFromConfigFiles: () => {},
     paths: {},
   };
 }

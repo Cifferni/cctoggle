@@ -1,6 +1,7 @@
 ﻿<script setup>
 import { computed, onMounted, ref } from "vue";
 import { useSkills } from "../composables/useSkills.js";
+import { APP_ICONS } from "../composables/shared.js";
 import { toast } from "../composables/useToast.js";
 const { ALL_APPS, APP_LABELS, nestSkills, deployments, allSkills, loadNestSkills, loadDeployments, loadAllSkills, deploy, undeploy, syncMode } = useSkills();
 
@@ -60,7 +61,7 @@ function toggleTarget(skillName, target) {
   }
 }
 
-const agentIcons = { codex: "\u26A1", claude: "\u{1F9E0}", gemini: "\u{1F48E}", opencode: "\u{1F5A5}", openclaw: "\u{1F43E}" };
+const agentIcons = { ...APP_ICONS, opencode: "\u{1F5A5}" };
 
 const agentStats = computed(() => {
   // 从部署注册表统计，避免扫描目录时把用户/其他插件手动放置的 skill 也算进来（脏数据）
@@ -76,7 +77,7 @@ const agentStats = computed(() => {
   return ALL_APPS.map(app => ({
     app,
     label: APP_LABELS[app],
-    icon: agentIcons[app] || "\u{1F4E6}",
+    icon: agentIcons[app] || null,
     count: counts[app] || 0
   }));
 });
@@ -94,7 +95,10 @@ const displayTargets = computed(() => {
     </div>
     <div class="dash-grid">
       <div v-for="stat in agentStats" :key="stat.app" class="dash-card" :class="{ 'dash-card--zero': stat.count === 0 }">
-        <div class="dash-icon" :class="'dash-icon--' + stat.app">{{ stat.icon }}</div>
+        <div class="dash-icon" :class="'dash-icon--' + stat.app">
+          <img v-if="stat.icon && (stat.icon.startsWith('/') || stat.icon.startsWith('data:'))" :src="stat.icon" :alt="stat.label" class="dash-icon-img" />
+          <span v-else>{{ stat.icon || '📦' }}</span>
+        </div>
         <div class="dash-body">
           <span class="dash-agent">{{ stat.label }}</span>
           <span v-if="stat.count" class="dash-num">{{ stat.count }}</span>
@@ -184,6 +188,10 @@ const displayTargets = computed(() => {
   display: flex; align-items: center; justify-content: center;
   font-size: 16px; flex-shrink: 0;
   background: var(--bg-hover);
+}
+.dash-icon-img {
+  width: 20px; height: 20px;
+  object-fit: contain;
 }
 .dash-icon--codex { background: #fef3c7; }
 .dash-icon--claude { background: #ede9fe; }

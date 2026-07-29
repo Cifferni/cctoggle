@@ -1,5 +1,5 @@
-﻿<script setup>
-import { ref, onMounted } from "vue";
+<script setup>
+import { ref, computed, onMounted } from "vue";
 import { useProviders } from "../composables/useProviders.js";
 import TabBar from "../components/TabBar.vue";
 import ProviderCard from "../components/ProviderCard.vue";
@@ -7,15 +7,15 @@ import ProviderForm from "../components/ProviderForm.vue";
 
 const { providers, loadProviders, switchProvider, saveProvider, deleteProvider, getFullProvider } = useProviders();
 const showForm = ref(false), editingId = ref(null), formInitialData = ref(null);
-const pendingDeleteId = ref(null);
+
+const currentProvider = computed(() => providers.value.find(p => p.isCurrent));
+const otherProviders = computed(() => providers.value.filter(p => !p.isCurrent));
 
 onMounted(() => loadProviders());
 
 function onAdd() { editingId.value = null; formInitialData.value = null; showForm.value = true; }
 function onEdit(id) { editingId.value = id; formInitialData.value = getFullProvider(id); showForm.value = true; }
-function onDelete(id) { pendingDeleteId.value = id; }
-function confirmDelete() { if (pendingDeleteId.value) deleteProvider(pendingDeleteId.value); pendingDeleteId.value = null; }
-function cancelDelete() { pendingDeleteId.value = null; }
+function onDelete(id) { deleteProvider(id); }
 function onSave(data) {
   if (editingId.value) { data.id = editingId.value; data.sortOrder = providers.value.find(p => p.id === editingId.value)?.sortOrder || 0; }
   saveProvider(data); showForm.value = false; editingId.value = null;
@@ -29,37 +29,34 @@ function onSave(data) {
     </div>
     <div class="page-body">
       <div class="page-header">
-        <div class="page-stats">
-          <span class="page-count">{{ providers.length }} 个供应商</span>
-          <span v-if="providers.length" class="page-active">
-            <span class="dot dot--green"></span>
-            {{ providers.filter(p => p.isCurrent).length }} 已激活
-          </span>
+        <n-text depth="3" style="font-size: 14px; font-weight: 500;">{{ providers.length }} 个供应商</n-text>
+        <n-button type="primary" size="small" @click="onAdd">+ 添加供应商</n-button>
+      </div>
+
+      <n-empty v-if="providers.length === 0" description="暂无供应商配置" style="padding: 60px 0;">
+        <template #extra>
+          <n-text depth="3" style="font-size: 13px;">点击「+ 添加供应商」开始</n-text>
+        </template>
+      </n-empty>
+
+      <template v-else>
+        <ProviderCard v-if="currentProvider" :provider="currentProvider" @switch="switchProvider" @edit="onEdit" @delete="onDelete" />
+
+        <div v-if="otherProviders.length" class="providers-section">
+          <div class="section-label">
+            <n-text depth="3">其他供应商</n-text>
+            <n-tag size="tiny" :bordered="false" round>{{ otherProviders.length }}</n-tag>
+          </div>
+          <n-grid :cols="2" :x-gap="8" :y-gap="8" responsive="screen" :item-responsive="true">
+            <n-gi v-for="p in otherProviders" :key="p.id" :span="1">
+              <ProviderCard :provider="p" compact @switch="switchProvider" @edit="onEdit" @delete="onDelete" />
+            </n-gi>
+          </n-grid>
         </div>
-        <button class="btn-add" @click="onAdd">+ 添加供应商</button>
-      </div>
-
-      <div v-if="providers.length === 0" class="page-empty">
-        <div class="page-empty-icon">&#x1F512;</div>
-        <p class="page-empty-title">暂无供应商配置</p>
-        <p class="page-empty-desc">点击"+ 添加供应商"或从下方预设快速导入</p>
-      </div>
-
-      <ProviderCard v-for="p in providers" :key="p.id" :provider="p" @switch="switchProvider" @edit="onEdit" @delete="onDelete" />
+      </template>
     </div>
 
     <ProviderForm :visible="showForm" :initial-data="formInitialData" @close="showForm = false" @save="onSave" />
-
-    <div v-if="pendingDeleteId" class="confirm-overlay" @click.self="cancelDelete">
-      <div class="confirm-box">
-        <p class="confirm-title">确定删除该供应商？</p>
-        <p class="confirm-desc">删除后无法恢复。</p>
-        <div class="confirm-actions">
-          <button class="btn-cancel" @click="cancelDelete">取消</button>
-          <button class="btn-danger" @click="confirmDelete">删除</button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -70,60 +67,41 @@ function onSave(data) {
   flex-direction: column;
 }
 .tab-bar-wrap {
-  padding: 10px 20px 0;
+  padding: 0 10px;
   flex-shrink: 0;
 }
 .page-body {
   flex: 1;
   overflow-y: auto;
   padding: 12px 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 .page-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  min-height: 36px;
+  padding: 0 10px;
 }
-.page-stats { display: flex; align-items: center; gap: 12px; }
-.page-count { font-size: 14px; font-weight: 500; color: var(--text-secondary); }
-.page-active { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-muted); }
-.dot { width: 7px; height: 7px; border-radius: 50%; }
-.dot--green { background: var(--success); }
 
-.btn-add {
-  padding: 7px 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-size: 12px; font-weight: 500;
-  background: none; color: var(--text-secondary);
-  cursor: pointer; transition: all .15s;
+/* ── Inactive providers section ── */
+.providers-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
-.btn-add:hover { background: var(--bg-hover); color: var(--text); border-color: var(--text-muted); }
-
-.page-empty { text-align: center; padding: 60px 20px; }
-.page-empty-icon { font-size: 48px; opacity: .2; margin-bottom: 16px; }
-.page-empty-title { font-size: 15px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
-.page-empty-desc { font-size: 13px; color: var(--text-muted); }
-
-.confirm-overlay {
-  position: fixed; inset: 0; z-index: 200;
-  background: rgba(0,0,0,.35);
-  display: flex; align-items: center; justify-content: center;
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  color: var(--text-muted);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
 }
-.confirm-box {
-  width: 300px; background: var(--bg);
-  border: 1px solid var(--border); border-radius: 8px;
-  padding: 20px; box-shadow: 0 8px 32px rgba(0,0,0,.2);
-}
-.confirm-title { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
-.confirm-desc { font-size: 13px; color: var(--text-muted); margin-bottom: 18px; }
-.confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.confirm-actions button {
-  padding: 6px 16px; border-radius: 6px; font-size: 13px; font-weight: 500;
-  cursor: pointer; border: 1px solid var(--border);
-}
-.btn-cancel { background: none; color: var(--text-secondary); }
-.btn-cancel:hover { background: var(--bg-hover); color: var(--text); }
-.btn-danger { background: #e5484d; color: #fff; border-color: #e5484d; }
-.btn-danger:hover { background: #d43c41; }
 </style>

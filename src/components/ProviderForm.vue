@@ -1,5 +1,6 @@
 <script setup>
-import { reactive, watch, ref, computed } from "vue";
+import { reactive, watch, ref, computed, h } from "vue";
+import { NInput, NButton, NFlex } from "naive-ui";
 const props = defineProps({ visible: Boolean, initialData: Object });
 const emit = defineEmits(["close", "save"]);
 
@@ -8,14 +9,9 @@ const { PRESETS, activeTab, presetToProviderData } = useProviders();
 const tab = computed(() => activeTab());
 
 const presetSearch = ref("");
-const showPresetDropdown = ref(false);
-const showApiKey = ref(false);
-const filteredPresets = computed(() => {
-  const q = presetSearch.value.toLowerCase();
-  const all = PRESETS[activeTab()] || [];
-  if (!q) return all;
-  return all.filter(p => p.name.toLowerCase().includes(q));
-});
+const presetOptions = computed(() =>
+  (PRESETS[activeTab()] || []).map(p => ({ label: p.name + ' (' + p.model + ')', value: p.name }))
+);
 
 // 图标预设（简圆点色板）
 const ICON_PRESETS = [
@@ -26,9 +22,9 @@ const ICON_PRESETS = [
   { icon: "packycode", color: "#F97316" }, { icon: "custom", color: "#64748B" },
 ];
 const CATEGORIES = [
-  { v: "official", l: "官方" }, { v: "cn_official", l: "国内官方" },
-  { v: "partner", l: "合作" }, { v: "prime", l: "Prime" },
-  { v: "third_party", l: "第三方" }, { v: "custom", l: "自定义" },
+  { value: "official", label: "官方" }, { value: "cn_official", label: "国内官方" },
+  { value: "partner", label: "合作" }, { value: "prime", label: "Prime" },
+  { value: "third_party", label: "第三方" }, { value: "custom", label: "自定义" },
 ];
 
 const form = reactive({
@@ -167,7 +163,6 @@ watch(() => props.visible, v => {
   // 编辑已有供应商视为已确定协议，不自动覆盖；新建则允许按 base_url 自动推荐
   protocolTouched.value = !!(d && (d.apiFormat || d.wireApi));
   assignHidden(d);
-  try { window.utools?.setExpendHeight(600); } catch {}
 });
 
 function addCatalogRow() { catalogRows.value.push({ model: "", displayName: "", contextWindow: "" }); }
@@ -196,7 +191,7 @@ function deriveWireApi(apiFormat) {
 
 // 「上游协议」单一下拉 <-> 底层双字段(apiFormat/wireApi)的双向映射。
 // 底层仍存两字段（后端 config 生成与代理转换分别依赖），此处仅收敛成一个用户可见选项，
-// 消除“两字段可矛盾”的历史坑。选项值即 apiFormat 的规范取值（"" 代表原生 Responses 直连）。
+// 消除"两字段可矛盾"的历史坑。选项值即 apiFormat 的规范取值（"" 代表原生 Responses 直连）。
 const PROTOCOL_FIELDS = {
   "":                { apiFormat: "",                 wireApi: "responses" }, // 原生 Responses 直连
   "openai_chat":     { apiFormat: "openai_chat",      wireApi: "chat" },      // Chat Completions（代理转换/直连均可）
@@ -227,11 +222,19 @@ watch([() => form.baseUrl, () => form.model], () => {
   if (!form.apiFormat && isChatOnlyUpstream(form.baseUrl, form.model)) {
     form.apiFormat = "openai_chat";
   }
-  // wire_api 始终与 apiFormat 保持一致，杜绝“上游格式 chat 但 wire_api responses”的矛盾组合
+  // wire_api 始终与 apiFormat 保持一致，杜绝"上游格式 chat 但 wire_api responses"的矛盾组合
   form.wireApi = deriveWireApi(form.apiFormat);
 });
 
 // 表单内实时提示：根据上游格式给出直连/代理结论，与卡片徽章呼应
+// config.toml 复制
+const copied = ref(false);
+function copyConfigToml() {
+  try { navigator.clipboard.writeText(codexConfigPreview.value); } catch {}
+  copied.value = true;
+  setTimeout(() => { copied.value = false; }, 1500);
+}
+
 const codexProxyHint = computed(() => {
   if (tab.value !== "codex") return null;
   const af = form.apiFormat || "";
@@ -334,466 +337,565 @@ function fillPreset(preset) {
   assignHidden(d);
 }
 
-const overlayPressed = ref(false);
-function overlayMouseDown() { overlayPressed.value = true; }
-function onOverlayClick() {
-// 仅当鼠标在蒙层上按下并抬起时才关闭，避免拖拽选中文字时误关  if (overlayPressed.value) close
-  overlayPressed.value = false;
+// Select 选项
+const configTypeOptions = [
+  { value: "openai", label: "OpenAI 兼容" },
+  { value: "anthropic", label: "Anthropic 原生" },
+  { value: "gemini", label: "Gemini 原生" },
+  { value: "openclaw", label: "OpenClaw" },
+];
+const authMethodOptions = [
+  { value: "api_key", label: "API Key" },
+  { value: "oauth_chatgpt", label: "ChatGPT OAuth (Codex 订阅)" },
+  { value: "oauth_xai", label: "xAI OAuth (Grok 订阅)" },
+  { value: "oauth_copilot", label: "GitHub Copilot OAuth" },
+];
+const authFieldOptions = [
+  { value: "ANTHROPIC_AUTH_TOKEN", label: "ANTHROPIC_AUTH_TOKEN（默认）" },
+  { value: "ANTHROPIC_API_KEY", label: "ANTHROPIC_API_KEY" },
+];
+const reasoningEffortOptions = [
+  { value: "minimal", label: "minimal" },
+  { value: "low", label: "low" },
+  { value: "medium", label: "medium" },
+  { value: "high", label: "high" },
+];
+const codexProtocolOptions = [
+  { value: "", label: "Responses（OpenAI 官方 / gpt-5 系，直连）" },
+  { value: "openai_chat", label: "Chat Completions（DeepSeek / 通义 / Kimi 等，走代理转换）" },
+  { value: "openai_responses", label: "Responses 兼容（火山 plan / 豆包等国产 Responses 端点）" },
+  { value: "anthropic", label: "Anthropic Messages（走代理转换）" },
+];
+const verbosityOptions = [
+  { value: "low", label: "简洁 (low)" },
+  { value: "medium", label: "适中 (medium)" },
+  { value: "high", label: "详细 (high)" },
+];
+const reasoningSummaryOptions = [
+  { value: "none", label: "不显示 (none)" },
+  { value: "auto", label: "自动 (auto)" },
+];
+const apiProtocolOptions = [
+  { value: "openai-completions", label: "OpenAI Completions" },
+  { value: "openai-responses", label: "OpenAI Responses" },
+  { value: "anthropic-messages", label: "Anthropic Messages" },
+  { value: "google-generative-ai", label: "Google Generative AI" },
+  { value: "bedrock-converse-stream", label: "AWS Bedrock" },
+];
+
+function handleClose() {
+  emit('close');
 }
-function close() {
-  try { window.utools?.setExpendHeight(544); } catch {}
-  emit("close");
-}
+
+// Catalog 表格列定义（Codex）
+const catalogColumns = [
+  { title: '菜单显示名', key: 'displayName', render: (row) => h(NInput, { value: row.displayName, 'onUpdate:value': v => row.displayName = v, placeholder: 'Ark Code Latest', size: 'small' }) },
+  { title: '实际模型 ID', key: 'model', render: (row) => h(NInput, { value: row.model, 'onUpdate:value': v => row.model = v, placeholder: 'ark-code-latest', size: 'small' }) },
+  { title: '上下文窗口', key: 'contextWindow', width: 100, render: (row) => h(NInput, { value: row.contextWindow, 'onUpdate:value': v => row.contextWindow = v, placeholder: '256000', size: 'small' }) },
+  { title: '', key: 'actions', width: 40, render: (row, rowIndex) => h(NButton, { quaternary: true, type: 'error', size: 'tiny', onClick: () => removeCatalogRow(rowIndex) }, { default: () => '×' }) },
+];
+
+// OpenClaw 表格列定义
+const openclawColumns = [
+  { title: '模型 ID', key: 'id', render: (row) => h(NInput, { value: row.id, 'onUpdate:value': v => row.id = v, placeholder: 'kimi-k2.7-code', size: 'small' }) },
+  { title: '显示名', key: 'name', render: (row) => h(NInput, { value: row.name, 'onUpdate:value': v => row.name = v, placeholder: 'Kimi K2.7 Code', size: 'small' }) },
+  { title: '上下文窗口', key: 'contextWindow', width: 100, render: (row) => h(NInput, { value: row.contextWindow, 'onUpdate:value': v => row.contextWindow = v, placeholder: '262144', size: 'small' }) },
+  { title: '操作', key: 'actions', width: 80, render: (row, rowIndex) => h(NFlex, { size: 4 }, { default: () => [
+    h(NButton, { quaternary: true, size: 'tiny', disabled: rowIndex === 0, title: rowIndex === 0 ? '当前主模型' : '设为主模型', onClick: () => promoteOpenclawRow(rowIndex) }, { default: () => '↑' }),
+    h(NButton, { quaternary: true, type: 'error', size: 'tiny', title: '删除', onClick: () => removeOpenclawRow(rowIndex) }, { default: () => '×' }),
+  ] }) },
+];
 </script>
 
 <template>
-  <div v-if="visible" class="overlay" @mousedown.self="overlayMouseDown" @click.self="onOverlayClick">
-    <div class="panel">
-      <div class="panel-header">
-        <h2>{{ initialData ? '编辑供应商' : '添加供应商' }}</h2>
-        <button class="close-btn" @click="close">&times;</button>
-      </div>
+  <n-drawer :show="visible" width="50vw" placement="right" @update:show="v => { if (!v) handleClose() }">
+    <n-drawer-content closable>
+      <template #header>
+        {{ initialData ? '编辑供应商' : '添加供应商' }}
+      </template>
 
-      <div class="panel-body">
-        <div v-if="!initialData" class="preset-search">
-          <label class="field-label-sm">从预设导入</label>
-        <div class="search-wrap">
-          <input v-model="presetSearch" placeholder="搜索供应商预设.." 
-            class="search-input"
-            @focus="showPresetDropdown = true"
-            @blur="showPresetDropdown = false">
-          <div v-if="showPresetDropdown && filteredPresets.length" class="search-dropdown">
-            <button v-for="p in filteredPresets" :key="p.name"
-              class="search-item"
-              @mousedown.prevent="fillPreset(p); presetSearch = ''; showPresetDropdown = false">
-              <span class="search-item-name">{{ p.name }}</span>
-              <span class="search-item-model">{{ p.model }}</span>
-            </button>
-          </div>
-          <div v-if="showPresetDropdown && presetSearch && !filteredPresets.length" class="search-empty">
-无匹配预设          </div>
-        </div>
-      </div>
-        <fieldset><legend>基本信息</legend>
-          <div class="row-2">
-            <div class="field"><label>名称</label><input v-model="form.name" placeholder="如 NewAPI"></div>
-            <div class="field"><label>官网</label><input v-model="form.websiteUrl" placeholder="https://..."></div>
-          </div>
-          <div class="field" style="margin-top:10px"><label>备注</label><input v-model="form.remark" :placeholder="'选填，例如：个人账号 / 充值到期 / 限速说明'"></div>
-          <div class="row-2" style="margin-top:10px">
-<div class="field"><label>分类</label>
-              <select v-model="form.category">
-                <option v-for="c in CATEGORIES" :key="c.v" :value="c.v">{{ c.l }}</option>
-              </select>
-            </div>
-            <div class="field"><label>图标</label>
-              <div class="icon-picker">
-                <button v-for="p in ICON_PRESETS" :key="p.icon" type="button"
-                  class="icon-dot" :class="{ 'icon-dot--on': form.icon === p.icon }"
-                  :style="{ background: p.color }" :title="p.icon"
-                  @click="pickIcon(p)"></button>
-              </div>
-            </div>
-          </div>
-        </fieldset>
+      <div class="drawer-body">
+        <!-- 预设搜索 -->
+        <n-flex v-if="!initialData" vertical :size="6" class="preset-section">
+          <n-text depth="3" style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .3px;">从预设导入</n-text>
+          <n-select
+            v-model:value="presetSearch"
+            :options="presetOptions"
+            placeholder="搜索供应商预设.."
+            filterable
+            clearable
+            @update:value="(val) => {
+              const p = (PRESETS[activeTab()] || []).find(x => x.name === val);
+              if (p) { fillPreset(p); presetSearch = ''; }
+            }"
+          />
+        </n-flex>
 
-        <!-- Codex 专属：config.toml 实时预览（纯表单配置，预览由下方字段生成） -->
-        <details v-if="tab === 'codex'" class="config-preview">
-          <summary>预览 config.toml</summary>
-          <pre class="config-preview__code">{{ codexConfigPreview }}</pre>
-          <p class="tip">此预览由下方表单字段实时生成，切换供应商时写入 ~/.codex/config.toml。</p>
-        </details>
+        <!-- 基本信息 -->
+        <n-card title="基本信息" size="small" :bordered="true" class="section-card">
+          <n-flex vertical :size="10">
+            <n-grid :cols="2" :x-gap="10">
+              <n-gi>
+                <n-form-item label="名称" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                  <n-input v-model:value="form.name" placeholder="如 NewAPI" />
+                </n-form-item>
+              </n-gi>
+              <n-gi>
+                <n-form-item label="官网" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                  <n-input v-model:value="form.websiteUrl" placeholder="https://..." />
+                </n-form-item>
+              </n-gi>
+            </n-grid>
+            <n-form-item label="备注" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+              <n-input v-model:value="form.remark" placeholder="选填，例如：个人账号 / 充值到期 / 限速说明" />
+            </n-form-item>
+            <n-grid :cols="2" :x-gap="10">
+              <n-gi>
+                <n-form-item label="分类" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                  <n-select v-model:value="form.category" :options="CATEGORIES" />
+                </n-form-item>
+              </n-gi>
+              <n-gi>
+                <n-form-item label="图标" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                  <div class="icon-picker">
+                    <div
+                      v-for="p in ICON_PRESETS" :key="p.icon"
+                      class="icon-dot" :class="{ 'icon-dot--on': form.icon === p.icon }"
+                      :style="{ background: p.color }" :title="p.icon"
+                      @click="pickIcon(p)"
+                    />
+                  </div>
+                </n-form-item>
+              </n-gi>
+            </n-grid>
+          </n-flex>
+        </n-card>
 
-        <fieldset><legend>连接配置</legend>
-<div class="field"><label>API 类型</label>
-            <select v-model="form.configType">
-<option value="openai">OpenAI 兼容</option>
-              <option value="anthropic">Anthropic 原生</option>
-              <option value="gemini">Gemini 原生</option>
-              <option value="openclaw">OpenClaw</option>
-            </select>
-          </div>
-          <div class="field" style="margin-top:10px"><label>{{ tab === 'gemini' ? 'API 端点' : 'Base URL' }}</label>
-            <input v-model="form.baseUrl" :placeholder="tab==='claude' ? 'https://api.anthropic.com' : tab==='gemini' ? 'https://your-endpoint.com/' : 'https://api.openai.com/v1'"></div>
-          <p v-if="tab==='gemini' && form.category==='official'" class="tip">Google 官方使用 OAuth 个人认证，无需填写 API Key，首次使用会自动打开浏览器登录。</p>
-        </fieldset>
-
-        <fieldset><legend>认证</legend>
-          <div v-if="tab==='codex' || tab==='claude'" class="field">
-            <label>认证方式</label>
-            <select v-model="form.authMethod">
-              <option value="api_key">API Key</option>
-<option value="oauth_chatgpt">ChatGPT OAuth (Codex 订阅)</option>
-<option value="oauth_xai">xAI OAuth (Grok 订阅)</option>
-              <option value="oauth_copilot">GitHub Copilot OAuth</option>
-            </select>
-          </div>
-          <div v-if="form.authMethod!=='api_key'" class="field oauth-box">
-            <p class="tip">uTools 环境暂不支持后端 token 交换，请在浏览器完成 OAuth 后手动粘贴 Access Token 到下方 API Key。</p>
-            <button type="button" class="btn-oauth"
-              @click="openOAuthUrl(
-                form.authMethod==='oauth_chatgpt' ? 'https://chatgpt.com/codex' :
-                form.authMethod==='oauth_xai' ? 'https://x.ai/api' :
-                'https://github.com/login/oauth/authorize?client_id=Iv1.b507a08c87ecfe98&scope=read:user')">
-              打开 OAuth 登录页            </button>
-          </div>
-          <div class="field" style="margin-top:10px">
-            <label>API Key</label>
-            <div class="apikey-wrap"><input v-model="form.apiKey" :type="showApiKey ? 'text' : 'password'" placeholder="sk-..."><button type="button" class="btn-eye" @click="showApiKey = !showApiKey" :title="showApiKey ? '隐藏' : '显示'"><svg v-if="!showApiKey" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button></div>
-          </div>
-          <div v-if="tab==='claude'" class="field" style="margin-top:10px"><label>认证字段 <small>(写入哪个环境变量)</small></label>
-            <select v-model="form.authField">
-              <option value="ANTHROPIC_AUTH_TOKEN">ANTHROPIC_AUTH_TOKEN（默认）</option>
-              <option value="ANTHROPIC_API_KEY">ANTHROPIC_API_KEY</option>
-            </select>
-          </div>
-          <div v-if="tab==='codex'" class="row-2" style="margin-top:10px">
-            <div class="field"><label>Header 名</label><input v-model="form.apiKeyHeader" placeholder="Authorization"></div>
-            <div class="field"><label>前缀</label><input v-model="form.apiKeyPrefix" placeholder="Bearer "></div>
-          </div>
-        </fieldset>
-
-        <fieldset><legend>模型配置</legend>
-          <template v-if="tab==='codex'">
-            <div class="row-2">
-              <div class="field"><label>默认模型</label><input v-model="form.model" placeholder="gpt-5.4"></div>
-              <div class="field"><label>推理强度</label>
-                <select v-model="form.reasoningEffort">
-                  <option value="minimal">minimal</option><option value="low">low</option>
-                  <option value="medium">medium</option><option value="high">high</option>
-                </select>
-              </div>
-            </div>
-            <div class="field" style="margin-top:10px"><label>上游协议 <small>(供应商 API 格式)</small></label>
-              <select v-model="codexProtocol">
-                <option value="">Responses（OpenAI 官方 / gpt-5 系，直连）</option>
-                <option value="openai_chat">Chat Completions（DeepSeek / 通义 / Kimi 等，走代理转换）</option>
-                <option value="openai_responses">Responses 兼容（火山 plan / 豆包等国产 Responses 端点）</option>
-                <option value="anthropic">Anthropic Messages（走代理转换）</option>
-              </select>
-              <p class="tip">按供应商真实 API 协议选择。Chat / Anthropic 需开启代理路由接管才能转换；Responses 与 Responses 兼容端点可直连。</p>
-            </div>
-            <div v-if="codexProxyHint" class="proxy-hint" :class="'proxy-hint--' + codexProxyHint.level">
-              {{ codexProxyHint.text }}
-            </div>
-            <template v-if="form.apiFormat==='anthropic'">
-              <div class="field" style="margin-top:10px"><label>认证字段 <small>(网关接收 Key 的请求头)</small></label>
-                <select v-model="form.authField">
-                  <option value="ANTHROPIC_AUTH_TOKEN">ANTHROPIC_AUTH_TOKEN (Authorization: Bearer)</option>
-                  <option value="ANTHROPIC_API_KEY">ANTHROPIC_API_KEY (x-api-key)</option>
-                </select>
-              </div>
-              <label class="ck" style="margin-top:10px">
-                <input type="checkbox" v-model="form.impersonateClaudeCode">
-                模拟 Claude Code 客户端<small>(伪装 UA / anthropic-beta / x-app)</small>
-              </label>
+        <!-- Codex config.toml 预览 -->
+        <n-collapse v-if="tab === 'codex'" class="toml-preview">
+          <n-collapse-item name="preview">
+            <template #header>
+              <n-text depth="2" style="font-size: 11px; font-weight: 600;">config.toml 预览</n-text>
             </template>
-            <div class="field" style="margin-top:10px">
-              <label>模型目录 <small>(写入 model_catalog_json, /model 菜单显示)</small></label>
-              <table class="catalog">
-                <thead><tr><th>菜单显示名</th><th>实际模型 ID</th><th>上下文窗口</th><th></th></tr></thead>
-                <tbody>
-                  <tr v-for="(r, i) in catalogRows" :key="i">
-                    <td><input v-model="r.displayName" placeholder="Ark Code Latest"></td>
-                    <td><input v-model="r.model" placeholder="ark-code-latest"></td>
-                    <td><input v-model="r.contextWindow" placeholder="256000" style="width:90px"></td>
-                    <td><button type="button" class="btn-mini" @click="removeCatalogRow(i)">×</button></td>
-                  </tr>
-                </tbody>
-              </table>
-              <button type="button" class="btn-add" @click="addCatalogRow">+ 添加模型</button>
-              <p class="tip">修改后需重启 Codex 刷新 /model 列表。</p>
+            <template #header-extra>
+              <n-button quaternary size="tiny" type="primary" @click.stop="copyConfigToml">
+                {{ copied ? '✓ 已复制' : '复制' }}
+              </n-button>
+            </template>
+            <div class="toml-preview__code">
+              <n-code :code="codexConfigPreview" language="toml" />
             </div>
-            <div class="field" style="margin-top:10px">
-              <label>模型偏好 <small>(可选, 写入模型目录)</small></label>
-              <div class="row-2">
-                <div class="field">
-                  <label>输出详细度</label>
-                  <select v-model="form.verbosity">
-                    <option value="low">简洁 (low)</option>
-                    <option value="medium">适中 (medium)</option>
-                    <option value="high">详细 (high)</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label>推理摘要</label>
-                  <select v-model="form.reasoningSummary">
-                    <option value="none">不显示 (none)</option>
-                    <option value="auto">自动 (auto)</option>
-                  </select>
-                </div>
+            <n-text depth="3" style="font-size: 10px; margin-top: 4px; display: block;">由表单实时生成，切换供应商时写入 ~/.codex/config.toml</n-text>
+          </n-collapse-item>
+        </n-collapse>
+
+        <!-- 连接配置 -->
+        <n-card title="连接配置" size="small" :bordered="true" class="section-card">
+          <n-flex vertical :size="10">
+            <n-form-item label="API 类型" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+              <n-select v-model:value="form.configType" :options="configTypeOptions" />
+            </n-form-item>
+            <n-form-item :label="tab === 'gemini' ? 'API 端点' : 'Base URL'" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+              <n-input
+                v-model:value="form.baseUrl"
+                :placeholder="tab==='claude' ? 'https://api.anthropic.com' : tab==='gemini' ? 'https://your-endpoint.com/' : 'https://api.openai.com/v1'"
+              />
+            </n-form-item>
+            <n-alert v-if="tab==='gemini' && form.category==='official'" type="info" size="small">
+              Google 官方使用 OAuth 个人认证，无需填写 API Key，首次使用会自动打开浏览器登录。
+            </n-alert>
+          </n-flex>
+        </n-card>
+
+        <!-- 认证 -->
+        <n-card title="认证" size="small" :bordered="true" class="section-card">
+          <n-flex vertical :size="2">
+            <n-form-item v-if="tab==='codex' || tab==='claude'" label="认证方式" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+              <n-select v-model:value="form.authMethod" :options="authMethodOptions" />
+            </n-form-item>
+            <n-alert v-if="form.authMethod!=='api_key'" type="warning" size="small">
+              <template #default>
+                <n-text>uTools 环境暂不支持后端 token 交换，请在浏览器完成 OAuth 后手动粘贴 Access Token 到下方 API Key。</n-text>
+                <n-button
+                  type="primary" size="small" secondary style="margin-top: 8px;"
+                  @click="openOAuthUrl(
+                    form.authMethod==='oauth_chatgpt' ? 'https://chatgpt.com/codex' :
+                    form.authMethod==='oauth_xai' ? 'https://x.ai/api' :
+                    'https://github.com/login/oauth/authorize?client_id=Iv1.b507a08c87ecfe98&scope=read:user'
+                  )"
+                >打开 OAuth 登录页</n-button>
+              </template>
+            </n-alert>
+            <n-form-item label="API Key" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+              <n-input
+                v-model:value="form.apiKey"
+                type="password"
+                placeholder="sk-..."
+                show-password-on="click"
+              />
+            </n-form-item>
+            <n-form-item v-if="tab==='claude'" label="认证字段" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+              <template #label>
+                <n-text style="font-size: 11px; font-weight: 600;">认证字段 <n-text depth="3" style="font-size: 11px; font-weight: 400;">(写入哪个环境变量)</n-text></n-text>
+              </template>
+              <n-select v-model:value="form.authField" :options="authFieldOptions" />
+            </n-form-item>
+            <n-grid v-if="tab==='codex'" :cols="2" :x-gap="10">
+              <n-gi>
+                <n-form-item label="Header 名" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                  <n-input v-model:value="form.apiKeyHeader" placeholder="Authorization" />
+                </n-form-item>
+              </n-gi>
+              <n-gi>
+                <n-form-item label="前缀" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                  <n-input v-model:value="form.apiKeyPrefix" placeholder="Bearer " />
+                </n-form-item>
+              </n-gi>
+            </n-grid>
+          </n-flex>
+        </n-card>
+
+        <!-- 模型配置 -->
+        <n-card title="模型配置" size="small" :bordered="true" class="section-card">
+          <n-flex vertical :size="10">
+            <!-- Codex -->
+            <template v-if="tab==='codex'">
+              <n-grid :cols="2" :x-gap="10">
+                <n-gi>
+                  <n-form-item label="默认模型" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                    <n-input v-model:value="form.model" placeholder="gpt-5.4" />
+                  </n-form-item>
+                </n-gi>
+                <n-gi>
+                  <n-form-item label="推理强度" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                    <n-select v-model:value="form.reasoningEffort" :options="reasoningEffortOptions" />
+                  </n-form-item>
+                </n-gi>
+              </n-grid>
+              <n-form-item label="上游协议" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                <template #label>
+                  <n-text style="font-size: 11px; font-weight: 600;">上游协议 <n-text depth="3" style="font-size: 11px; font-weight: 400;">(供应商 API 格式)</n-text></n-text>
+                </template>
+                <n-select v-model:value="codexProtocol" :options="codexProtocolOptions" />
+              </n-form-item>
+              <n-text depth="3" style="font-size: 11px;">按供应商真实 API 协议选择。Chat / Anthropic 需开启代理路由接管才能转换；Responses 与 Responses 兼容端点可直连。</n-text>
+              <n-alert v-if="codexProxyHint" :type="codexProxyHint.level === 'required' ? 'error' : codexProxyHint.level === 'optional' ? 'info' : 'success'" size="small">
+                {{ codexProxyHint.text }}
+              </n-alert>
+              <template v-if="form.apiFormat==='anthropic'">
+                <n-form-item label="认证字段" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                  <template #label>
+                    <n-text style="font-size: 11px; font-weight: 600;">认证字段 <n-text depth="3" style="font-size: 11px; font-weight: 400;">(网关接收 Key 的请求头)</n-text></n-text>
+                  </template>
+                  <n-select v-model:value="form.authField" :options="authFieldOptions" />
+                </n-form-item>
+                <n-checkbox v-model:checked="form.impersonateClaudeCode">
+                  模拟 Claude Code 客户端 <n-text depth="3" style="font-size: 11px;">(伪装 UA / anthropic-beta / x-app)</n-text>
+                </n-checkbox>
+              </template>
+              <div>
+                <n-text style="font-size: 11px; font-weight: 600; display: block; margin-bottom: 6px;">模型目录 <n-text depth="3" style="font-weight: 400;">(写入 model_catalog_json, /model 菜单显示)</n-text></n-text>
+                <n-data-table
+                  :columns="catalogColumns"
+                  :data="catalogRows"
+                  :bordered="false"
+                  size="small"
+                  :max-height="200"
+                />
+                <n-button dashed size="small" @click="addCatalogRow" style="margin-top: 6px; width: 100%;">+ 添加模型</n-button>
+                <n-text depth="3" style="font-size: 11px; margin-top: 4px; display: block;">修改后需重启 Codex 刷新 /model 列表。</n-text>
               </div>
-              <label class="ck" style="margin-top:8px">
-                <input type="checkbox" v-model="form.webSearch">
-                启用联网搜索<small>(web_search 工具)</small>
-              </label>
-            </div>
-          </template>
+              <n-text style="font-size: 11px; font-weight: 600; display: block; margin-bottom: 6px;">模型偏好 <n-text depth="3" style="font-weight: 400;">(可选, 写入模型目录)</n-text></n-text>
+              <n-grid :cols="2" :x-gap="10">
+                <n-gi>
+                  <n-form-item label="输出详细度" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                    <n-select v-model:value="form.verbosity" :options="verbosityOptions" />
+                  </n-form-item>
+                </n-gi>
+                <n-gi>
+                  <n-form-item label="推理摘要" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                    <n-select v-model:value="form.reasoningSummary" :options="reasoningSummaryOptions" />
+                  </n-form-item>
+                </n-gi>
+              </n-grid>
+              <n-checkbox v-model:checked="form.webSearch">
+                启用联网搜索 <n-text depth="3" style="font-size: 11px;">(web_search 工具)</n-text>
+              </n-checkbox>
+            </template>
 
-          <template v-else-if="tab==='claude'">
-            <div class="field"><label>默认模型 <small>(ANTHROPIC_MODEL)</small></label><input v-model="form.model" placeholder="claude-sonnet-4-20250514"></div>
-            <label class="ck" style="margin-top:8px">
-              <input type="checkbox" v-model="form.supports1M">
-              声明支持 1M 上下文<small>(为角色模型追加 [1M] 后缀)</small>
-            </label>
-            <div class="row-2" style="margin-top:10px">
-              <div class="field"><label>Sonnet 模型</label><input v-model="form.sonnetModel" placeholder="claude-sonnet-4-20250514"></div>
-              <div class="field"><label>Opus 模型</label><input v-model="form.opusModel" placeholder="留空=默认"></div>
-            </div>
-            <div class="row-2" style="margin-top:10px">
-              <div class="field"><label>Fable 模型</label><input v-model="form.fableModel" placeholder="留空=默认"></div>
-              <div class="field"><label>Haiku 模型 <small>(兜底)</small></label><input v-model="form.haikuModel" placeholder="留空=默认"></div>
-            </div>
-            <div class="field" style="margin-top:10px"><label>Subagent 模型 <small>(CLAUDE_CODE_SUBAGENT_MODEL)</small></label><input v-model="form.subagentModel" placeholder="留空=默认"></div>
-          </template>
+            <!-- Claude -->
+            <template v-else-if="tab==='claude'">
+              <n-form-item label="默认模型" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                <template #label>
+                  <n-text style="font-size: 11px; font-weight: 600;">默认模型 <n-text depth="3" style="font-weight: 400;">(ANTHROPIC_MODEL)</n-text></n-text>
+                </template>
+                <n-input v-model:value="form.model" placeholder="claude-sonnet-4-20250514" />
+              </n-form-item>
+              <n-checkbox v-model:checked="form.supports1M">
+                声明支持 1M 上下文 <n-text depth="3" style="font-size: 11px;">(为角色模型追加 [1M] 后缀)</n-text>
+              </n-checkbox>
+              <n-grid :cols="2" :x-gap="10">
+                <n-gi>
+                  <n-form-item label="Sonnet 模型" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                    <n-input v-model:value="form.sonnetModel" placeholder="claude-sonnet-4-20250514" />
+                  </n-form-item>
+                </n-gi>
+                <n-gi>
+                  <n-form-item label="Opus 模型" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                    <n-input v-model:value="form.opusModel" placeholder="留空=默认" />
+                  </n-form-item>
+                </n-gi>
+              </n-grid>
+              <n-grid :cols="2" :x-gap="10">
+                <n-gi>
+                  <n-form-item label="Fable 模型" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                    <n-input v-model:value="form.fableModel" placeholder="留空=默认" />
+                  </n-form-item>
+                </n-gi>
+                <n-gi>
+                  <n-form-item label="Haiku 模型" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                    <template #label>
+                      <n-text style="font-size: 11px; font-weight: 600;">Haiku 模型 <n-text depth="3" style="font-weight: 400;">(兜底)</n-text></n-text>
+                    </template>
+                    <n-input v-model:value="form.haikuModel" placeholder="留空=默认" />
+                  </n-form-item>
+                </n-gi>
+              </n-grid>
+              <n-form-item label="Subagent 模型" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                <template #label>
+                  <n-text style="font-size: 11px; font-weight: 600;">Subagent 模型 <n-text depth="3" style="font-weight: 400;">(CLAUDE_CODE_SUBAGENT_MODEL)</n-text></n-text>
+                </template>
+                <n-input v-model:value="form.subagentModel" placeholder="留空=默认" />
+              </n-form-item>
+            </template>
 
-          <template v-else-if="tab==='openclaw'">
-            <div class="field"><label>API 协议</label>
-              <select v-model="form.apiProtocol">
-                <option value="openai-completions">OpenAI Completions</option>
-                <option value="openai-responses">OpenAI Responses</option>
-                <option value="anthropic-messages">Anthropic Messages</option>
-                <option value="google-generative-ai">Google Generative AI</option>
-                <option value="bedrock-converse-stream">AWS Bedrock</option>
-              </select>
-            </div>
-            <div class="field" style="margin-top:10px">
-              <label>模型列表 <small>(第一行为默认主模型，其余为回退)</small></label>
-              <table class="catalog">
-                <thead><tr><th style="width:34%">模型 ID</th><th>显示名</th><th style="width:22%">上下文窗口</th><th style="width:80px">操作</th></tr></thead>
-                <tbody>
-                  <tr v-for="(r, i) in openclawRows" :key="i">
-                    <td><input v-model="r.id" placeholder="kimi-k2.7-code"></td>
-                    <td><input v-model="r.name" placeholder="Kimi K2.7 Code"></td>
-                    <td><input v-model="r.contextWindow" placeholder="262144"></td>
-                    <td style="white-space:nowrap">
-                      <button type="button" class="btn-mini" :disabled="i===0" :title="i===0?'当前主模型':'设为主模型'" @click="promoteOpenclawRow(i)">↑</button>
-                      <button type="button" class="btn-mini" title="删除" @click="removeOpenclawRow(i)">×</button>
-                    </td>
-                  </tr>
-                  <tr v-if="!openclawRows.length"><td colspan="4" style="text-align:center;color:var(--text-muted);padding:8px 0">暂无模型，点下方按钮添加</td></tr>
-                </tbody>
-              </table>
-              <button type="button" class="btn-add" @click="addOpenclawRow">+ 添加模型</button>
-              <p class="tip">切换时会写入 ~/.openclaw/openclaw.json 的 models.providers[供应商名]，主模型自动使用第一行，其余作为 fallback 依次回退。</p>
-            </div>
-          </template>
+            <!-- OpenClaw -->
+            <template v-else-if="tab==='openclaw'">
+              <n-form-item label="API 协议" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                <n-select v-model:value="form.apiProtocol" :options="apiProtocolOptions" />
+              </n-form-item>
+              <div>
+                <n-text style="font-size: 11px; font-weight: 600; display: block; margin-bottom: 6px;">模型列表 <n-text depth="3" style="font-weight: 400;">(第一行为默认主模型，其余为回退)</n-text></n-text>
+                <n-data-table
+                  :columns="openclawColumns"
+                  :data="openclawRows"
+                  :bordered="false"
+                  size="small"
+                  :max-height="200"
+                />
+                <n-text v-if="!openclawRows.length" depth="3" style="font-size: 12px; text-align: center; padding: 8px 0; display: block;">暂无模型，点下方按钮添加</n-text>
+                <n-button dashed size="small" @click="addOpenclawRow" style="margin-top: 6px; width: 100%;">+ 添加模型</n-button>
+                <n-text depth="3" style="font-size: 11px; margin-top: 4px; display: block;">切换时会写入 ~/.openclaw/openclaw.json 的 models.providers[供应商名]，主模型自动使用第一行，其余作为 fallback 依次回退。</n-text>
+              </div>
+            </template>
 
-          <template v-else>
-            <div class="field"><label>模型 <small>(GEMINI_MODEL)</small></label><input v-model="form.model" placeholder="gemini-2.5-pro"></div>
-          </template>
-        </fieldset>
+            <!-- Gemini -->
+            <template v-else>
+              <n-form-item label="模型" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                <template #label>
+                  <n-text style="font-size: 11px; font-weight: 600;">模型 <n-text depth="3" style="font-weight: 400;">(GEMINI_MODEL)</n-text></n-text>
+                </template>
+                <n-input v-model:value="form.model" placeholder="gemini-2.5-pro" />
+              </n-form-item>
+            </template>
+          </n-flex>
+        </n-card>
 
-        <fieldset><legend>高级</legend>
-          <div class="field"><label>额外 Header <small>(每行一个 Key: Value)</small></label>
-            <textarea v-model="form.extraHeaders" rows="3" placeholder="X-Custom: value"></textarea>
-          </div>
-
-          <template v-if="tab==='codex'">
-            <div class="field" style="margin-top:10px"><label>最大输出 tokens <small>(max_tokens, 留空=默认8192)</small></label>
-              <input v-model="form.maxOutputTokens" type="number" placeholder="8192">
-            </div>
-            <div class="field" style="margin-top:10px"><label>自定义 User-Agent</label>
-              <input v-model="form.customUserAgent" placeholder="Mozilla/5.0 ...">
-            </div>
-            <div class="field" style="margin-top:10px"><label>Header 覆盖 <small>(JSON, 代理转换时生效)</small></label>
-              <textarea v-model="form.headersOverride" rows="2" class="mono" placeholder='{"x-custom": "value"}'></textarea>
-            </div>
-            <div class="field" style="margin-top:10px"><label>Body 覆盖 <small>(JSON, 合并到请求体)</small></label>
-              <textarea v-model="form.bodyOverride" rows="2" class="mono" placeholder='{"max_output_tokens": 16384}'></textarea>
-            </div>
-          </template>
-        </fieldset>
+        <!-- 高级 -->
+        <n-card title="高级" size="small" :bordered="true" class="section-card">
+          <n-flex vertical :size="10">
+            <n-form-item label="额外 Header" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+              <template #label>
+                <n-text style="font-size: 11px; font-weight: 600;">额外 Header <n-text depth="3" style="font-weight: 400;">(每行一个 Key: Value)</n-text></n-text>
+              </template>
+              <n-input v-model:value="form.extraHeaders" type="textarea" :rows="3" placeholder="X-Custom: value" />
+            </n-form-item>
+            <template v-if="tab==='codex'">
+              <n-form-item label="最大输出 tokens" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                <template #label>
+                  <n-text style="font-size: 11px; font-weight: 600;">最大输出 tokens <n-text depth="3" style="font-weight: 400;">(max_tokens, 留空=默认8192)</n-text></n-text>
+                </template>
+                <n-input-number v-model:value="form.maxOutputTokens" placeholder="8192" :show-button="false" style="width: 100%;" />
+              </n-form-item>
+              <n-form-item label="自定义 User-Agent" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                <n-input v-model:value="form.customUserAgent" placeholder="Mozilla/5.0 ..." />
+              </n-form-item>
+              <n-form-item label="Header 覆盖" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                <template #label>
+                  <n-text style="font-size: 11px; font-weight: 600;">Header 覆盖 <n-text depth="3" style="font-weight: 400;">(JSON, 代理转换时生效)</n-text></n-text>
+                </template>
+                <n-input v-model:value="form.headersOverride" type="textarea" :rows="2" placeholder='{"x-custom": "value"}' style="font-family: 'SF Mono', 'Fira Code', monospace;" />
+              </n-form-item>
+              <n-form-item label="Body 覆盖" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                <template #label>
+                  <n-text style="font-size: 11px; font-weight: 600;">Body 覆盖 <n-text depth="3" style="font-weight: 400;">(JSON, 合并到请求体)</n-text></n-text>
+                </template>
+                <n-input v-model:value="form.bodyOverride" type="textarea" :rows="2" placeholder='{"max_output_tokens": 16384}' style="font-family: 'SF Mono', 'Fira Code', monospace;" />
+              </n-form-item>
+            </template>
+          </n-flex>
+        </n-card>
       </div>
 
-      <div class="panel-footer">
-        <button class="btn-cancel" @click="close">取消</button>
-<button class="btn-save" @click="save">保存</button>
-      </div>
-    </div>
-  </div>
+      <template #footer>
+        <n-flex justify="end" :size="8">
+          <n-button quaternary @click="handleClose">取消</n-button>
+          <n-button type="primary" strong @click="save">保存</n-button>
+        </n-flex>
+      </template>
+    </n-drawer-content>
+  </n-drawer>
 </template>
 
 <style scoped>
-.apikey-wrap { position: relative; display: flex; }
-.apikey-wrap input { flex: 1; padding-right: 36px; }
-.btn-eye { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; padding: 4px; opacity: 0.5; display: flex; align-items: center; justify-content: center; border-radius: 4px; }
-.btn-eye:hover { opacity: 1; }
-.overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 100;
-}
-.panel {
-  position: fixed; top: 0; right: 0; bottom: 0;
-  width: 100%; max-width: 460px;
+/* ── Drawer 项目基调 ── */
+:deep(.n-drawer-body-content) {
   background: var(--bg);
-  display: flex; flex-direction: column;
-  box-shadow: -4px 0 24px rgba(0,0,0,.12);
-}
-.panel-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0;
-}
-.panel-header h2 { font-size: 16px; font-weight: 600; }
-.close-btn {
-  width: 28px; height: 28px; border: none; background: none;
-  font-size: 22px; cursor: pointer; color: var(--text-secondary);
-  border-radius: 6px; display: flex; align-items: center; justify-content: center;
-}
-.close-btn:hover { background: var(--bg-hover); color: var(--text); }
-
-.panel-body {
-  flex: 1; overflow-y: auto; padding: 16px 20px;
-  display: flex; flex-direction: column; gap: 16px;
-}
-.panel-footer {
-  display: flex; justify-content: flex-end; gap: 8px;
-  padding: 14px 20px; border-top: 1px solid var(--border); flex-shrink: 0;
+  color: var(--text);
 }
 
-fieldset {
-  border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px;
+:deep(.n-drawer-content) {
+  background: var(--bg) !important;
+  color: var(--text);
+  --n-text-color: var(--text);
 }
-legend {
-  font-size: 11px; font-weight: 600; color: var(--text-muted);
-  text-transform: uppercase; letter-spacing: .5px; padding: 0 6px;
-}
-.field { display: flex; flex-direction: column; gap: 4px; }
-.field label {
-  font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .3px;
-}
-.field label small { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--text-muted); }
-.field input, .field select, .field textarea {
-  padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
-  font-size: 13px; background: var(--bg-card); color: var(--text);
-  outline: none; font-family: inherit; transition: border-color .15s;
-}
-.field input:focus, .field select:focus, .field textarea:focus { border-color: var(--primary); }
-.field textarea { resize: vertical; min-height: 60px; }
-.field .mono { font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; }
 
-.row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+:deep(.n-drawer-header__main) {
+  color: var(--text);
+}
 
-.btn-cancel, .btn-save {
-  padding: 8px 20px; border-radius: var(--radius);
-  font-size: 13px; font-weight: 500; cursor: pointer; transition: all .15s;
+:deep(.n-drawer-content .n-drawer-header) {
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
 }
-.btn-cancel {
-  border: 1px solid var(--border); background: none; color: var(--text-secondary);
-}
-.btn-cancel:hover { background: var(--bg-hover); color: var(--text); }
-.btn-save {
-  border: 1px solid var(--primary); background: var(--primary); color: #fff;
-}
-.btn-save:hover { background: var(--primary-hover); }
 
-.preset-search { margin-bottom: 2px; }
-.field-label-sm {
-  font-size: 11px; font-weight: 600; color: var(--text-secondary);
-  text-transform: uppercase; letter-spacing: .3px;
-  display: block; margin-bottom: 6px;
+:deep(.n-drawer-content .n-drawer-footer) {
+  background: var(--bg);
+  border-top: 1px solid var(--border);
 }
-.search-wrap { position: relative; }
-.search-input {
-  width: 100%; padding: 8px 12px;
-  border: 1px solid var(--border); border-radius: 6px;
-  font-size: 13px; background: var(--bg-card); color: var(--text);
-  outline: none; transition: border-color .15s;
-}
-.search-input:focus { border-color: var(--primary); }
-.search-dropdown {
-  position: absolute; top: 100%; left: 0; right: 0;
-  max-height: 180px; overflow-y: auto;
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: 6px; margin-top: 4px;
-  box-shadow: 0 4px 12px rgba(0,0,0,.1);
-  z-index: 10;
-}
-.search-item {
-  width: 100%; display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 12px; border: none; background: none; cursor: pointer;
-  font-size: 13px; color: var(--text); text-align: left;
-  transition: background .1s;
-}
-.search-item:hover { background: var(--bg-hover); }
-.search-item-name { font-weight: 500; }
-.search-item-model { font-size: 11px; color: var(--text-muted); }
-.search-empty {
-  position: absolute; top: 100%; left: 0; right: 0;
-  padding: 10px 12px; font-size: 12px; color: var(--text-muted);
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: 6px; margin-top: 4px;
-}
-.tip { font-size: 11px; color: var(--text-muted); margin-top: 6px; line-height: 1.5; }
-.proxy-hint {
-  margin-top: 10px; padding: 8px 10px; border-radius: 6px;
-  font-size: 12px; line-height: 1.5; border: 1px solid transparent;
-}
-.proxy-hint--required { background: #fdecec; color: #c0392b; border-color: #f5c6cb; }
-.proxy-hint--optional { background: #eef4fd; color: #2b6cb0; border-color: #cdddf5; }
-.proxy-hint--ok { background: #eaf7ef; color: #1f8a4c; border-color: #cdebd8; }
-.link { font-size: 11px; color: var(--primary); text-decoration: none; margin-left: 6px; text-transform: none; letter-spacing: 0; font-weight: 400; }
-.link:hover { text-decoration: underline; }
 
-.icon-picker { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0; }
+.drawer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.preset-section {
+  padding-bottom: 2px;
+}
+
+.section-card :deep(.n-card__content) {
+  padding: 8px 10px;
+}
+
+.section-card :deep(.n-card-header) {
+  padding: 8px 10px 4px;
+}
+
+.section-card :deep(.n-card-header__main) {
+  color: var(--text);
+}
+
+/* 表单项紧凑 */
+.drawer-body :deep(.n-form-item) {
+  margin-bottom: 0 !important;
+  --n-label-padding-vertical: 0 0 2px 0 !important;
+  --n-blank-height-small: 0px !important;
+  --n-blank-height-medium: 0px !important;
+  --n-blank-height-large: 0px !important;
+}
+
+.drawer-body :deep(.n-form-item .n-form-item-label) {
+  font-weight: 600;
+  padding-bottom: 2px !important;
+  min-height: auto !important;
+  line-height: 1.4;
+}
+
+/* 压缩 label 与控件之间的空白 */
+.drawer-body :deep(.n-form-item .n-form-item-blank) {
+  min-height: 0;
+}
+
+/* 选择器、输入框等控件紧凑 */
+.drawer-body :deep(.n-base-selection),
+.drawer-body :deep(.n-input) {
+  --n-height: 30px !important;
+}
+
+/* 反馈区域无错误时不占位 */
+.drawer-body :deep(.n-form-item .n-form-item-feedback-wrapper) {
+  min-height: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* grid 内表单项无额外底部间距 */
+.drawer-body :deep(.n-gi .n-form-item) {
+  margin-bottom: 0;
+}
+
+/* DataTable 主题色 */
+.drawer-body :deep(.n-data-table .n-data-table-th) {
+  background-color: var(--bg-hover) !important;
+  color: var(--text) !important;
+}
+.drawer-body :deep(.n-data-table .n-data-table-td) {
+  background-color: var(--bg-card) !important;
+  color: var(--text) !important;
+}
+.drawer-body :deep(.n-data-table .n-data-table-tr:hover .n-data-table-td) {
+  background-color: var(--primary-light) !important;
+}
+
+.icon-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 0;
+}
+
 .icon-dot {
-  width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent;
-  cursor: pointer; padding: 0; transition: transform .1s;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform .1s;
 }
-.icon-dot:hover { transform: scale(1.15); }
-.icon-dot--on { border-color: var(--text); box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--primary); }
 
-.ck {
-  display: flex; align-items: center; gap: 8px; font-size: 12px;
-  color: var(--text-secondary); cursor: pointer;
+.icon-dot:hover {
+  transform: scale(1.15);
 }
-.ck small { color: var(--text-muted); }
-.ck input { width: auto; }
 
-.catalog { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 4px; }
-.catalog th {
-  text-align: left; font-size: 10px; font-weight: 600; color: var(--text-muted);
-  text-transform: uppercase; letter-spacing: .3px; padding: 2px 4px;
+.icon-dot--on {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--primary);
 }
-.catalog td { padding: 2px 4px; }
-.catalog input { width: 100%; padding: 5px 7px; border: 1px solid var(--border); border-radius: 5px; font-size: 12px; background: var(--bg-card); color: var(--text); }
-.btn-mini {
-  width: 22px; height: 22px; border: 1px solid var(--border); border-radius: 5px;
-  background: var(--bg); color: var(--text-secondary); cursor: pointer; font-size: 14px; line-height: 1;
+
+.toml-preview {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
-.btn-mini:hover { color: var(--danger); border-color: var(--danger); }
-.btn-add {
-  margin-top: 6px; padding: 5px 12px; border: 1px dashed var(--border); border-radius: 6px;
-  background: none; color: var(--text-secondary); cursor: pointer; font-size: 12px;
+
+.toml-preview :deep(.n-collapse-item .n-collapse-item__header) {
+  align-items: center;
 }
-.btn-add:hover { border-color: var(--primary); color: var(--primary); }
-.oauth-box { margin-top: 10px; }
-.config-preview {
-  border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 8px 12px; background: var(--bg-card);
+
+.toml-preview :deep(.n-collapse-item .n-collapse-item__header-main) {
+  display: flex;
+  align-items: center;
+  color: var(--text);
 }
-.config-preview summary {
-  cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-secondary);
-  user-select: none; list-style: none;
+
+.toml-preview__code {
+  background: var(--primary-light);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
 }
-.config-preview summary::-webkit-details-marker { display: none; }
-.config-preview summary::before { content: "▸ "; color: var(--text-muted); }
-.config-preview[open] summary::before { content: "▾ "; }
-.config-preview__code {
-  margin: 8px 0 0; padding: 10px 12px; border-radius: 6px;
-  background: var(--bg); border: 1px solid var(--border);
-  font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; line-height: 1.5;
-  color: var(--text); white-space: pre-wrap; word-break: break-all; overflow-x: auto;
-}
-.field-select {
-  width: 100%; padding: 8px 10px; border: 1px solid var(--border);
-  border-radius: 6px; font-size: 13px; background: var(--bg-card); color: var(--text);
-}
-.btn-oauth {
-  margin-top: 4px; padding: 7px 14px; border: 1px solid var(--primary); border-radius: 6px;
-  background: var(--primary-light); color: var(--primary); cursor: pointer; font-size: 12px; font-weight: 500;
-}
-.btn-oauth:hover { background: var(--primary); color: #fff; }
 </style>
-
-
-

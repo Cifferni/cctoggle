@@ -7,6 +7,7 @@ var providerDb = require("./provider-db");
 var skills = require("./skills");
 var stats = require("./stats");
 var proxy = require("./proxy");
+var mcpDb = require("./mcp");
 
 window.utoolsCctoggle = {
   // Paths
@@ -15,6 +16,7 @@ window.utoolsCctoggle = {
     codexAuth: utils.getCodexAuthPath(),
     codexConfig: utils.getCodexConfigPath(),
     claudeSettings: utils.getClaudeSettingsPath(),
+    claudeDesktopConfig: utils.getClaudeDesktopConfigPath(),
     openclawConfig: utils.getOpenClawConfigPath(),
     geminiEnv: utils.getGeminiEnvPath()
   },
@@ -25,6 +27,7 @@ window.utoolsCctoggle = {
   readClaudeSettings: configRw.readClaudeSettings,
   readGeminiEnv: configRw.readGeminiEnv,
   readOpenClawConfig: configRw.readOpenClawConfig,
+  readClaudeDesktopConfig: configRw.readClaudeDesktopConfig,
 
   // Provider CRUD
   listProviders: providerDb.listProviders,
@@ -96,13 +99,21 @@ window.utoolsCctoggle = {
   toggleProxyQuick: proxy.toggleProxyQuick,
   getProxyPort: proxy.getProxyPort,
   setProxyPort: proxy.setProxyPort,
+
+  // MCP Server management
+  listMcpServers: mcpDb.listMcpServers,
+  getMcpServer: mcpDb.getMcpServer,
+  saveMcpServer: mcpDb.saveMcpServer,
+  deleteMcpServer: mcpDb.deleteMcpServer,
+  toggleMcpServer: mcpDb.toggleMcpServer,
+  syncFromConfigFiles: mcpDb.syncFromConfigFiles,
 };
 
 
 // --- Startup: mark current providers ---
 
 try {
-  ["codex", "claude", "gemini"].forEach(function (appType) {
+  ["codex", "claude", "claude-desktop", "gemini"].forEach(function (appType) {
     providerDb.markCurrent(appType, providerDb.getCurrentProviderId(appType));
   });
 } catch (e) {

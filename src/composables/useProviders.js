@@ -101,7 +101,7 @@ function presetToProviderData(preset) {
     icon: preset.icon || "",
     iconColor: preset.iconColor || "",
     category: preset.category || "custom",
-    configType: preset.configType || (tab === "claude" ? "anthropic" : tab === "gemini" ? "gemini" : tab === "openclaw" ? "openclaw" : "openai"),
+    configType: preset.configType || (tab === "claude" || tab === "claude-desktop" ? "anthropic" : tab === "gemini" ? "gemini" : tab === "openclaw" ? "openclaw" : "openai"),
     endpointCandidates: preset.endpointCandidates || [],
   };
   if (tab === "codex") {
@@ -114,6 +114,8 @@ function presetToProviderData(preset) {
       extraConfig: preset.config || "",
     });
   } else if (tab === "claude") {
+    return Object.assign(base, { settingsConfig: preset.settingsConfig || { env: {} } });
+  } else if (tab === "claude-desktop") {
     return Object.assign(base, { settingsConfig: preset.settingsConfig || { env: {} } });
   } else if (tab === "openclaw") {
     return Object.assign(base, {
@@ -136,6 +138,7 @@ const paths = {
   get codexAuth() { return getSkillNest().paths?.codexAuth || ""; },
   get codexConfig() { return getSkillNest().paths?.codexConfig || ""; },
   get claudeSettings() { return getSkillNest().paths?.claudeSettings || ""; },
+  get claudeDesktopConfig() { return getSkillNest().paths?.claudeDesktopConfig || ""; },
   get openclawConfig() { return getSkillNest().paths?.openclawConfig || ""; },
   get geminiEnv() { return getSkillNest().paths?.geminiEnv || ""; },
 };

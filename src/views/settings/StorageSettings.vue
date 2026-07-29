@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
 import { useSkills } from "../../composables/useSkills.js";
+import { APP_ICONS } from "../../composables/shared.js";
 
 const {
   ALL_APPS, APP_LABELS,
@@ -18,7 +19,7 @@ onMounted(() => {
 });
 
 const agents = ALL_APPS.filter(a => ["codex", "claude", "gemini", "openclaw"].includes(a));
-const agentIcons = { codex: "⚡", claude: "🧠", gemini: "💎", openclaw: "🐾" };
+const agentIcons = APP_ICONS;
 
 const nestDir = computed(() => {
   const fn = window.utoolsCctoggle?.getNestDir;
@@ -90,7 +91,7 @@ function addProject() {
           embedded
         >
           <n-space align="center" :size="8" style="margin-bottom: 4px;">
-            <span style="font-size: 14px;">{{ agentIcons[a] }}</span>
+            <img :src="agentIcons[a]" :alt="APP_LABELS[a]" style="width: 16px; height: 16px; object-fit: contain;" />
             <n-text strong style="font-size: 12px; flex: 1;">{{ APP_LABELS[a] }}</n-text>
             <n-button
               v-if="editingAgent !== a"

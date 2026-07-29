@@ -1,5 +1,6 @@
 <script setup>
 import { useTheme } from './composables/useTheme.js'
+import { zhCN, dateZhCN } from 'naive-ui'
 import AppFooter from './components/AppFooter.vue'
 import ToastHost from './components/ToastHost.vue'
 import ConfirmHost from './components/ConfirmHost.vue'
@@ -8,7 +9,7 @@ const { theme, themeOverrides, isDark } = useTheme()
 </script>
 
 <template>
-  <n-config-provider :theme="theme" :theme-overrides="themeOverrides">
+  <n-config-provider :locale="zhCN" :date-locale="dateZhCN" :theme="theme" :theme-overrides="themeOverrides">
     <n-message-provider>
       <n-notification-provider>
         <n-dialog-provider>

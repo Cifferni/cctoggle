@@ -10,6 +10,7 @@ var getCodexConfigPath = utils.getCodexConfigPath;
 var getClaudeSettingsPath = utils.getClaudeSettingsPath;
 var getGeminiEnvPath = utils.getGeminiEnvPath;
 var getOpenClawConfigPath = utils.getOpenClawConfigPath;
+var getClaudeDesktopConfigPath = utils.getClaudeDesktopConfigPath;
 var ensureDir = utils.ensureDir;
 var getCodexInstructions = utils.getCodexInstructions;
 
@@ -140,6 +141,57 @@ function writeClaudeSettings(settings) {
   const settingsPath = getClaudeSettingsPath();
   ensureDir(settingsPath);
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");
+  return true;
+}
+
+// ——————————— Claude Desktop 配置读写 ———————————
+
+function readClaudeDesktopConfig() {
+  try {
+    var p = getClaudeDesktopConfigPath();
+    if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, "utf8"));
+  } catch (e) { /* JSON 损坏时回退默认 */ }
+  return {};
+}
+
+function writeClaudeDesktopConfig(config) {
+  var p = getClaudeDesktopConfigPath();
+  ensureDir(p);
+  fs.writeFileSync(p, JSON.stringify(config, null, 2), "utf8");
+  return true;
+}
+
+function switchProviderClaudeDesktop(provider) {
+  if (!provider) return { success: false, error: "provider not found" };
+  // 读取现有配置，保留 mcpServers 等字段
+  var config = readClaudeDesktopConfig();
+  var env = {};
+
+  // 优先使用预设 settingsConfig.env
+  if (provider.settingsConfig && provider.settingsConfig.env) {
+    Object.keys(provider.settingsConfig.env).forEach(function (k) {
+      env[k] = provider.settingsConfig.env[k];
+    });
+  }
+
+  // 兼容旧字段
+  if (provider.model) env.ANTHROPIC_MODEL = provider.model;
+  if (provider.apiKey) {
+    var field = provider.authField || (env.ANTHROPIC_API_KEY !== undefined ? "ANTHROPIC_API_KEY" : "ANTHROPIC_AUTH_TOKEN");
+    env[field] = provider.apiKey;
+  }
+
+  config.env = env;
+
+  // 合并 extraConfig（JSON）
+  try {
+    var extra = JSON.parse(provider.extraConfig);
+    Object.keys(extra).forEach(function (k) {
+      if (k !== "mcpServers") config[k] = extra[k];
+    });
+  } catch (e) { /* ignore */ }
+
+  writeClaudeDesktopConfig(config);
   return true;
 }
 
@@ -398,9 +450,12 @@ module.exports = {
   writeGeminiEnv: writeGeminiEnv,
   readOpenClawConfig: readOpenClawConfig,
   writeOpenClawConfig: writeOpenClawConfig,
+  readClaudeDesktopConfig: readClaudeDesktopConfig,
+  writeClaudeDesktopConfig: writeClaudeDesktopConfig,
   getCurrentConfigs: getCurrentConfigs,
   switchProviderCodex: switchProviderCodex,
   switchProviderClaude: switchProviderClaude,
   switchProviderGemini: switchProviderGemini,
   switchProviderOpenclaw: switchProviderOpenclaw,
+  switchProviderClaudeDesktop: switchProviderClaudeDesktop,
 };

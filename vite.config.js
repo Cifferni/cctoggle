@@ -3,6 +3,7 @@ import vue from "@vitejs/plugin-vue";
 import AutoImport from "unplugin-auto-import/vite";
 import Components from "unplugin-vue-components/vite";
 import { NaiveUiResolver } from "unplugin-vue-components/resolvers";
+import { ViteImageOptimizer } from "vite-plugin-image-optimizer";
 
 export default defineConfig({
   plugins: [
@@ -17,6 +18,12 @@ export default defineConfig({
     }),
     Components({
       resolvers: [NaiveUiResolver()],
+    }),
+    ViteImageOptimizer({
+      png: { quality: 80 },
+      jpeg: { quality: 80 },
+      jpg: { quality: 80 },
+      webp: { quality: 80 },
     }),
   ],
   base: "./",
@@ -36,7 +43,7 @@ export default defineConfig({
         manualChunks(id) {
           if (id.includes("node_modules/vue-router")) return "vue-router";
           if (id.includes("node_modules/chart.js") || id.includes("node_modules/vue-chartjs")) return "chartjs";
-          if (id.includes("node_modules/vue") || id.includes("node_modules/@vue")) return "vue";
+          if (id.includes("node_modules/naive-ui") || id.includes("node_modules/@css-render")) return "naive-ui";
         },
       },
     },

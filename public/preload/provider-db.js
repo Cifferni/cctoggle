@@ -163,6 +163,8 @@ function switchProvider(appType, providerId) {
       configRw.switchProviderOpenclaw(provider);
     } else if (appType === "gemini") {
       configRw.switchProviderGemini(provider);
+    } else if (appType === "claude-desktop") {
+      configRw.switchProviderClaudeDesktop(provider);
     } else {
       return { success: false, error: "unknown app type" };
     }
