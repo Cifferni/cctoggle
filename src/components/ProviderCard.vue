@@ -71,7 +71,7 @@ const CAT_LABELS = {
   border-left: 3px solid var(--primary);
   background: var(--primary-light);
   padding-left: 15px;
-  box-shadow: 0 1px 4px rgba(59,130,246,.1);
+  box-shadow: 0 1px 4px rgba(217,119,6,.1);
 }
 
 .card-body { flex: 1; min-width: 0; }
@@ -126,7 +126,7 @@ const CAT_LABELS = {
   background: var(--primary);
   color: #fff;
   border-color: var(--primary);
-  box-shadow: 0 1px 3px rgba(59,130,246,.25);
+  box-shadow: 0 1px 3px rgba(217,119,6,.25);
 }
 .btn--switch:hover { background: var(--primary-hover); }
 

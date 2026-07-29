@@ -1,4 +1,4 @@
-﻿<script setup>
+<script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { useProviders } from "../composables/useProviders.js";
 import { useRoutes } from "../composables/useRoutes.js";
@@ -70,6 +70,18 @@ const uptime = computed(() => {
   return (h > 0 ? h + ":" : "") + pad(m) + ":" + pad(s);
 });
 
+// 成员状态映射
+const stateTypeMap = {
+  closed: "success",
+  "half-open": "warning",
+  open: "error",
+};
+const stateLabelMap = {
+  closed: "正常",
+  "half-open": "半开",
+  open: "断开",
+};
+
 function reload() {
   refreshStatus(currentApp.value);
   loadProviders();
@@ -88,148 +100,158 @@ watch(isRunning, syncPort);
 </script>
 
 <template>
-  <div class="routes-section">
+  <n-space vertical :size="12" class="routes-section">
     <!-- 1. 状态 -->
-    <div class="row-status">
-      <span class="badge" :class="isRunning ? 'badge--on' : 'badge--off'">
+    <n-space align="center" :size="10">
+      <n-tag :type="isRunning ? 'success' : 'default'" size="small" round :bordered="false">
+        <template #icon>
+          <span style="margin-right: 4px;">{{ isRunning ? "●" : "○" }}</span>
+        </template>
         {{ isRunning ? "运行中" : "已停止" }}
-      </span>
-      <span class="status-app">{{ APP_LABELS[currentApp] }} 代理</span>
-    </div>
+      </n-tag>
+      <n-text strong style="font-size: 14px;">{{ APP_LABELS[currentApp] }} 代理</n-text>
+    </n-space>
 
     <!-- 2. 代理地址 + 复制 / 编辑 -->
-    <div class="card">
-      <div class="card-title">代理地址</div>
-      <div class="addr-row">
+    <n-card size="small" :bordered="true" :hoverable="true">
+      <template #header>
+        <n-text depth="2" style="font-size: 12px; font-weight: 600;">代理地址</n-text>
+      </template>
+      <n-space align="center" :size="8" wrap>
         <template v-if="isRunning">
-          <code class="addr">{{ proxyUrl }}</code>
-          <button class="btn" @click="copyUrl">{{ copied ? "已复制" : "复制" }}</button>
+          <n-code :code="proxyUrl" language="text" :word-wrap="true" style="flex: 1;" />
+          <n-button size="small" @click="copyUrl" :type="copied ? 'success' : 'default'">
+            {{ copied ? "✓ 已复制" : "复制" }}
+          </n-button>
         </template>
         <template v-else>
-          <span class="addr-prefix">http://127.0.0.1:</span>
-          <input v-model.number="portInput" type="number" min="1024" max="65535" class="port-input" />
-          <button class="btn" @click="copyUrl">{{ copied ? "已复制" : "复制" }}</button>
-          <button class="btn btn--primary" @click="onSavePort">保存</button>
+          <n-text depth="3" style="font-family: monospace; font-size: 12px;">http://127.0.0.1:</n-text>
+          <n-input-number v-model:value="portInput" :min="1024" :max="65535" size="small" style="width: 100px;" :show-button="false" />
+          <n-button size="small" @click="copyUrl" :type="copied ? 'success' : 'default'">
+            {{ copied ? "✓ 已复制" : "复制" }}
+          </n-button>
+          <n-button type="primary" size="small" @click="onSavePort">保存</n-button>
         </template>
-      </div>
-      <div class="hint" v-if="isRunning">运行中不可修改，关闭代理后可编辑端口。</div>
-      <div class="hint" v-else>修改端口后点「保存」生效（下次开启代理时使用）。</div>
-    </div>
+      </n-space>
+      <template #footer>
+        <n-text v-if="isRunning" depth="3" style="font-size: 11px;">
+          运行中不可修改，关闭代理后可编辑端口。
+        </n-text>
+        <n-text v-else depth="3" style="font-size: 11px;">
+          修改端口后点「保存」生效（下次开启代理时使用）。
+        </n-text>
+      </template>
+    </n-card>
 
     <!-- 3. 当前使用 -->
-    <div class="card">
-      <div class="card-title">当前使用</div>
-      <div class="use-row">
-        <span class="use-label">Agent</span>
-        <span class="use-val">{{ APP_LABELS[currentApp] }}</span>
-      </div>
-      <div class="use-row">
-        <span class="use-label">供应商</span>
-        <span class="use-val">{{ activeProvider ? activeProvider.name : (isRunning ? "等待请求…" : "-") }}</span>
-      </div>
-      <div class="use-row">
-        <span class="use-label">模型</span>
-        <span class="use-val">{{ activeModel || "-" }}</span>
-      </div>
-    </div>
+    <n-card size="small" :bordered="true" :hoverable="true">
+      <template #header>
+        <n-text depth="2" style="font-size: 12px; font-weight: 600;">当前使用</n-text>
+      </template>
+      <n-descriptions label-placement="left" :column="1" size="small" :bordered="true" label-style="font-weight: 500; color: var(--n-text-color-2); width: 70px;">
+        <n-descriptions-item label="Agent">{{ APP_LABELS[currentApp] }}</n-descriptions-item>
+        <n-descriptions-item label="供应商">
+          <n-text :type="activeProvider ? 'default' : 'warning'">
+            {{ activeProvider ? activeProvider.name : (isRunning ? "等待请求…" : "-") }}
+          </n-text>
+        </n-descriptions-item>
+        <n-descriptions-item label="模型">
+          <n-text v-if="activeModel" code>{{ activeModel }}</n-text>
+          <n-text v-else depth="3">-</n-text>
+        </n-descriptions-item>
+      </n-descriptions>
+    </n-card>
 
     <!-- 4. 指标 -->
-    <div class="metrics">
-      <div class="metric">
-        <div class="metric-num">{{ rt.activeConn || 0 }}</div>
-        <div class="metric-label">活跃连接</div>
-      </div>
-      <div class="metric">
-        <div class="metric-num">{{ rt.reqTotal || 0 }}</div>
-        <div class="metric-label">请求数</div>
-      </div>
-      <div class="metric">
-        <div class="metric-num">{{ successRate }}</div>
-        <div class="metric-label">成功率</div>
-      </div>
-      <div class="metric">
-        <div class="metric-num">{{ uptime }}</div>
-        <div class="metric-label">运行时长</div>
-      </div>
-    </div>
+    <n-grid :cols="4" :x-gap="8" :y-gap="8">
+      <n-gi>
+        <n-card size="small" :bordered="true" :hoverable="true" style="text-align: center;">
+          <n-statistic label="活跃连接" :value="rt.activeConn || 0">
+            <template #suffix>
+              <n-text depth="3" style="font-size: 11px;">个</n-text>
+            </template>
+          </n-statistic>
+        </n-card>
+      </n-gi>
+      <n-gi>
+        <n-card size="small" :bordered="true" :hoverable="true" style="text-align: center;">
+          <n-statistic label="请求数" :value="rt.reqTotal || 0">
+            <template #suffix>
+              <n-text depth="3" style="font-size: 11px;">次</n-text>
+            </template>
+          </n-statistic>
+        </n-card>
+      </n-gi>
+      <n-gi>
+        <n-card size="small" :bordered="true" :hoverable="true" style="text-align: center;">
+          <n-statistic label="成功率" :value="successRate" />
+        </n-card>
+      </n-gi>
+      <n-gi>
+        <n-card size="small" :bordered="true" :hoverable="true" style="text-align: center;">
+          <n-statistic label="运行时长" :value="uptime" />
+        </n-card>
+      </n-gi>
+    </n-grid>
 
-    <!-- 5. 成员健康 + 日志 -->
-    <div v-if="isRunning" class="members">
-      <div class="members-title">成员健康</div>
-      <div v-for="m in rt.members" :key="m.id" class="mem-row">
-        <span class="mem-dot" :class="'mem-' + m.state"></span>
-        <span class="mem-name">{{ m.name }}</span>
-        <span class="mem-state">{{ m.state }}</span>
-        <span class="mem-latency">{{ m.latency || '-' }}ms</span>
-        <span v-if="m.fails" class="mem-fails">失败{{ m.fails }}次</span>
-      </div>
-      <div v-if="!(rt.members && rt.members.length)" class="empty">暂无成员数据</div>
-    </div>
+    <!-- 5. 成员健康 -->
+    <n-card v-if="isRunning" size="small" :bordered="true">
+      <template #header>
+        <n-space align="center" :size="6">
+          <n-text depth="2" style="font-size: 12px; font-weight: 600;">成员健康</n-text>
+          <n-tag v-if="rt.members && rt.members.length" size="tiny" :bordered="false" type="info">
+            {{ rt.members.length }}
+          </n-tag>
+        </n-space>
+      </template>
+      <n-empty v-if="!(rt.members && rt.members.length)" description="暂无成员数据" size="small" />
+      <n-list v-else :show-divider="true" size="small">
+        <n-list-item v-for="m in rt.members" :key="m.id">
+          <n-space align="center" :size="10" style="width: 100%;">
+            <n-badge :type="stateTypeMap[m.state] || 'default'" dot :offset="[0, 0]" />
+            <n-text strong style="flex: 1; font-size: 12px;">{{ m.name }}</n-text>
+            <n-tag :type="stateTypeMap[m.state] || 'default'" size="tiny" :bordered="false" round>
+              {{ stateLabelMap[m.state] || m.state }}
+            </n-tag>
+            <n-text depth="3" style="font-size: 11px; min-width: 50px; text-align: right;">
+              {{ m.latency || '-' }}ms
+            </n-text>
+            <n-tag v-if="m.fails" type="warning" size="tiny" :bordered="false">
+              失败 {{ m.fails }}
+            </n-tag>
+          </n-space>
+        </n-list-item>
+      </n-list>
+    </n-card>
 
-    <details v-if="isRunning" class="log-wrap">
-      <summary>实时日志（{{ (rt.logs && rt.logs.length) || 0 }}）</summary>
-      <div class="log">
-        <div v-for="(l, i) in (rt.logs || []).slice(-50)" :key="i"
-             class="log-line" :class="'log-' + l.level">
-          [{{ new Date(l.ts).toLocaleTimeString() }}] {{ l.msg }}
-          <span v-if="l.meta">· {{ JSON.stringify(l.meta) }}</span>
-        </div>
-        <div v-if="!(rt.logs && rt.logs.length)" class="empty">暂无日志</div>
-      </div>
-    </details>
+    <!-- 6. 实时日志 -->
+    <n-card v-if="isRunning" size="small" :bordered="true">
+      <template #header>
+        <n-space align="center" :size="6">
+          <n-text depth="2" style="font-size: 12px; font-weight: 600;">实时日志</n-text>
+          <n-tag v-if="rt.logs && rt.logs.length" size="tiny" :bordered="false" type="info">
+            {{ rt.logs.length }}
+          </n-tag>
+        </n-space>
+      </template>
+      <n-scrollbar style="max-height: 200px;">
+        <n-log
+          v-if="rt.logs && rt.logs.length"
+          :log="(rt.logs || []).slice(-50).map(l => `[${new Date(l.ts).toLocaleTimeString()}] ${l.msg}${l.meta ? ' · ' + JSON.stringify(l.meta) : ''}`).join('\n')"
+          language="text"
+          :rows="8"
+          :font-size="11"
+        />
+        <n-empty v-else description="暂无日志" size="small" />
+      </n-scrollbar>
+    </n-card>
 
-    <div v-if="!isRunning" class="tip">
-      代理未启动。在主页 TabBar 点击「代理」开关即可开启。
-    </div>
-  </div>
+    <n-alert v-if="!isRunning" type="info" :show-icon="true" :bordered="false" style="text-align: center;">
+      <n-text depth="2" style="font-size: 12px;">代理未启动。在主页 TabBar 点击「代理」开关即可开启。</n-text>
+    </n-alert>
+  </n-space>
 </template>
 
 <style scoped>
-.routes-section { display: flex; flex-direction: column; gap: 10px; }
-.empty { color: var(--text-muted); font-size: 12px; padding: 8px; text-align: center; }
-.tip { color: var(--text-muted); font-size: 12px; padding: 10px; text-align: center; border: 1px dashed var(--border); border-radius: 8px; }
-
-.row-status { display: flex; align-items: center; gap: 10px; }
-.badge { padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
-.badge--on { background: rgba(34,197,94,.15); color: #16a34a; }
-.badge--off { background: var(--bg-hover); color: var(--text-muted); }
-.status-app { font-size: 13px; font-weight: 600; color: var(--text); }
-
-.card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
-.card-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; }
-.addr-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.addr { background: var(--bg-hover); padding: 4px 8px; border-radius: 6px; font-size: 12px; font-family: monospace; }
-.addr-prefix { font-size: 12px; font-family: monospace; color: var(--text-secondary); }
-.port-input { width: 84px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; background: var(--bg); color: var(--text); }
-.btn { padding: 4px 12px; border: 1px solid var(--border); background: var(--bg); color: var(--text); border-radius: 6px; font-size: 12px; cursor: pointer; }
-.btn:hover { background: var(--bg-hover); }
-.btn--primary { background: var(--primary); color: #fff; border-color: var(--primary); }
-.save-msg { font-size: 12px; color: #16a34a; }
-.hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
-
-.use-row { display: flex; font-size: 12px; padding: 3px 0; }
-.use-label { width: 60px; color: var(--text-muted); }
-.use-val { color: var(--text); font-weight: 500; }
-
-.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-.metric { border: 1px solid var(--border); border-radius: 8px; padding: 10px 6px; text-align: center; }
-.metric-num { font-size: 18px; font-weight: 700; color: var(--text); }
-.metric-label { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
-
-.members { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
-.members-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; }
-.mem-row { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 3px 0; }
-.mem-dot { width: 7px; height: 7px; border-radius: 50%; }
-.mem-closed { background: #22c55e; }
-.mem-half-open { background: #eab308; }
-.mem-open { background: #ef4444; }
-.mem-name { flex: 1; }
-.mem-state { font-size: 11px; color: var(--text-muted); min-width: 50px; }
-.mem-latency { font-size: 11px; color: var(--text-muted); min-width: 48px; }
-.mem-fails { font-size: 11px; color: #f97316; }
-
-.log { max-height: 200px; overflow: auto; font-family: monospace; font-size: 11px; background: var(--bg-hover); padding: 6px; border-radius: 4px; }
-.log-line { padding: 1px 0; white-space: pre-wrap; }
-.log-error { color: #dc2626; }
-.log-warn { color: #ea580c; }
+.routes-section { padding: 0; }
 </style>

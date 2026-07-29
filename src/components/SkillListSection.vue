@@ -174,7 +174,7 @@ const displayTargets = computed(() => {
   background: var(--bg-card);
   transition: border-color .15s, box-shadow .15s;
 }
-.dash-card:hover { border-color: var(--primary); box-shadow: 0 1px 4px rgba(59,130,246,.1); }
+.dash-card:hover { border-color: var(--primary); box-shadow: 0 1px 4px rgba(217,119,6,.1); }
 .dash-card--nest { border-color: var(--primary); background: var(--primary-light); }
 .dash-card--zero { opacity: .55; }
 .dash-card--zero:hover { border-color: var(--text-muted); box-shadow: none; }

@@ -1,4 +1,4 @@
-﻿<script setup>
+<script setup>
 import { computed, onMounted, ref } from "vue";
 import { useSkills } from "../composables/useSkills.js";
 const { ALL_APPS, APP_LABELS, storagePaths, nestSkills, projectTargets, loadStoragePaths, saveStoragePaths, loadNestSkills, loadProjectTargets, addProjectTarget, removeProjectTarget } = useSkills();
@@ -264,5 +264,3 @@ function removeProject(id) {
   display: flex; gap: 6px; margin-top: 6px;
 }
 </style>
-
-

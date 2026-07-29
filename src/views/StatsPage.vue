@@ -50,7 +50,7 @@ const trendData = computed(() => {
   return {
     labels,
     datasets: [
-      { label: "输入", type: "bar", data: stats.value.daily.map(d => d.input || 0), backgroundColor: "#3b82f6", stack: "tok", order: 2 },
+      { label: "输入", type: "bar", data: stats.value.daily.map(d => d.input || 0), backgroundColor: "#d97706", stack: "tok", order: 2 },
       { label: "输出", type: "bar", data: stats.value.daily.map(d => d.output || 0), backgroundColor: "#22c55e", stack: "tok", order: 2 },
       { label: "缓存命中", type: "line", data: stats.value.daily.map(d => d.cacheRead || 0), borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,.15)", tension: .3, fill: false, order: 1 },
     ],
@@ -68,7 +68,7 @@ const modelBarData = computed(() => {
   const list = stats.value.models.slice(0, 8).reverse();
   return {
     labels: list.map(m => m.model),
-    datasets: [{ data: list.map(m => m.total), backgroundColor: "#6366f1", borderRadius: 4, barPercentage: .6 }],
+    datasets: [{ data: list.map(m => m.total), backgroundColor: "#e67e22", borderRadius: 4, barPercentage: .6 }],
   };
 });
 
@@ -88,7 +88,7 @@ const cacheData = computed(() => {
     labels: ["缓存命中", "新增输入"],
     datasets: [{
       data: [t.cacheRead || 0, t.input || 0],
-      backgroundColor: ["#f59e0b", "#3b82f6"],
+      backgroundColor: ["#f59e0b", "#d97706"],
       borderWidth: 0,
     }],
   };

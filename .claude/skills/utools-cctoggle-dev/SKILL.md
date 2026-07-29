@@ -192,36 +192,61 @@ const displayName = computed(() => props.provider.name || "Unnamed");
 - 使用 BEM 风格：`.block__element--modifier`
 - 类名使用 kebab-case
 
+#### 色调：暖色系（Amber/Orange）
+
+项目采用暖色调设计语言，主色为琥珀/橙色系，背景带有温暖的米白/棕色底调。
+
 #### CSS 变量（定义在 style.css）
 
 ```css
 :root {
-  --bg: #ffffff;
-  --bg-card: #f8fafc;
-  --bg-hover: #f1f5f9;
-  --text: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
-  --primary: #3b82f6;
-  --primary-hover: #2563eb;
-  --primary-light: #eff6ff;
-  --danger: #ef4444;
+  --bg: #fffbf5;              /* 暖白 */
+  --bg-card: #fff8f0;         /* 暖米 */
+  --bg-hover: #fef3e2;        /* 暖浅橙 */
+  --border: #f0dcc8;          /* 暖米边框 */
+  --text: #1c1410;            /* 暖深棕 */
+  --text-secondary: #6b5a4e;  /* 暖棕 */
+  --text-muted: #9a8a7e;      /* 暖灰棕 */
+  --primary: #d97706;         /* 琥珀 */
+  --primary-hover: #b45309;   /* 深琥珀 */
+  --primary-light: #fef3c7;   /* 琥珀浅底 */
+  --danger: #dc2626;
   --danger-light: #fef2f2;
-  --border: #e2e8f0;
+  --success: #16a34a;
   --radius: 8px;
   --radius-lg: 12px;
 }
 
 .dark {
-  --bg: #0f0f1a;
-  --bg-card: #1a1a2e;
-  --bg-hover: #252540;
-  --text: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --border: #334155;
+  --bg: #1a1410;              /* 暖深棕 */
+  --bg-card: #231e18;         /* 暖暗棕 */
+  --bg-hover: #2e2720;        /* 暖暗 hover */
+  --border: #3d342a;          /* 暖暗边框 */
+  --text: #f5efe8;            /* 暖白文字 */
+  --text-secondary: #c4b5a5;  /* 暖灰 */
+  --text-muted: #8a7a6a;      /* 暖暗灰 */
+  --primary: #f59e0b;         /* 亮琥珀 */
+  --primary-hover: #d97706;
+  --primary-light: #3d2e10;   /* 暗琥珀底 */
+  --danger: #f87171;
+  --danger-light: #3b1a1a;
+  --success: #34d399;
 }
 ```
+
+#### Naive UI 主题覆盖（App.vue）
+
+Naive UI 组件的主题色需与 CSS 变量保持一致，关键配置：
+- `primaryColor` / `primaryColorHover` / `primaryColorPressed` 使用琥珀色系
+- `Card.color` / `List.color` 使用暖底色（亮 `#fff8f0` / 暗 `#231e18`）
+- `Input.borderFocus` / `boxShadowFocus` 使用琥珀色
+- `Code.color` 使用暖底色（亮 `#fef3e2` / 暗 `#2e2720`）
+
+#### 硬编码颜色规范
+
+组件中的 box-shadow、图表等硬编码颜色也需使用暖色：
+- 主色相关 shadow：`rgba(217,119,6, .1~.3)` 而非蓝色
+- 图表配色：输入 `#d97706`、输出 `#22c55e`、缓存 `#f59e0b`、模型柱 `#e67e22`
 
 ---
 

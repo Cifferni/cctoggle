@@ -100,7 +100,7 @@ function onToggleProxy() {
 .tab--active {
   background: var(--primary);
   color: #fff !important;
-  box-shadow: 0 1px 3px rgba(59,130,246,.3);
+  box-shadow: 0 1px 3px rgba(217,119,6,.3);
 }
 .tab-icon { margin-right: 5px; }
 .tab--stats { color: var(--primary); font-weight: 600; }
