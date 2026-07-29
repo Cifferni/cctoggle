@@ -93,7 +93,13 @@ src/
 
 public/
 ├── preload/
-│   ├── services.js          # 后端服务（Node.js, 1800+ 行）
+│   ├── services.js          # 入口：加载各模块，组装 window.utoolsCctoggle
+│   ├── utils.js             # 工具函数、路径常量、copyDirSync
+│   ├── config-rw.js         # Codex/Claude/Gemini/OpenClaw 配置读写与切换
+│   ├── provider-db.js       # 供应商 CRUD、切换、导入导出
+│   ├── skills.js            # SkillNest 技能管理、部署、搜索
+│   ├── stats.js             # 用量统计（扫描本地 CLI 会话日志）
+│   ├── proxy.js             # 路由组、代理启停、接管/还原、端口管理
 │   ├── proxy-daemon.js      # 代理守护进程
 │   ├── proxy-converter.js   # 协议转换器
 │   └── package.json
@@ -109,7 +115,7 @@ public/
 
 #### 通用规则
 - 使用 ES modules (import/export)
-- 优先 `const`，其次 `let`，**禁止 `var`**（`public/preload/services.js` 除外，因其运行在 Node.js 环境且为历史代码）
+- 优先 `const`，其次 `let`，**禁止 `var`**（`public/preload/*.js` 除外，因其运行在 Node.js 环境且为历史代码，模块间使用 CommonJS `require`/`module.exports`）
 - 使用箭头函数作为回调
 - 使用模板字符串替代字符串拼接
 - 文件编码：**UTF-8 无 BOM**
@@ -205,13 +211,20 @@ const displayName = computed(() => props.provider.name || "Unnamed");
 ┌─────────────┐     ┌──────────────┐     ┌─────────────────────────┐
 │   UI 组件    │────▶│  Composables │────▶│ window.utoolsCctoggle   │
 │  (Vue SFC)  │◀────│ (reactive)   │◀────│  (preload services.js)  │
-└─────────────┘     └──────────────┘     └─────────────────────────┘
-                           │                        │
+└─────────────┘     └──────────────┘     └──────────┬──────────────┘
+                           │                        │ require()
                            ▼                        ▼
                     ┌──────────────┐     ┌─────────────────────────┐
-                    │ 响应式状态    │     │  uTools API / 文件系统   │
-                    │ ref/reactive │     │  utools.db (PouchDB)    │
-                    └──────────────┘     └─────────────────────────┘
+                    │ 响应式状态    │     │  utils / config-rw /    │
+                    │ ref/reactive │     │  provider-db / skills / │
+                    └──────────────┘     │  stats / proxy          │
+                                         └──────────┬──────────────┘
+                                                    │
+                                                    ▼
+                                         ┌─────────────────────────┐
+                                         │  uTools API / 文件系统   │
+                                         │  utools.db (PouchDB)    │
+                                         └─────────────────────────┘
 ```
 
 ### Composable 模式
@@ -252,28 +265,48 @@ export function useProviders() {
 
 ### 后端 API 暴露
 
-后端服务通过 `window.utoolsCctoggle` 暴露 API（定义在 `public/preload/services.js`）：
+后端服务通过 `window.utoolsCctoggle` 暴露 API（入口文件 `public/preload/services.js`，由 6 个模块组成）：
 
 ```javascript
+// public/preload/services.js — 入口，require 各模块后组装
+var utils = require("./utils");        // 工具函数、路径常量
+var configRw = require("./config-rw"); // 配置读写与切换
+var providerDb = require("./provider-db"); // 供应商 CRUD
+var skills = require("./skills");      // SkillNest 技能管理
+var stats = require("./stats");        // 用量统计
+var proxy = require("./proxy");        // 代理路由
+
 window.utoolsCctoggle = {
-  // 供应商管理
+  // 供应商管理 (provider-db.js)
   listProviders, getProvider, saveProvider, deleteProvider,
   switchProvider, getCurrentProviderId, reapplyCurrent,
 
-  // 代理路由
+  // 代理路由 (proxy.js)
   startProxy, stopProxy, getProxyStatus, toggleProxyQuick,
   takeoverApp, restoreApp,
 
-  // Skill 管理
+  // Skill 管理 (skills.js)
   listNestSkills, deploySkill, undeploySkill, installSkill,
 
-  // 统计（无缓存，数据源为本地 CLI 会话日志）
+  // 统计（无缓存，数据源为本地 CLI 会话日志，stats.js）
   scanUsageLogs, clearStats,
 
-  // 配置读取
+  // 配置读取 (config-rw.js)
   readCodexConfig, readClaudeSettings, readGeminiEnv,
 };
 ```
+
+**模块依赖关系**：
+```
+utils.js          ← 无依赖
+config-rw.js      ← utils
+skills.js         ← utils
+stats.js          ← utils
+provider-db.js    ← config-rw + proxy（懒加载，打破循环）
+proxy.js          ← config-rw + provider-db
+```
+
+**循环依赖处理**：`provider-db.js` 和 `proxy.js` 互相依赖。`provider-db.js` 在函数体内通过 `require("./proxy")` 懒加载 proxy 模块，Node.js 模块缓存保证运行时所有函数已就绪。
 
 ### 前端安全访问
 
@@ -445,7 +478,7 @@ chore(proxy): rebrand takeover placeholder names to utoolscctoggle
 
 1. 在 `src/composables/shared.js` 的 `APP_TYPES` 中添加新类型
 2. 在 `src/data/` 中创建 `presets-<agent>.js`
-3. 在 `public/preload/services.js` 中实现配置读写逻辑
+3. 在 `public/preload/config-rw.js` 中实现配置读写逻辑，在 `public/preload/provider-db.js` 中添加对应的 CRUD
 4. 更新 `src/components/ProviderForm.vue` 的表单字段
 5. 更新 `src/components/TabBar.vue` 的标签显示
 
@@ -482,11 +515,11 @@ A: 将 Vue 响应式代理对象转换为普通对象，避免 uTools IPC 通信
 
 ### Q: 如何调试 preload 脚本？
 
-A: 在 uTools 开发者工具中，preload 脚本的 `console.log` 输出会显示在开发者工具的控制台中。
+A: 在 uTools 开发者工具中，preload 脚本的 `console.log` 输出会显示在开发者工具的控制台中。preload 由 7 个模块组成（`services.js` 入口 + 6 个功能模块），修改任一模块后需重启 uTools 才能生效。
 
 ### Q: 用量统计的数据从哪来？为什么不是代理采集的？
 
-A: **统计数据源是两个 CLI 的本地会话日志，与代理无关**（`scanUsageLogs` in `services.js`）：
+A: **统计数据源是两个 CLI 的本地会话日志，与代理无关**（`scanUsageLogs` in `stats.js`）：
 
 - Claude Code：`~/.claude/projects/**/*.jsonl`，取 `type:"assistant"` 行的 `message.usage`（单次增量）+ `message.model`
 - Codex：`~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`，取 `token_count` 事件的 **`last_token_usage`（增量）**，

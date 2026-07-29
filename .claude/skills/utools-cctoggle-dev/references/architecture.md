@@ -8,14 +8,14 @@
 ├─────────────────────────────────────────────────────────────┤
 │  前端 (浏览器环境)              │  后端 (Node.js 环境)        │
 │  ┌───────────────────────┐     │  ┌───────────────────────┐ │
-│  │      Vue 3 App        │     │  │   preload/services.js │ │
+│  │      Vue 3 App        │     │  │   preload/ (7 模块)   │ │
 │  │  ┌─────────────────┐  │     │  │  ┌─────────────────┐  │ │
-│  │  │    Router        │  │     │  │  │  Provider CRUD  │  │ │
-│  │  │  /               │  │     │  │  │  Config R/W     │  │ │
-│  │  │  /skills         │  │     │  │  │  Proxy Control  │  │ │
-│  │  │  /stats          │  │     │  │  │  Skill Deploy   │  │ │
-│  │  │  /settings       │  │     │  │  │  Usage Stats    │  │ │
-│  │  └─────────────────┘  │     │  │  └─────────────────┘  │ │
+│  │  │    Router        │  │     │  │  │  services.js    │  │ │
+│  │  │  /               │  │     │  │  │  (入口, 组装 API)│  │ │
+│  │  │  /skills         │  │     │  │  │  ├─ provider-db │  │ │
+│  │  │  /stats          │  │     │  │  │  ├─ config-rw   │  │ │
+│  │  │  /settings       │  │     │  │  │  ├─ proxy       │  │ │
+│  │  └─────────────────┘  │     │  │  │  ├─ skills      │  │ │
 │  │  ┌─────────────────┐  │     │  │                       │ │
 │  │  │   Composables   │  │◀───▶│  │  window.utoolsCctoggle│ │
 │  │  │  useProviders   │  │ IPC │  └───────────────────────┘ │
@@ -86,7 +86,7 @@ useProviders.js
     └─ deleteProvider() ──▶ getSkillNest().deleteProvider(appType, id)
     │
     ▼
-services.js (preload)
+provider-db.js / config-rw.js (preload)
     │
     ├─ listProviders()   ──▶ utools.db.allDocs(prefix)
     ├─ getProvider()     ──▶ utools.db.get(key) + dbCryptoStorage
@@ -139,7 +139,7 @@ Codex 客户端只会发 Responses API 请求。供应商能否接收，取决�
 - 表单层已合并为单一「上游协议」下拉（`ProviderForm.vue` 的 `codexProtocol` + `PROTOCOL_FIELDS`），
   底层仍存 `apiFormat` + `wireApi` 双字段：`apiFormat` 供代理转换用，`wireApi` 写入 config.toml。
 - **两字段从不同时生效**：直连只看 `wireApi`；走代理接管时 takeover 用虚拟 provider 强制
-  `wire_api=responses`（services.js），忽略成员的 `wireApi`，只有 `apiFormat` 决定是否转换。
+  `wire_api=responses`（proxy.js `takeoverApp`），忽略成员的 `wireApi`，只有 `apiFormat` 决定是否转换。
 - 选错协议是协议错配报错的根源，选择标准是**看供应商文档声明的 API 协议**，不能靠域名一刀切
   （同一域名可能多端点多协议，如火山 `/api/plan/v3`=Responses、`/api/coding/v3`=Chat）。
 
@@ -173,7 +173,7 @@ Codex 客户端只会发 Responses API 请求。供应商能否接收，取决�
 
 ### 4. 用量统计
 
-**组件：** `StatsPage.vue` / `useStats.js` / `scanUsageLogs`(services.js)
+**组件：** `StatsPage.vue` / `useStats.js` / `scanUsageLogs`(stats.js)
 
 **数据源为本地 CLI 会话日志，且无缓存**（每次直接扫描；旧的代理事件采集在关面板后会丢数据，已废弃）：
 
