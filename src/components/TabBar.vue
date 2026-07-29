@@ -1,6 +1,8 @@
 ﻿<script setup>
 import { computed } from "vue";
 import { useRouter } from "vue-router";
+import { NIcon } from "naive-ui";
+import { BuildOutline, SettingsOutline } from "@vicons/ionicons5";
 import { useProviders } from "../composables/useProviders.js";
 import { useRoutes } from "../composables/useRoutes.js";
 import { toast } from "../composables/useToast.js";
@@ -49,7 +51,7 @@ function onToggleProxy() {
       :class="{ 'tab--active': activeTab() === t }"
       @click="setActiveTab(t)"
     >
-      <span class="tab-icon">{{ APP_ICONS[t] }}</span>
+      <img :src="APP_ICONS[t]" :alt="APP_LABELS[t]" class="tab-icon-img" />
       {{ APP_LABELS[t] }}
     </button>
     <span class="tab-divider"></span>
@@ -71,8 +73,12 @@ function onToggleProxy() {
       </button>
     </label>
 
-    <button class="tab tab--nav" @click="router.push('/skills')">Skill管理</button>
-    <button class="tab tab--nav" @click="router.push('/settings')">&#9881;</button>
+    <button class="tab tab--nav" title="Skill管理" @click="router.push('/skills')">
+      <n-icon :size="15"><build-outline /></n-icon>
+    </button>
+    <button class="tab tab--nav" title="设置" @click="router.push('/settings')">
+      <n-icon :size="15"><settings-outline /></n-icon>
+    </button>
   </nav>
 </template>
 
@@ -102,12 +108,18 @@ function onToggleProxy() {
   color: #fff !important;
   box-shadow: 0 1px 3px rgba(217,119,6,.3);
 }
-.tab-icon { margin-right: 5px; }
+.tab-icon-img {
+  width: 16px;
+  height: 16px;
+  margin-right: 5px;
+  vertical-align: middle;
+  object-fit: contain;
+}
 .tab--stats { color: var(--primary); font-weight: 600; }
 .tab--stats:hover { background: var(--bg-card); }
 .tab-divider { margin-left: auto; width: 1px; background: var(--border); margin-top: 3px; margin-bottom: 3px; margin-right: 4px; border-radius: 1px; }
 .tab--nav {
-  padding: 5px 12px;
+  padding: 5px 8px;
   font-size: 12px;
 }
 
