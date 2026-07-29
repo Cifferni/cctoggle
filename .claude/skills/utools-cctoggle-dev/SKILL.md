@@ -28,6 +28,7 @@ description: Development standards for the uTools ccToggle/SkillNest plugin - AI
 ## 技术栈
 
 - **前端**: Vue 3.5+ / Vite 6+ / Vue Router 4 / ECharts 6+
+- **样式**: Sass/SCSS（已安装 `sass` 作为 devDependency）
 - **包管理**: pnpm（使用 `pnpm-lock.yaml`）
 - **编码**: UTF-8 无 BOM（**禁止**使用带 BOM 的编码）
 - **运行环境**: uTools 插件（preload 为 Node.js，前端为浏览器环境）
@@ -160,11 +161,32 @@ const displayName = computed(() => props.provider.name || "Unnamed");
     <button @click="emit('switch', provider.id)">切换</button>
   </div>
 </template>
+
+<style lang="scss" scoped>
+.card {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+
+  &--current {
+    border-color: var(--primary);
+    background: var(--primary-light);
+  }
+
+  &__name {
+    font-weight: 500;
+  }
+}
+</style>
 ```
 
 ---
 
-### CSS
+### CSS/SCSS
+
+#### 样式语言
+- 优先使用 SCSS（`<style lang="scss" scoped>`），利用变量、嵌套、mixin 等特性
+- 简单组件可用普通 CSS
 
 #### 命名规范
 - 使用 BEM 风格：`.block__element--modifier`

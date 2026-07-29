@@ -6,7 +6,7 @@ import { confirm } from "../composables/useConfirm.js";
 import EChart from "../components/EChart.vue";
 
 const router = useRouter();
-const { APP_TYPES, APP_LABELS, filter, stats, refreshing, refresh, setAppType, setDays, clearStats, cacheHitRate } = useStats();
+const { APP_TYPES, APP_LABELS, filter, stats, refreshing, initialLoading, refresh, setAppType, setDays, clearStats, cacheHitRate } = useStats();
 
 const DAY_OPTIONS = [
   { v: 7, label: "近 7 天" },
@@ -35,57 +35,73 @@ async function onClear() {
   if (ok) clearStats(filter.appType);
 }
 
-// ── 图表配置 ──
+// ── 图表配置（Chart.js） ──
 const axisColor = "#94a3b8";
 const gridColor = "rgba(148,163,184,.15)";
 
-const trendOption = computed(() => {
-  const days = stats.value.daily.map(d => d.day.slice(5));
-  const input = stats.value.daily.map(d => d.input || 0);
-  const output = stats.value.daily.map(d => d.output || 0);
-  const cache = stats.value.daily.map(d => d.cacheRead || 0);
+const commonScaleOpts = {
+  ticks: { color: axisColor, callback: v => fmt(v) },
+  grid: { color: gridColor },
+};
+const commonLegend = { labels: { color: axisColor, boxWidth: 12, padding: 12 } };
+
+const trendData = computed(() => {
+  const labels = stats.value.daily.map(d => d.day.slice(5));
   return {
-    tooltip: { trigger: "axis" },
-    legend: { data: ["输入", "输出", "缓存命中"], textStyle: { color: axisColor }, top: 0 },
-    grid: { left: 8, right: 12, top: 30, bottom: 4, containLabel: true },
-    xAxis: { type: "category", data: days, axisLabel: { color: axisColor }, axisLine: { lineStyle: { color: gridColor } } },
-    yAxis: { type: "value", axisLabel: { color: axisColor, formatter: v => fmt(v) }, splitLine: { lineStyle: { color: gridColor } } },
-    series: [
-      { name: "输入", type: "bar", stack: "tok", data: input, itemStyle: { color: "#3b82f6" } },
-      { name: "输出", type: "bar", stack: "tok", data: output, itemStyle: { color: "#22c55e" } },
-      { name: "缓存命中", type: "line", data: cache, smooth: true, itemStyle: { color: "#f59e0b" } },
+    labels,
+    datasets: [
+      { label: "输入", type: "bar", data: stats.value.daily.map(d => d.input || 0), backgroundColor: "#3b82f6", stack: "tok", order: 2 },
+      { label: "输出", type: "bar", data: stats.value.daily.map(d => d.output || 0), backgroundColor: "#22c55e", stack: "tok", order: 2 },
+      { label: "缓存命中", type: "line", data: stats.value.daily.map(d => d.cacheRead || 0), borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,.15)", tension: .3, fill: false, order: 1 },
     ],
   };
 });
 
-const modelBarOption = computed(() => {
+const trendOpts = {
+  responsive: true, maintainAspectRatio: false,
+  interaction: { mode: "index", intersect: false },
+  plugins: { legend: commonLegend, tooltip: { callbacks: { label: ctx => ctx.dataset.label + ": " + fmt(ctx.parsed.y) } } },
+  scales: { x: { ticks: { color: axisColor } }, y: { ...commonScaleOpts, stacked: true } },
+};
+
+const modelBarData = computed(() => {
   const list = stats.value.models.slice(0, 8).reverse();
   return {
-    tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, formatter: p => p[0].name + "<br/>Tokens: " + fmt(p[0].value) },
-    grid: { left: 8, right: 24, top: 8, bottom: 4, containLabel: true },
-    xAxis: { type: "value", axisLabel: { color: axisColor, formatter: v => fmt(v) }, splitLine: { lineStyle: { color: gridColor } } },
-    yAxis: { type: "category", data: list.map(m => m.model), axisLabel: { color: axisColor }, axisLine: { lineStyle: { color: gridColor } } },
-    series: [{ type: "bar", data: list.map(m => m.total), itemStyle: { color: "#6366f1", borderRadius: [0, 4, 4, 0] }, barWidth: "60%" }],
+    labels: list.map(m => m.model),
+    datasets: [{ data: list.map(m => m.total), backgroundColor: "#6366f1", borderRadius: 4, barPercentage: .6 }],
   };
 });
 
-const cacheOption = computed(() => {
+const modelBarOpts = {
+  indexAxis: "y",
+  responsive: true, maintainAspectRatio: false,
+  plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => "Tokens: " + fmt(ctx.parsed.x) } } },
+  scales: {
+    x: { ...commonScaleOpts },
+    y: { ticks: { color: axisColor }, grid: { display: false } },
+  },
+};
+
+const cacheData = computed(() => {
   const t = stats.value.totals;
-  const hit = t.cacheRead || 0;
-  const miss = t.input || 0; // 新增输入（非缓存）与缓存命中现为独立字段
   return {
-    tooltip: { trigger: "item", formatter: p => p.name + ": " + fmt(p.value) + " (" + p.percent + "%)" },
-    legend: { bottom: 0, textStyle: { color: axisColor } },
-    series: [{
-      type: "pie", radius: ["55%", "78%"], center: ["50%", "45%"], avoidLabelOverlap: false,
-      label: { show: false }, labelLine: { show: false },
-      data: [
-        { value: hit, name: "缓存命中", itemStyle: { color: "#f59e0b" } },
-        { value: miss, name: "新增输入", itemStyle: { color: "#3b82f6" } },
-      ],
+    labels: ["缓存命中", "新增输入"],
+    datasets: [{
+      data: [t.cacheRead || 0, t.input || 0],
+      backgroundColor: ["#f59e0b", "#3b82f6"],
+      borderWidth: 0,
     }],
   };
 });
+
+const cacheOpts = {
+  responsive: true, maintainAspectRatio: false,
+  cutout: "55%",
+  plugins: {
+    legend: { position: "bottom", ...commonLegend },
+    tooltip: { callbacks: { label: ctx => ctx.label + ": " + fmt(ctx.parsed) + " (" + Math.round(ctx.parsed / ctx.dataset.data.reduce((a, b) => a + b, 0) * 100) + "%)" } },
+  },
+};
 </script>
 
 
@@ -128,15 +144,15 @@ const cacheOption = computed(() => {
       <div class="panels">
         <div class="panel panel--wide">
           <div class="panel-title">Token 趋势</div>
-          <EChart :option="trendOption" height="240px" />
+          <EChart type="bar" :data="trendData" :options="trendOpts" height="240px" />
         </div>
         <div class="panel panel--wide">
           <div class="panel-title">模型用量排行</div>
-          <EChart :option="modelBarOption" height="260px" />
+          <EChart type="bar" :data="modelBarData" :options="modelBarOpts" height="260px" />
         </div>
         <div class="panel">
           <div class="panel-title">缓存命中占比</div>
-          <EChart :option="cacheOption" height="240px" />
+          <EChart type="pie" :data="cacheData" :options="cacheOpts" height="240px" />
         </div>
         <div class="panel">
           <div class="panel-title">模型分布</div>
@@ -149,6 +165,12 @@ const cacheOption = computed(() => {
           </div>
         </div>
       </div>
+    </div>
+
+    <div v-else-if="initialLoading" class="empty">
+      <div class="loading-spinner"></div>
+      <div class="empty-title">正在扫描日志…</div>
+      <div class="empty-desc">首次加载需要扫描本地会话日志，请稍候</div>
     </div>
 
     <div v-else class="empty">
@@ -204,4 +226,5 @@ const cacheOption = computed(() => {
 .empty-icon { font-size: 40px; }
 .empty-title { font-size: 15px; font-weight: 600; color: var(--text-secondary); }
 .empty-desc { font-size: 12px; text-align: center; line-height: 1.6; }
+.loading-spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .8s linear infinite; }
 </style>

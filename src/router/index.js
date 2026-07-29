@@ -1,9 +1,6 @@
 ﻿import { createRouter, createMemoryHistory } from "vue-router";
 import ProviderListPage from "../views/ProviderListPage.vue";
-import SettingsPage from "../views/SettingsPage.vue";
 import SkillsPage from "../views/SkillsPage.vue";
-import RoutesSettings from "../views/settings/RoutesSettings.vue";
-import StorageSettings from "../views/settings/StorageSettings.vue";
 
 const routes = [
   { path: "/", component: ProviderListPage },
@@ -11,11 +8,11 @@ const routes = [
   { path: "/stats", component: () => import("../views/StatsPage.vue") },
   {
     path: "/settings",
-    component: SettingsPage,
+    component: () => import("../views/SettingsPage.vue"),
     children: [
       { path: "", redirect: "/settings/routes" },
-      { path: "routes", component: RoutesSettings },
-      { path: "storage", component: StorageSettings },
+      { path: "routes", component: () => import("../views/settings/RoutesSettings.vue") },
+      { path: "storage", component: () => import("../views/settings/StorageSettings.vue") },
     ],
   },
 ];

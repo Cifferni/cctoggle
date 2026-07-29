@@ -17,6 +17,7 @@ const stats = ref({
 });
 
 const refreshing = ref(false);
+const initialLoading = ref(true); // 首次加载标记，区分"加载中"与"无数据"
 
 // 本地日期 YYYY-MM-DD（用于 days 范围过滤）
 function _dayKey(d) {
@@ -84,6 +85,7 @@ async function refresh() {
     toast.error("扫描失败：" + (e && e.message ? e.message : String(e)));
   } finally {
     refreshing.value = false;
+    initialLoading.value = false;
   }
 }
 
@@ -112,7 +114,7 @@ function cacheHitRate(t) {
 export function useStats() {
   return {
     APP_TYPES, APP_LABELS,
-    filter, stats, refreshing,
+    filter, stats, refreshing, initialLoading,
     refresh, setAppType, setDays, clearStats, cacheHitRate,
   };
 }

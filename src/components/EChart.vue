@@ -1,53 +1,35 @@
 <script setup>
-import { ref, shallowRef, onMounted, onBeforeUnmount, watch } from "vue";
-
-// 按需引入 echarts，仅打包用到的模块，减小体积
-import * as echarts from "echarts/core";
-import { BarChart, LineChart, PieChart } from "echarts/charts";
+import { computed, toRef } from "vue";
 import {
-  GridComponent, TooltipComponent, LegendComponent, TitleComponent,
-} from "echarts/components";
-import { CanvasRenderer } from "echarts/renderers";
+  Chart as ChartJS,
+  CategoryScale, LinearScale, BarElement, LineElement, PointElement,
+  ArcElement, Tooltip, Legend, Filler,
+} from "chart.js";
+import { Bar, Line, Pie } from "vue-chartjs";
 
-echarts.use([
-  BarChart, LineChart, PieChart,
-  GridComponent, TooltipComponent, LegendComponent, TitleComponent,
-  CanvasRenderer,
-]);
+ChartJS.register(
+  CategoryScale, LinearScale, BarElement, LineElement, PointElement,
+  ArcElement, Tooltip, Legend, Filler,
+);
 
 const props = defineProps({
-  option: { type: Object, required: true },
+  type: { type: String, required: true },       // "bar" | "line" | "pie"
+  data: { type: Object, required: true },        // Chart.js data
+  options: { type: Object, default: () => ({}) }, // Chart.js options
   height: { type: String, default: "260px" },
 });
 
-const el = ref(null);
-const chart = shallowRef(null);
-let ro = null;
-
-function render() {
-  if (!chart.value) return;
-  chart.value.setOption(props.option, true);
-}
-
-onMounted(() => {
-  chart.value = echarts.init(el.value);
-  render();
-  ro = new ResizeObserver(() => chart.value && chart.value.resize());
-  ro.observe(el.value);
-});
-
-onBeforeUnmount(() => {
-  if (ro) ro.disconnect();
-  if (chart.value) { chart.value.dispose(); chart.value = null; }
-});
-
-watch(() => props.option, render, { deep: true });
+const componentMap = { bar: Bar, line: Line, pie: Pie };
+const chartComp = computed(() => componentMap[props.type] || Bar);
 </script>
 
 <template>
-  <div ref="el" class="echart" :style="{ height }"></div>
+  <div class="chart-wrap" :style="{ height }">
+    <component :is="chartComp" :data="data" :options="options" />
+  </div>
 </template>
 
 <style scoped>
-.echart { width: 100%; }
+.chart-wrap { position: relative; width: 100%; }
+.chart-wrap :deep(canvas) { width: 100% !important; height: 100% !important; }
 </style>
