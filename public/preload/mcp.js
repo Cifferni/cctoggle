@@ -411,13 +411,26 @@ function toggleMcpServer(name) {
 function syncFromConfigFiles() {
   var configs = _readAllConfigs();
   var mapping = _getMapping();
+  var disabledSet = {};
+  (mapping.disabled || []).forEach(function (n) { disabledSet[n] = true; });
 
+  // 配置文件里有但 mapping 里没有 → 添加
   ALL_APPS.forEach(function (app) {
     var configServers = configs[app] || {};
     Object.keys(configServers).forEach(function (name) {
       if (mapping[app].indexOf(name) === -1) {
         mapping[app].push(name);
       }
+    });
+  });
+
+  // mapping 里有但配置文件里没有、且未被禁用 → 移除
+  ALL_APPS.forEach(function (app) {
+    var configServers = configs[app] || {};
+    mapping[app] = (mapping[app] || []).filter(function (name) {
+      if (configServers[name]) return true;
+      if (disabledSet[name]) return true;
+      return false;
     });
   });
 

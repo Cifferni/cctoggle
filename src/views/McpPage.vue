@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, nextTick } from "vue";
 import { useRouter } from "vue-router";
 import { NIcon } from "naive-ui";
 import { ArrowBackOutline } from "@vicons/ionicons5";
@@ -15,6 +15,18 @@ const { mcpServers, loadServers, saveServer, deleteServer, toggleServer, getServ
 const showForm = ref(false);
 const editingId = ref(null);
 const formInitialData = ref(null);
+const syncing = ref(false);
+
+async function onSync() {
+  syncing.value = true;
+  await nextTick();
+  await new Promise(function (r) { setTimeout(r, 50); });
+  try {
+    syncFromConfigFiles();
+  } finally {
+    syncing.value = false;
+  }
+}
 
 const AGENT_APPS = [
   { key: "claude", label: "Claude" },
@@ -82,8 +94,8 @@ function onUpdateApps(id, apps) {
         <n-tag size="tiny" :bordered="false" round>{{ mcpServers.length }}</n-tag>
       </div>
       <n-space :size="6">
-        <n-button size="small" quaternary @click="syncFromConfigFiles" title="从 Agent 配置文件同步 MCP Server">
-          ↻ 刷新
+        <n-button size="small" quaternary :disabled="syncing" @click="onSync" title="从 Agent 配置文件同步 MCP Server">
+          <span class="sync-icon" :class="{ 'sync-icon--spinning': syncing }">↻</span> 刷新
         </n-button>
         <n-button type="primary" size="small" @click="onAdd">+ 添加</n-button>
       </n-space>
@@ -245,5 +257,16 @@ function onUpdateApps(id, apps) {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.sync-icon {
+  display: inline-block;
+}
+.sync-icon--spinning {
+  animation: spin .8s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 </style>
