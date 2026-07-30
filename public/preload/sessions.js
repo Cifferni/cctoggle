@@ -47,6 +47,7 @@ async function _parseClaudeSessionFile(filePath, projectName) {
   var lastTs = "";
   var tokenUsage = 0;
   var lastModel = "";
+  var projectPath = "";
 
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i];
@@ -58,34 +59,46 @@ async function _parseClaudeSessionFile(filePath, projectName) {
     if (d.type === "summary" && d.summary) {
       title = d.summary;
     }
-    if (d.type === "assistant" || d.type === "human") {
+    // 从 cwd 字段提取项目路径
+    if (!projectPath && d.cwd) {
+      projectPath = d.cwd;
+    }
+    // Claude Code: type="user" | type="assistant"; legacy: type="human"
+    if (d.type === "assistant" || d.type === "human" || d.type === "user") {
       messageCount++;
       if (d.timestamp) {
         if (!firstTs) firstTs = d.timestamp;
         lastTs = d.timestamp;
       }
+      // 用首条用户消息内容作为标题
+      if (!title && d.type === "user" && d.message && d.message.content) {
+        var c = typeof d.message.content === "string" ? d.message.content : "";
+        if (c.length > 60) c = c.substring(0, 60) + "...";
+        if (c) title = c;
+      }
       if (d.type === "assistant" && d.message && d.message.usage) {
         var u = d.message.usage;
         tokenUsage += (Number(u.input_tokens) || 0) + (Number(u.output_tokens) || 0);
-        if (d.message.model) lastModel = d.message.model;
+        if (d.message.model && d.message.model !== "<synthetic>") lastModel = d.message.model;
       }
     }
   }
 
   if (!title) {
-    // fallback: use session id prefix
     title = sessionId.substring(0, 12) + "...";
   }
 
-  // 解码项目名：将 "-" 替换为 "/" 还原路径
-  var decodedProject = projectName.replace(/-/g, "/");
+  // 如果没有从消息中提取到项目路径，尝试从目录名解码
+  if (!projectPath) {
+    projectPath = projectName.replace(/-/g, "/");
+  }
 
   return {
     id: "claude_" + sessionId,
     app: "claude",
     sessionId: sessionId,
     title: title,
-    projectPath: decodedProject,
+    projectPath: projectPath,
     messageCount: messageCount,
     tokenUsage: tokenUsage,
     model: lastModel,
@@ -120,6 +133,7 @@ async function _parseCodexSessionFile(filePath) {
   var lastTs = "";
   var tokenUsage = 0;
   var lastModel = "";
+  var projectPath = "";
 
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i];
@@ -128,28 +142,38 @@ async function _parseCodexSessionFile(filePath) {
     try { d = JSON.parse(line); } catch (e) { continue; }
     if (!d || typeof d !== "object") continue;
 
-    if (d.type === "turn_context" && d.payload) {
-      if (d.payload.model) lastModel = d.payload.model;
-      if (d.payload.input && !title) {
-        // 用首条 input 作为标题
-        var inputText = typeof d.payload.input === "string" ? d.payload.input : "";
-        if (inputText.length > 60) inputText = inputText.substring(0, 60) + "...";
-        title = inputText;
-      }
+    // session_meta: 提取项目路径和模型
+    if (d.type === "session_meta" && d.payload) {
+      if (d.payload.cwd) projectPath = d.payload.cwd;
+      if (d.payload.model_provider) lastModel = d.payload.model_provider;
     }
 
+    // event_msg: 用户消息 / 助手消息 / token 统计
     if (d.type === "event_msg" && d.payload) {
-      if (d.payload.type === "token_count" && d.payload.info && d.payload.info.last_token_usage) {
+      if (d.payload.type === "user_message" && d.payload.message) {
+        messageCount++;
+        if (!title) {
+          var t = d.payload.message;
+          if (t.length > 60) t = t.substring(0, 60) + "...";
+          title = t;
+        }
+      } else if (d.payload.type === "agent_message" && d.payload.message) {
+        messageCount++;
+      } else if (d.payload.type === "token_count" && d.payload.info && d.payload.info.last_token_usage) {
         var u = d.payload.info.last_token_usage;
         tokenUsage += (Number(u.input_tokens) || 0) + (Number(u.output_tokens) || 0);
       }
+    }
+
+    // response_item 中的 model 信息
+    if (d.type === "response_item" && d.payload && d.payload.model) {
+      lastModel = d.payload.model;
     }
 
     if (d.timestamp) {
       if (!firstTs) firstTs = d.timestamp;
       lastTs = d.timestamp;
     }
-    messageCount++;
   }
 
   if (!title) title = sessionId.substring(0, 12) + "...";
@@ -159,7 +183,7 @@ async function _parseCodexSessionFile(filePath) {
     app: "codex",
     sessionId: sessionId,
     title: title,
-    projectPath: "",
+    projectPath: projectPath,
     messageCount: messageCount,
     tokenUsage: tokenUsage,
     model: lastModel,
@@ -325,12 +349,12 @@ async function loadSessionDetail(sessionId, app) {
     if (!d || typeof d !== "object") continue;
 
     if (app === "codex") {
-      if (d.type === "turn_context" && d.payload) {
-        if (d.payload.input) {
-          messages.push({ role: "user", content: typeof d.payload.input === "string" ? d.payload.input : JSON.stringify(d.payload.input), timestamp: d.timestamp || "" });
-        }
-        if (d.payload.output) {
-          messages.push({ role: "assistant", content: typeof d.payload.output === "string" ? d.payload.output : JSON.stringify(d.payload.output), timestamp: d.timestamp || "" });
+      // Codex: event_msg 中的 user_message / agent_message
+      if (d.type === "event_msg" && d.payload) {
+        if (d.payload.type === "user_message" && d.payload.message) {
+          messages.push({ role: "user", content: d.payload.message, timestamp: d.timestamp || "" });
+        } else if (d.payload.type === "agent_message" && d.payload.message) {
+          messages.push({ role: "assistant", content: d.payload.message, timestamp: d.timestamp || "" });
         }
       }
     } else {
