@@ -28,10 +28,18 @@ function _dayFromTs(ts) {
   try { return _statDayKey(new Date(ts)); } catch (e) { return ""; }
 }
 
+// 所有已知 appType（与前端 shared.js APP_TYPES 保持同步）
+var ALL_APP_TYPES = ["codex", "claude", "claude-desktop", "openclaw", "gemini"];
+
 // 读取各 agent 的清除时间戳（毫秒）；无则为 0
 function _getClearedAt() {
   var doc = utools.db.get(CLEARED_KEY) || {};
-  return { claude: Number(doc.claude) || 0, codex: Number(doc.codex) || 0 };
+  var result = {};
+  for (var i = 0; i < ALL_APP_TYPES.length; i++) {
+    var t = ALL_APP_TYPES[i];
+    result[t] = Number(doc[t]) || 0;
+  }
+  return result;
 }
 
 // 递归列出目录下所有 .jsonl 文件（绝对路径，异步以让出主线程）
@@ -151,7 +159,7 @@ async function scanUsageLogs() {
 function clearStats(appType) {
   var doc = utools.db.get(CLEARED_KEY) || { _id: CLEARED_KEY };
   var now = Date.now();
-  if (!appType || appType === "all") { doc.claude = now; doc.codex = now; }
+  if (!appType || appType === "all") { for (var i = 0; i < ALL_APP_TYPES.length; i++) doc[ALL_APP_TYPES[i]] = now; }
   else doc[appType] = now;
   try { utools.db.put(doc); return { success: true }; }
   catch (e) { return { success: false, error: String(e && e.message ? e.message : e) }; }
