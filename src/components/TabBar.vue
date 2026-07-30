@@ -71,10 +71,6 @@ function onToggleProxy() {
 
     <span class="tab-divider"></span>
 
-    <button class="nav-btn" title="用量统计" @click="router.push('/stats')">
-      <n-icon :size="15"><stats-chart-outline /></n-icon>
-    </button>
-
     <label
       class="proxy-switch"
       :title="proxyOn ? APP_LABELS[activeTab()] + ' 代理运行中，点击关闭' : '打开以为 ' + APP_LABELS[activeTab()] + ' 开启代理'"
@@ -82,6 +78,10 @@ function onToggleProxy() {
       <span class="proxy-label">代理</span>
       <n-switch :value="proxyOn" size="small" @update:value="onToggleProxy" />
     </label>
+
+    <button class="nav-btn" title="用量统计" @click="router.push('/stats')">
+      <n-icon :size="15"><stats-chart-outline /></n-icon>
+    </button>
 
     <button class="nav-btn" title="Skill管理" @click="router.push('/skills')">
       <n-icon :size="15"><build-outline /></n-icon>
