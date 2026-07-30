@@ -12,6 +12,7 @@ const SESSION_APPS = [
 ];
 
 const SORT_OPTIONS = [
+  { value: "today", label: "今日活跃" },
   { value: "time-desc", label: "最近活跃" },
   { value: "time-asc", label: "最早活跃" },
   { value: "name-asc", label: "名称 A-Z" },
@@ -26,7 +27,7 @@ const allSessions = ref([]);
 const loading = ref(false);
 const activeApp = ref("claude");
 const searchQuery = ref("");
-const sortBy = ref("time-desc");
+const sortBy = ref("today");
 const detailSession = ref(null);
 const detailMessages = ref([]);
 const detailLoading = ref(false);
@@ -108,6 +109,11 @@ export function useSession() {
     // 排序
     var sorted = list.slice();
     switch (sortBy.value) {
+      case "today":
+        var today = new Date().toISOString().substring(0, 10);
+        sorted = sorted.filter(function (s) { return (s.updatedAt || "").substring(0, 10) === today; });
+        sorted.sort(function (a, b) { return (b.updatedAt || "").localeCompare(a.updatedAt || ""); });
+        break;
       case "time-desc":
         sorted.sort(function (a, b) { return (b.updatedAt || "").localeCompare(a.updatedAt || ""); });
         break;
