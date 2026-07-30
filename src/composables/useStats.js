@@ -1,5 +1,5 @@
 import { reactive, ref } from "vue";
-import { toast } from "./useToast.js";
+import { appMessage } from "./useAppMessage.js";
 import { APP_TYPES, APP_LABELS, getSkillNest } from "./shared.js";
 
 const filter = reactive({ appType: "all", days: 7 });
@@ -74,15 +74,15 @@ async function refresh() {
   try {
     const api = getSkillNest();
     if (typeof api.scanUsageLogs !== "function") {
-      toast.error("scanUsageLogs 不可用，请在 uTools 中重载插件（preload 缓存）");
+      appMessage.error("scanUsageLogs 不可用，请在 uTools 中重载插件（preload 缓存）");
       return;
     }
     const r = (await api.scanUsageLogs()) || { daily: [] };
-    if (r.error) { toast.error("扫描出错：" + r.error); return; }
+    if (r.error) { appMessage.error("扫描出错：" + r.error); return; }
     rawDaily.value = r.daily || [];
     applyFilter();
   } catch (e) {
-    toast.error("扫描失败：" + (e && e.message ? e.message : String(e)));
+    appMessage.error("扫描失败：" + (e && e.message ? e.message : String(e)));
   } finally {
     refreshing.value = false;
     initialLoading.value = false;
@@ -96,10 +96,10 @@ function setDays(d) { filter.days = d; applyFilter(); }
 async function clearStats(appType) {
   const r = getSkillNest().clearStats(appType || "all") || { success: false };
   if (r.success) {
-    toast.success("已清除统计数据");
+    appMessage.success("已清除统计数据");
     await refresh();
   } else {
-    toast.error("清除失败" + (r.error ? "：" + r.error : ""));
+    appMessage.error("清除失败" + (r.error ? "：" + r.error : ""));
   }
   return r;
 }

@@ -1,7 +1,9 @@
 ﻿<script setup>
 import { ref, watch, onMounted, onBeforeUnmount } from "vue";
-import { toast } from "../composables/useToast.js";
+import { useMessage } from "naive-ui";
 import { openUrl } from "../utils/openUrl.js";
+
+const message = useMessage();
 
 const searchQuery = ref("");
 const installing = ref(null);
@@ -73,7 +75,7 @@ function install(skill) {
         window.utoolsCctoggle.listNestSkills();
       }
     }
-    else if (result.error) { toast.error(result.error); }
+    else if (result.error) { message.error(result.error); }
     installing.value = null;
   }, 300);
 }

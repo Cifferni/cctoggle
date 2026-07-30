@@ -1,7 +1,9 @@
 <script setup>
 import { ref, onMounted } from "vue";
+import { useMessage } from "naive-ui";
 import { getSkillNest } from "../../composables/shared.js";
-import { toast } from "../../composables/useToast.js";
+
+const message = useMessage();
 
 const skipOnboarding = ref(false);
 const loading = ref(false);
@@ -23,9 +25,9 @@ function onChange(val) {
     const api = getSkillNest();
     api.setClaudeOnboarding(val);
     skipOnboarding.value = val;
-    toast.success(val ? "已开启跳过初次安装确认" : "已关闭跳过初次安装确认");
+    message.success(val ? "已开启跳过初次安装确认" : "已关闭跳过初次安装确认");
   } catch (e) {
-    toast.error("操作失败：" + (e.message || e));
+    message.error("操作失败：" + (e.message || e));
   } finally {
     loading.value = false;
   }

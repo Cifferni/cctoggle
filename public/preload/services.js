@@ -115,6 +115,8 @@ window.utoolsCctoggle = {
   scanSessions: sessions.scanSessions,
   loadSessionDetail: sessions.loadSessionDetail,
   deleteSession: sessions.deleteSession,
+  clearAllSessions: sessions.clearAllSessions,
+  clearSessionCache: sessions.clearSessionCache,
 };
 
 

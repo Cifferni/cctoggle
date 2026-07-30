@@ -1,9 +1,10 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
+import { useMessage } from "naive-ui";
 import { useProviders } from "../../composables/useProviders.js";
 import { useRoutes } from "../../composables/useRoutes.js";
-import { toast } from "../../composables/useToast.js";
 
+const message = useMessage();
 const { APP_LABELS, activeTab, providers, loadProviders } = useProviders();
 const { runtime, refreshStatus, getProxyPort, setProxyPort } = useRoutes();
 
@@ -21,9 +22,9 @@ function syncPort() {
 function onSavePort() {
   const r = setProxyPort(currentApp.value, Number(portInput.value));
   if (r.success) {
-    toast.success("代理端口已保存：" + r.port);
+    message.success("代理端口已保存：" + r.port);
   } else {
-    toast.error(r.error === "proxy is running" ? "运行中无法修改" : "保存失败：" + (r.error || "unknown"));
+    message.error(r.error === "proxy is running" ? "运行中无法修改" : "保存失败：" + (r.error || "unknown"));
   }
 }
 

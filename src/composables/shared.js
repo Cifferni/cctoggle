@@ -66,6 +66,7 @@ export function getSkillNest() {
     scanSessions: () => ({ sessions: [] }),
     loadSessionDetail: async () => [],
     deleteSession: () => ({ success: false }),
+    clearAllSessions: () => ({ success: false, count: 0 }),
     paths: {},
   };
 }

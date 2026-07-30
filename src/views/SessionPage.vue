@@ -1,19 +1,25 @@
 <script setup>
-import { onMounted, computed } from "vue";
+import { onMounted, ref, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
-import { NIcon, NTabs, NTabPane, NInput, NSelect, NSpace, NButton, NEmpty, NText, NSkeleton } from "naive-ui";
+import { NIcon, NTabs, NTabPane, NInput, NSelect, NSpace, NButton, NEmpty, NText, NSkeleton, NSpin, useMessage, useDialog } from "naive-ui";
 import { ArrowBackOutline, SearchOutline } from "@vicons/ionicons5";
 import { useSession } from "../composables/useSession.js";
-import { confirm } from "../composables/useConfirm.js";
 import AppDashboard from "../components/AppDashboard.vue";
 import SessionCard from "../components/SessionCard.vue";
 import SessionDetail from "../components/SessionDetail.vue";
 
 const router = useRouter();
+const message = useMessage();
+const dialog = useDialog();
 const {
-  filteredSessions,
+  sessions,
+  total,
   appStats,
   loading,
+  loadingMore,
+  switching,
+  hasMore,
+  showSkeleton,
   activeApp,
   searchQuery,
   sortBy,
@@ -23,35 +29,80 @@ const {
   detailSession,
   detailMessages,
   detailLoading,
-  loadSessions,
+  loadPage,
+  loadMore,
   switchApp,
+  onSearch,
+  onSortChange,
+  loadStats,
   loadDetail,
   closeDetail,
   deleteSession,
   clearSessions,
   exportSession,
   exportAllSessions,
+  cleanup,
 } = useSession();
 
-onMounted(() => loadSessions());
-
-async function onDelete(session) {
-  const ok = await confirm("确定删除该会话？删除后无法恢复。", {
-    title: "删除会话",
-    confirmText: "删除",
-    danger: true,
-  });
-  if (ok) deleteSession(session);
+// 搜索防抖
+let searchTimer = null;
+function onSearchInput(value) {
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    onSearch(value);
+  }, 300);
 }
 
-async function onClear() {
-  var label = activeApp.value === "all" ? "所有" : (SESSION_APPS.find(function (a) { return a.key === activeApp.value; })?.label || "");
-  const ok = await confirm(`确定清空${label}的全部会话？删除后无法恢复。`, {
-    title: "清空会话",
-    confirmText: "清空",
-    danger: true,
+// 无限滚动（rAF 节流）
+const scrollContainer = ref(null);
+let scrollRaf = null;
+function onScroll() {
+  if (scrollRaf) return;
+  scrollRaf = requestAnimationFrame(() => {
+    scrollRaf = null;
+    if (!scrollContainer.value || loadingMore.value || !hasMore.value) return;
+    const el = scrollContainer.value;
+    // 距底部 100px 时触发加载
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 100) {
+      loadMore();
+    }
   });
-  if (ok) clearSessions();
+}
+
+onMounted(() => {
+  loadPage();
+  loadStats();
+});
+
+onUnmounted(() => {
+  if (searchTimer) clearTimeout(searchTimer);
+  if (scrollRaf) cancelAnimationFrame(scrollRaf);
+  cleanup();
+});
+
+function onDelete(session) {
+  dialog.warning({
+    title: "删除会话",
+    content: "确定删除该会话？删除后无法恢复。",
+    positiveText: "删除",
+    negativeText: "取消",
+    onPositiveClick: function () {
+      deleteSession(session);
+    },
+  });
+}
+
+function onClear() {
+  var label = SESSION_APPS.find(function (a) { return a.key === activeApp.value; })?.label || "";
+  dialog.warning({
+    title: "清空会话",
+    content: "确定清空" + label + "的全部会话？删除后无法恢复。",
+    positiveText: "清空",
+    negativeText: "取消",
+    onPositiveClick: function () {
+      clearSessions();
+    },
+  });
 }
 
 function onView(session) {
@@ -63,11 +114,15 @@ function onExport(session) {
 }
 
 function onCopyTo(targetApp) {
-  // 跨应用复制功能（TODO: 后续实现）
-  // 暂时提示
-  import("../composables/useToast.js").then(function (mod) {
-    mod.toast.info("跨应用复制功能开发中");
-  });
+  if (detailSession.value) {
+    var app = detailSession.value.app;
+    var cmd = (app === "codex" ? "codex" : "claude") + " --resume " + detailSession.value.id;
+    navigator.clipboard.writeText(cmd).then(function () {
+      message.success("已复制: " + cmd);
+    });
+    return;
+  }
+  message.info("跨应用复制功能开发中");
 }
 </script>
 
@@ -106,28 +161,30 @@ function onCopyTo(targetApp) {
     <!-- 搜索 + 排序 -->
     <div class="search-bar">
       <n-input
-        v-model:value="searchQuery"
+        :value="searchQuery"
         placeholder="搜索会话..."
         clearable
         size="small"
         style="flex: 1;"
+        @update:value="onSearchInput"
       >
         <template #prefix>
           <n-icon :size="14"><search-outline /></n-icon>
         </template>
       </n-input>
       <n-select
-        v-model:value="sortBy"
+        :value="sortBy"
         :options="SORT_OPTIONS"
         size="small"
         style="width: 130px;"
+        @update:value="onSortChange"
       />
     </div>
 
     <!-- 会话列表 -->
-    <div class="page-body">
+    <div class="page-body" ref="scrollContainer" @scroll="onScroll">
       <!-- 骨架屏 -->
-      <template v-if="loading">
+      <template v-if="showSkeleton || switching">
         <div v-for="i in 5" :key="'sk-' + i" class="skeleton-card">
           <n-skeleton circle width="32px" height="32px" />
           <div class="skeleton-card__body">
@@ -139,7 +196,7 @@ function onCopyTo(targetApp) {
       </template>
 
       <!-- 空状态 -->
-      <n-empty v-else-if="filteredSessions.length === 0" description="暂无会话记录" style="padding: 60px 0;">
+      <n-empty v-else-if="!loading && sessions.length === 0" description="暂无会话记录" style="padding: 60px 0;">
         <template #extra>
           <n-text depth="3" style="font-size: 13px;">
             {{ searchQuery ? "未找到匹配的会话" : "暂无本地会话数据" }}
@@ -148,15 +205,28 @@ function onCopyTo(targetApp) {
       </n-empty>
 
       <!-- 会话卡片 -->
-      <SessionCard
-        v-for="s in filteredSessions"
-        :key="s.id"
-        :session="s"
-        v-memo="[s.id, s.updatedAt]"
-        @view="onView"
-        @export="onExport"
-        @delete="onDelete"
-      />
+      <template v-else>
+        <SessionCard
+          v-for="s in sessions"
+          :key="s.id"
+          :session="s"
+          v-memo="[s.id, s.updatedAt]"
+          @view="onView"
+          @export="onExport"
+          @delete="onDelete"
+        />
+
+        <!-- 加载更多骨架屏 -->
+        <div v-if="loadingMore" class="loading-more">
+          <n-spin size="small" />
+          <n-text depth="3" style="margin-left: 8px;">加载中...</n-text>
+        </div>
+
+        <!-- 没有更多 -->
+        <div v-else-if="!hasMore && sessions.length > 0" class="no-more">
+          <n-text depth="3">没有更多了</n-text>
+        </div>
+      </template>
     </div>
 
     <!-- 详情抽屉 -->
@@ -232,6 +302,11 @@ function onCopyTo(targetApp) {
     padding: 4px 10px;
     min-height: 28px;
   }
+
+  // active tab hover 保持白色文字
+  :deep(.n-tabs-tab--active:hover) {
+    color: #fff !important;
+  }
 }
 
 // 搜索栏
@@ -267,5 +342,21 @@ function onCopyTo(targetApp) {
     display: flex;
     flex-direction: column;
   }
+}
+
+// 加载更多
+.loading-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 0;
+}
+
+// 没有更多
+.no-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 0;
 }
 </style>

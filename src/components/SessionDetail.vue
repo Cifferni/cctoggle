@@ -92,11 +92,8 @@ function truncateContent(content, maxLen) {
       <template #footer>
         <n-space justify="space-between" style="width: 100%;">
           <n-space :size="6">
-            <n-button size="small" quaternary @click="emit('copyTo', 'claude')" title="复制到 Claude Code">
-              复制到 Claude
-            </n-button>
-            <n-button size="small" quaternary @click="emit('copyTo', 'codex')" title="复制到 Codex">
-              复制到 Codex
+            <n-button size="small" quaternary @click="emit('copyTo', session?.app)" :title="'复制 ' + (session?.app === 'codex' ? 'codex' : 'claude') + ' --resume 命令'">
+              复制恢复命令
             </n-button>
           </n-space>
           <n-space :size="6">

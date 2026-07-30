@@ -1,8 +1,11 @@
 ﻿<script setup>
 import { computed, onMounted, ref } from "vue";
+import { useMessage, useDialog } from "naive-ui";
 import { useSkills } from "../composables/useSkills.js";
 import { APP_ICONS } from "../composables/shared.js";
-import { toast } from "../composables/useToast.js";
+
+const message = useMessage();
+const dialog = useDialog();
 const { ALL_APPS, APP_LABELS, nestSkills, deployments, allSkills, loadNestSkills, loadDeployments, loadAllSkills, deploy, undeploy, syncMode } = useSkills();
 
 onMounted(() => {
@@ -12,14 +15,19 @@ onMounted(() => {
 
 const toggling = ref(null);
 const deleting = ref(null);
-const confirmTarget = ref(null);
 
 function confirmDelete(skillName) {
-  confirmTarget.value = skillName;
+  dialog.warning({
+    title: "确认删除",
+    content: "确认删除 skill \"" + skillName + "\"？",
+    positiveText: "确认删除",
+    negativeText: "取消",
+    onPositiveClick: function () {
+      doDelete(skillName);
+    },
+  });
 }
-function doDelete() {
-  var skillName = confirmTarget.value;
-  confirmTarget.value = null;
+function doDelete(skillName) {
   deleting.value = skillName;
   var fn = window.utoolsCctoggle?.removeNestSkill || (function() { return { success: false, error: "not available" }; });
   var result = fn(skillName);
@@ -27,7 +35,7 @@ function doDelete() {
     loadNestSkills();
     loadDeployments();
   } else {
-    toast.error(result.error || "删除失败");
+    message.error(result.error || "删除失败");
   }
   deleting.value = null;
 }
@@ -145,17 +153,6 @@ const displayTargets = computed(() => {
       >{{ deleting === s.name ? '…' : '✕' }}</button>
     </div>
   </div>
-
-  <!-- 删除确认弹窗 -->
-  <div v-if="confirmTarget" class="confirm-overlay" @click.self="confirmTarget = null">
-    <div class="confirm-dialog">
-      <div class="confirm-msg">确认删除 skill "<strong>{{ confirmTarget }}</strong>"？</div>
-      <div class="confirm-actions">
-        <button class="btn-cancel" @click="confirmTarget = null">取消</button>
-        <button class="btn-confirm" @click="doDelete()">确认删除</button>
-      </div>
-    </div>
-  </div>
 </template>
 
 <style scoped>
@@ -251,52 +248,5 @@ const displayTargets = computed(() => {
 }
 .btn-delete:hover { border-color: var(--danger, #e74c3c); color: var(--danger, #e74c3c); background: rgba(231,76,60,0.06); }
 .btn-delete:disabled { opacity: .4; cursor: default; }
-
-/* 删除确认弹窗 */
-.confirm-overlay {
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,0.4);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 1000;
-}
-.confirm-dialog {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px 24px;
-  min-width: 280px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-}
-.confirm-msg {
-  font-size: 14px;
-  color: var(--text);
-  margin-bottom: 16px;
-  line-height: 1.5;
-}
-.confirm-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
-.btn-cancel, .btn-confirm {
-  padding: 8px 18px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all .15s;
-}
-.btn-cancel {
-  background: var(--bg);
-  color: var(--text-secondary);
-}
-.btn-cancel:hover { border-color: var(--text-muted); }
-.btn-confirm {
-  background: var(--danger, #e74c3c);
-  border-color: var(--danger, #e74c3c);
-  color: #fff;
-}
-.btn-confirm:hover { opacity: .85; }
 </style>
 

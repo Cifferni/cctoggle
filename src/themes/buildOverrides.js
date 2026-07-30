@@ -136,6 +136,10 @@ export function buildOverrides(theme, isDark) {
       tabTextColorHover: c.text,
       barColor: c.primary,
       fontWeightStrong: '600',
+      colorSegment: c.primaryLight,
+      tabColorSegment: c.primary,
+      tabTextColorActiveSegment: '#fff',
+      tabTextColorHoverSegment: c.primaryHover,
     },
   }
 }

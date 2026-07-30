@@ -1,12 +1,12 @@
 ﻿<script setup>
 import { computed } from "vue";
 import { useRouter } from "vue-router";
-import { NIcon, NTabs, NTabPane, NSwitch } from "naive-ui";
+import { NIcon, NTabs, NTabPane, NSwitch, useMessage } from "naive-ui";
 import { BuildOutline, SettingsOutline, CubeOutline, StatsChartOutline, ChatbubblesOutline } from "@vicons/ionicons5";
 import { useProviders } from "../composables/useProviders.js";
 import { useRoutes } from "../composables/useRoutes.js";
-import { toast } from "../composables/useToast.js";
 
+const message = useMessage();
 const { APP_TYPES, APP_LABELS, APP_ICONS, activeTab, setActiveTab } = useProviders();
 const { runtime, toggleQuick } = useRoutes();
 const router = useRouter();
@@ -23,22 +23,22 @@ function onToggleProxy() {
     try {
       const list = window.utoolsCctoggle?.listProviders?.(app) || [];
       if (!list.length) {
-        toast.warn("当前 App 还没有供应商，请先添加供应商");
+        message.warning("当前 App 还没有供应商，请先添加供应商");
         return;
       }
       if (!list.some(p => p.isCurrent)) {
-        toast.warn("当前 App 没有已激活的供应商，请先点击「切换」激活一个供应商");
+        message.warning("当前 App 没有已激活的供应商，请先点击「切换」激活一个供应商");
         return;
       }
     } catch (e) {}
   }
   const r = toggleQuick(app);
   if (!r.success && (r.error === "no providers" || r.error === "no members")) {
-    toast.warn("当前 App 还没有可用的供应商，请先添加供应商");
+    message.warning("当前 App 还没有可用的供应商，请先添加供应商");
   } else if (!r.success) {
-    toast.error("操作失败：" + (r.error || "unknown"));
+    message.error("操作失败：" + (r.error || "unknown"));
   } else {
-    toast.success(r.running ? "路由已开启" : "路由已关闭");
+    message.success(r.running ? "路由已开启" : "路由已关闭");
   }
 }
 </script>

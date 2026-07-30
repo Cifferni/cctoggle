@@ -1,5 +1,5 @@
 import { ref } from "vue";
-import { toast } from "./useToast.js";
+import { appMessage } from "./useAppMessage.js";
 import { PRESETS as BUILT_IN_PRESETS } from "../data/presets.js";
 import { useRoutes } from "./useRoutes.js";
 import { APP_TYPES, APP_LABELS, APP_ICONS, getSkillNest, toPlain } from "./shared.js";
@@ -59,7 +59,7 @@ function switchProvider(id) {
   if (r.success) {
     try { getSkillNest().setLastActiveApp?.(tab); } catch (e) {}
     loadProviders();
-    toast.success("\u5DF2\u5207\u6362\u5230 " + r.providerName);
+    appMessage.success("\u5DF2\u5207\u6362\u5230 " + r.providerName);
     // Codex direct connect: anthropic must use proxy; openai_chat can direct-connect but proxy recommended
     const fmt = target && target.apiFormat;
     if (tab === "codex" && (fmt === "openai_chat" || fmt === "anthropic")) {
@@ -67,7 +67,7 @@ function switchProvider(id) {
       try { proxyRunning = !!useRoutes().runtime[tab]?.running; } catch (e) {}
       if (!proxyRunning) {
         const msg = fmt === "anthropic" ? "该供应商为 Anthropic 协议，Codex 无法直连，请开启代理后使用" : "该供应商为 Chat 协议，直连需将连接协议选为 Chat，或开启代理获得自动转换";
-        toast.warn(msg, { duration: 5000 });
+        appMessage.warning(msg, { duration: 5000 });
       }
     }
   }

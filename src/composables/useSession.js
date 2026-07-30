@@ -1,141 +1,153 @@
 // composables/useSession.js
-import { ref, computed } from "vue";
-import { toast } from "./useToast.js";
+import { ref, computed, nextTick } from "vue";
+import { appMessage } from "./useAppMessage.js";
 import { getSkillNest, APP_ICONS } from "./shared.js";
 
 const SESSION_APPS = [
-  { key: "all", label: "全部" },
   { key: "claude", label: "Claude" },
+  { key: "claude-desktop", label: "Desktop" },
   { key: "codex", label: "Codex" },
   { key: "openclaw", label: "OpenClaw" },
-  { key: "claude-desktop", label: "Desktop" },
 ];
 
 const SORT_OPTIONS = [
+  { value: "all", label: "全部" },
   { value: "today", label: "今日活跃" },
-  { value: "time-desc", label: "最近活跃" },
-  { value: "time-asc", label: "最早活跃" },
+  { value: "time-desc", label: "时间倒序" },
+  { value: "time-asc", label: "时间正序" },
   { value: "name-asc", label: "名称 A-Z" },
   { value: "name-desc", label: "名称 Z-A" },
-  { value: "messages-desc", label: "消息最多" },
-  { value: "tokens-desc", label: "Token 最多" },
 ];
 
-// 模块级状态（单例）
-const cache = {};          // { claude: [...], codex: [...], ... }
-const allSessions = ref([]);
-const loading = ref(false);
-const activeApp = ref("claude");
-const searchQuery = ref("");
-const sortBy = ref("today");
-const detailSession = ref(null);
-const detailMessages = ref([]);
-const detailLoading = ref(false);
-const showDetail = ref(false);
-
-// 各应用统计（基于缓存）
-const appStats = ref(
-  SESSION_APPS.filter(function (a) { return a.key !== "all"; }).map(function (a) {
-    return { app: a.key, label: a.label, icon: APP_ICONS[a.key] || null, count: 0 };
-  })
-);
-
-function _updateStats() {
-  appStats.value = SESSION_APPS.filter(function (a) { return a.key !== "all"; }).map(function (a) {
-    return { app: a.key, label: a.label, icon: APP_ICONS[a.key] || null, count: (cache[a.key] || []).length };
-  });
-}
-
-// 按需加载单个 app 的会话
-async function loadSessions(app) {
-  app = app || activeApp.value;
-  loading.value = true;
-  try {
-    var result = await getSkillNest().scanSessions(app === "all" ? "" : app);
-    if (app === "all") {
-      // "全部" 模式：加载所有 app
-      var all = result.sessions || [];
-      allSessions.value = all;
-      // 按 app 分桶更新缓存
-      SESSION_APPS.forEach(function (a) {
-        if (a.key !== "all") cache[a.key] = all.filter(function (s) { return s.app === a.key; });
-      });
-    } else {
-      cache[app] = result.sessions || [];
-      allSessions.value = cache[app];
-    }
-    _updateStats();
-  } catch (e) {
-    console.error("Failed to load sessions:", e);
-    allSessions.value = [];
-  } finally {
-    loading.value = false;
-  }
-}
-
-// 切换 Tab 时调用
-async function switchApp(app) {
-  activeApp.value = app;
-  searchQuery.value = "";
-  if (app === "all") {
-    // 汇总所有已缓存的
-    var merged = [];
-    Object.keys(cache).forEach(function (k) { merged = merged.concat(cache[k]); });
-    if (merged.length) {
-      allSessions.value = merged;
-      return;
-    }
-  } else if (cache[app]) {
-    allSessions.value = cache[app];
-    return;
-  }
-  await loadSessions(app);
-}
+const PAGE_SIZE = 20;
 
 export function useSession() {
-  const filteredSessions = computed(() => {
-    var list = allSessions.value;
+  // 组件级状态（随组件销毁自动回收）
+  const sessions = ref([]);
+  const offset = ref(0);
+  const total = ref(0);
+  const loading = ref(false);
+  const loadingMore = ref(false);
+  const switching = ref(false);
+  const activeApp = ref("claude");
+  const searchQuery = ref("");
+  const sortBy = ref("all");
+  const detailSession = ref(null);
+  const detailMessages = ref([]);
+  const detailLoading = ref(false);
+  const showDetail = ref(false);
 
-    // 搜索
-    if (searchQuery.value) {
-      var q = searchQuery.value.toLowerCase();
-      list = list.filter(function (s) {
-        return (s.title || "").toLowerCase().indexOf(q) >= 0
-          || (s.projectPath || "").toLowerCase().indexOf(q) >= 0
-          || (s.model || "").toLowerCase().indexOf(q) >= 0;
+  const appStats = ref(
+    SESSION_APPS.map(function (a) {
+      return { app: a.key, label: a.label, icon: APP_ICONS[a.key] || null, count: 0 };
+    })
+  );
+
+  // 计算属性
+  const hasMore = computed(() => sessions.value.length < total.value);
+  const showSkeleton = computed(() => loading.value && sessions.value.length === 0);
+
+  // 加载第一页（重置）
+  async function loadPage() {
+    var myApp = activeApp.value;
+    sessions.value = [];
+    offset.value = 0;
+    total.value = 0;
+    loading.value = true;
+    try {
+      var result = await getSkillNest().scanSessions(myApp, {
+        offset: 0,
+        limit: PAGE_SIZE,
+        search: searchQuery.value,
+        sort: sortBy.value,
       });
+      // 用户已切换 tab，丢弃结果
+      if (activeApp.value !== myApp) return;
+      sessions.value = result.sessions || [];
+      total.value = result.total || 0;
+    } catch (e) {
+      if (activeApp.value !== myApp) return;
+      console.error("Failed to load sessions:", e);
+      sessions.value = [];
+      total.value = 0;
+    } finally {
+      if (activeApp.value === myApp) loading.value = false;
     }
+  }
 
-    // 排序
-    var sorted = list.slice();
-    switch (sortBy.value) {
-      case "today":
-        var today = new Date().toISOString().substring(0, 10);
-        sorted = sorted.filter(function (s) { return (s.updatedAt || "").substring(0, 10) === today; });
-        sorted.sort(function (a, b) { return (b.updatedAt || "").localeCompare(a.updatedAt || ""); });
-        break;
-      case "time-desc":
-        sorted.sort(function (a, b) { return (b.updatedAt || "").localeCompare(a.updatedAt || ""); });
-        break;
-      case "time-asc":
-        sorted.sort(function (a, b) { return (a.updatedAt || "").localeCompare(b.updatedAt || ""); });
-        break;
-      case "name-asc":
-        sorted.sort(function (a, b) { return (a.title || "").localeCompare(b.title || ""); });
-        break;
-      case "name-desc":
-        sorted.sort(function (a, b) { return (b.title || "").localeCompare(a.title || ""); });
-        break;
-      case "messages-desc":
-        sorted.sort(function (a, b) { return (b.messageCount || 0) - (a.messageCount || 0); });
-        break;
-      case "tokens-desc":
-        sorted.sort(function (a, b) { return (b.tokenUsage || 0) - (a.tokenUsage || 0); });
-        break;
+  // 加载下一页（追加）
+  async function loadMore() {
+    if (loadingMore.value || !hasMore.value) return;
+    var myApp = activeApp.value;
+    loadingMore.value = true;
+    try {
+      var nextOffset = offset.value + PAGE_SIZE;
+      var result = await getSkillNest().scanSessions(myApp, {
+        offset: nextOffset,
+        limit: PAGE_SIZE,
+        search: searchQuery.value,
+        sort: sortBy.value,
+      });
+      if (activeApp.value !== myApp) return;
+      sessions.value = [...sessions.value, ...(result.sessions || [])];
+      offset.value = nextOffset;
+    } catch (e) {
+      if (activeApp.value !== myApp) return;
+      console.error("Failed to load more sessions:", e);
+    } finally {
+      loadingMore.value = false;
     }
+  }
 
-    return sorted;
-  });
+  // 切换 Tab（先清空展示骨架屏，再加载数据）
+  async function switchApp(app) {
+    if (switching.value) return;
+    switching.value = true;
+    activeApp.value = app;
+    searchQuery.value = "";
+    sessions.value = [];
+    total.value = 0;
+    await nextTick();
+    try {
+      await loadPage();
+    } finally {
+      switching.value = false;
+    }
+  }
+
+  // 搜索（防抖后调用）
+  async function onSearch(query) {
+    searchQuery.value = query;
+    await loadPage();
+  }
+
+  // 排序变更
+  async function onSortChange(sort) {
+    sortBy.value = sort;
+    await loadPage();
+  }
+
+  // 加载统计（后台异步，并行请求）
+  async function loadStats() {
+    try {
+      var apps = SESSION_APPS;
+      var results = await Promise.all(
+        apps.map(function (app) {
+          return getSkillNest().scanSessions(app.key, { offset: 0, limit: 0 });
+        })
+      );
+      appStats.value = apps.map(function (app, i) {
+        return {
+          app: app.key,
+          label: app.label,
+          icon: APP_ICONS[app.key] || null,
+          count: (results[i] && results[i].total) || 0,
+        };
+      });
+    } catch (e) {
+      console.error("Failed to load stats:", e);
+    }
+  }
 
   async function loadDetail(session) {
     detailLoading.value = true;
@@ -163,27 +175,33 @@ export function useSession() {
   function deleteSession(session) {
     var result = getSkillNest().deleteSession(session.filePath);
     if (result.success) {
-      allSessions.value = allSessions.value.filter(function (s) { return s.id !== session.id; });
-      toast.success("会话已删除");
+      sessions.value = sessions.value.filter(function (s) { return s.id !== session.id; });
+      total.value = Math.max(0, total.value - 1);
+      appMessage.success("会话已删除");
     } else {
-      toast.error("删除失败：" + (result.error || "未知错误"));
+      appMessage.error("删除失败：" + (result.error || "未知错误"));
     }
     return result;
   }
 
-  function clearSessions(app) {
+  async function clearSessions(app) {
     var target = app || activeApp.value;
-    var toDelete = allSessions.value.filter(function (s) {
-      return target === "all" || s.app === target;
+    var toDelete = sessions.value.filter(function (s) {
+      return s.app === target;
     });
-    var successCount = 0;
-    toDelete.forEach(function (s) {
-      var r = getSkillNest().deleteSession(s.filePath);
-      if (r.success) successCount++;
-    });
+    if (toDelete.length === 0) {
+      appMessage.info("没有可清空的会话");
+      return;
+    }
+    var filePaths = toDelete.map(function (s) { return s.filePath; });
+    var result = getSkillNest().clearAllSessions(filePaths);
     // 重新加载
-    loadSessions();
-    toast.success(`已清空 ${successCount} 个会话`);
+    await loadPage();
+    if (result.success) {
+      appMessage.success("已清空 " + result.count + " 个会话");
+    } else {
+      appMessage.error("清空失败");
+    }
   }
 
   function exportSession(session, format) {
@@ -209,21 +227,21 @@ export function useSession() {
       });
       if (savePath) {
         require("fs").writeFileSync(savePath, data, "utf8");
-        toast.success("导出成功");
+        appMessage.success("导出成功");
       }
     } catch (e) {
       // fallback: 复制到剪贴板
       try {
         utools.copyText(data);
-        toast.success("已复制到剪贴板");
+        appMessage.success("已复制到剪贴板");
       } catch (e2) {
-        toast.error("导出失败");
+        appMessage.error("导出失败");
       }
     }
   }
 
   function exportAllSessions(format) {
-    var allData = filteredSessions.value.map(function (s) {
+    var allData = sessions.value.map(function (s) {
       return Object.assign({}, s, { filePath: undefined });
     });
     var data = JSON.stringify({
@@ -238,16 +256,21 @@ export function useSession() {
       });
       if (savePath) {
         require("fs").writeFileSync(savePath, data, "utf8");
-        toast.success("导出成功");
+        appMessage.success("导出成功");
       }
     } catch (e) {
       try {
         utools.copyText(data);
-        toast.success("已复制到剪贴板");
+        appMessage.success("已复制到剪贴板");
       } catch (e2) {
-        toast.error("导出失败");
+        appMessage.error("导出失败");
       }
     }
+  }
+
+  // 清理 preload 缓存
+  function cleanup() {
+    try { getSkillNest().clearSessionCache(); } catch (e) { /* ignore */ }
   }
 
   function _toMarkdown(session, messages) {
@@ -277,10 +300,16 @@ export function useSession() {
 
   return {
     // 数据
-    allSessions,
-    filteredSessions,
+    sessions,
+    total,
     appStats,
     loading,
+    loadingMore,
+    switching,
+
+    // 分页
+    hasMore,
+    showSkeleton,
 
     // 筛选
     activeApp,
@@ -296,13 +325,18 @@ export function useSession() {
     detailLoading,
 
     // 操作
-    loadSessions,
+    loadPage,
+    loadMore,
     switchApp,
+    onSearch,
+    onSortChange,
+    loadStats,
     loadDetail,
     closeDetail,
     deleteSession,
     clearSessions,
     exportSession,
     exportAllSessions,
+    cleanup,
   };
 }

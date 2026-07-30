@@ -1,9 +1,11 @@
 <script setup>
 import { onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
+import { useDialog } from "naive-ui";
 import { useStats } from "../composables/useStats.js";
-import { confirm } from "../composables/useConfirm.js";
 import EChart from "../components/EChart.vue";
+
+const dialog = useDialog();
 
 const router = useRouter();
 const { APP_TYPES, APP_LABELS, filter, stats, refreshing, initialLoading, refresh, setAppType, setDays, clearStats, cacheHitRate } = useStats();
@@ -27,12 +29,16 @@ function fmt(n) {
 const hitRate = computed(() => (cacheHitRate() * 100).toFixed(1));
 const hasData = computed(() => stats.value.totals.requests > 0);
 
-async function onClear() {
-  const ok = await confirm(
-    "确定清除" + APP_LABELS[filter.appType] + "的统计数据吗？将隐藏此刻之前的历史用量，之后的用量会继续统计。",
-    { title: "清除统计", confirmText: "清除", danger: true }
-  );
-  if (ok) clearStats(filter.appType);
+function onClear() {
+  dialog.warning({
+    title: "清除统计",
+    content: "确定清除" + APP_LABELS[filter.appType] + "的统计数据吗？将隐藏此刻之前的历史用量，之后的用量会继续统计。",
+    positiveText: "清除",
+    negativeText: "取消",
+    onPositiveClick: function () {
+      clearStats(filter.appType);
+    },
+  });
 }
 
 // ── 图表配置（Chart.js） ──

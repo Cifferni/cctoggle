@@ -1,13 +1,14 @@
 <script setup>
 import { ref, computed, onMounted, nextTick } from "vue";
 import { useRouter } from "vue-router";
-import { NIcon } from "naive-ui";
+import { NIcon, useDialog } from "naive-ui";
 import { ArrowBackOutline } from "@vicons/ionicons5";
 import { useMcp } from "../composables/useMcp.js";
 import { APP_LABELS, APP_ICONS } from "../composables/shared.js";
-import { confirm } from "../composables/useConfirm.js";
 import McpCard from "../components/McpCard.vue";
 import McpForm from "../components/McpForm.vue";
+
+const dialog = useDialog();
 
 const router = useRouter();
 const { mcpServers, loadServers, saveServer, deleteServer, toggleServer, getServer, syncFromConfigFiles } = useMcp();
@@ -62,13 +63,16 @@ function onEdit(id) {
   showForm.value = true;
 }
 
-async function onDelete(id) {
-  const ok = await confirm("确定删除该 MCP Server？删除后将自动清理关联应用配置文件中的对应条目。", {
+function onDelete(id) {
+  dialog.warning({
     title: "删除 MCP Server",
-    confirmText: "删除",
-    danger: true,
+    content: "确定删除该 MCP Server？删除后将自动清理关联应用配置文件中的对应条目。",
+    positiveText: "删除",
+    negativeText: "取消",
+    onPositiveClick: function () {
+      deleteServer(id);
+    },
   });
-  if (ok) deleteServer(id);
 }
 
 function onSave(data) {

@@ -2,8 +2,6 @@
 import { useTheme } from './composables/useTheme.js'
 import { zhCN, dateZhCN } from 'naive-ui'
 import AppFooter from './components/AppFooter.vue'
-import ToastHost from './components/ToastHost.vue'
-import ConfirmHost from './components/ConfirmHost.vue'
 
 const { theme, themeOverrides, isDark } = useTheme()
 </script>
@@ -18,8 +16,6 @@ const { theme, themeOverrides, isDark } = useTheme()
               <router-view />
             </main>
             <AppFooter />
-            <ToastHost />
-            <ConfirmHost />
           </div>
         </n-dialog-provider>
       </n-notification-provider>
