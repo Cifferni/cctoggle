@@ -23,7 +23,7 @@ const SORT_OPTIONS = [
 // 模块级状态（单例）
 const allSessions = ref([]);
 const loading = ref(false);
-const activeApp = ref("all");
+const activeApp = ref("claude");
 const searchQuery = ref("");
 const sortBy = ref("time-desc");
 const detailSession = ref(null);
