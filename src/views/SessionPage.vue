@@ -73,13 +73,12 @@ function onCopyTo(targetApp) {
 <template>
   <div class="page">
     <!-- 页头 -->
-    <div class="page-header">
+    <div class="page-header" v-once>
       <div class="page-header__left">
         <button class="back-btn" title="返回" @click="router.back()">
           <n-icon :size="16"><arrow-back-outline /></n-icon>
         </button>
         <span class="page-title">会话管理</span>
-        <n-tag v-if="filteredSessions.length" size="tiny" :bordered="false" round>{{ filteredSessions.length }}</n-tag>
       </div>
       <n-space :size="6">
         <n-button size="small" quaternary @click="exportAllSessions('json')">导出</n-button>
@@ -152,6 +151,7 @@ function onCopyTo(targetApp) {
         v-for="s in filteredSessions"
         :key="s.id"
         :session="s"
+        v-memo="[s.id, s.updatedAt]"
         @view="onView"
         @export="onExport"
         @delete="onDelete"
