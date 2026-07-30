@@ -87,10 +87,10 @@ export function useSession() {
     });
   });
 
-  function loadSessions() {
+  async function loadSessions() {
     loading.value = true;
     try {
-      var result = getSkillNest().scanSessions();
+      var result = await getSkillNest().scanSessions();
       allSessions.value = result.sessions || [];
     } catch (e) {
       console.error("Failed to load sessions:", e);
