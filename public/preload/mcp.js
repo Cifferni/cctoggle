@@ -76,8 +76,15 @@ function _readCodexMcpServers() {
   content.split(/\r?\n/).forEach(function (line) {
     var m = line.match(/^\s*\[\s*mcp_servers\.([^\]]+?)\s*\]\s*$/);
     if (m) {
+      var slug = m[1].trim();
+      // 跳过子节（如 mcp_servers.xxx.env）和非 MCP 的沙箱配置
+      if (slug.indexOf(".") !== -1 || slug === "node_repl") {
+        currentSlug = null;
+        currentEntry = {};
+        return;
+      }
       if (currentSlug) servers[currentSlug] = currentEntry;
-      currentSlug = m[1].trim();
+      currentSlug = slug;
       currentEntry = {};
       return;
     }
