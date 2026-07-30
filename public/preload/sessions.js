@@ -15,22 +15,26 @@ var SESSION_APPS = ["claude", "codex", "openclaw", "claude-desktop"];
 async function _scanClaudeSessions(home) {
   var projectsDir = path.join(home, ".claude", "projects");
   var sessions = [];
+  var count = 0;
   var entries;
   try { entries = await fs.promises.readdir(projectsDir, { withFileTypes: true }); } catch (e) { return sessions; }
 
-  for (var i = 0; i < entries.length; i++) {
+  for (var i = 0; i < entries.length && count < MAX_SESSION_SCAN; i++) {
     var ent = entries[i];
     if (!ent.isDirectory()) continue;
     var projectPath = path.join(projectsDir, ent.name);
     var files;
     try { files = await fs.promises.readdir(projectPath); } catch (e) { continue; }
 
-    for (var j = 0; j < files.length; j++) {
+    for (var j = 0; j < files.length && count < MAX_SESSION_SCAN; j++) {
       var fname = files[j];
       if (!/\.jsonl$/i.test(fname)) continue;
       var filePath = path.join(projectPath, fname);
       var session = await _parseClaudeSessionFile(filePath, ent.name);
-      if (session) sessions.push(session);
+      if (session) {
+        sessions.push(session);
+        count++;
+      }
     }
   }
   return sessions;
@@ -110,13 +114,49 @@ async function _parseClaudeSessionFile(filePath, projectName) {
 
 // --- Codex ---
 // 会话目录: ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl
+// 只扫最近 MAX_SESSION_SCAN 天的目录，避免全量扫描卡顿
+var MAX_SESSION_SCAN = 100;
+
 async function _scanCodexSessions(home) {
   var sessionsDir = path.join(home, ".codex", "sessions");
   var sessions = [];
-  var jsonlFiles = await _listJsonlRecursive(sessionsDir);
+  var years;
+  try { years = await fs.promises.readdir(sessionsDir, { withFileTypes: true }); } catch (e) { return sessions; }
 
-  for (var i = 0; i < jsonlFiles.length; i++) {
-    var session = await _parseCodexSessionFile(jsonlFiles[i]);
+  // 按年/月/日倒序收集文件路径
+  var allFiles = [];
+  var sortedYears = years.filter(function (e) { return e.isDirectory(); }).map(function (e) { return e.name; }).sort().reverse();
+
+  for (var yi = 0; yi < sortedYears.length; yi++) {
+    var yearDir = path.join(sessionsDir, sortedYears[yi]);
+    var months;
+    try { months = await fs.promises.readdir(yearDir, { withFileTypes: true }); } catch (e) { continue; }
+    var sortedMonths = months.filter(function (e) { return e.isDirectory(); }).map(function (e) { return e.name; }).sort().reverse();
+
+    for (var mi = 0; mi < sortedMonths.length; mi++) {
+      var monthDir = path.join(yearDir, sortedMonths[mi]);
+      var days;
+      try { days = await fs.promises.readdir(monthDir, { withFileTypes: true }); } catch (e) { continue; }
+      var sortedDays = days.filter(function (e) { return e.isDirectory(); }).map(function (e) { return e.name; }).sort().reverse();
+
+      for (var di = 0; di < sortedDays.length; di++) {
+        var dayDir = path.join(monthDir, sortedDays[di]);
+        var files;
+        try { files = await fs.promises.readdir(dayDir); } catch (e) { continue; }
+        var jsonlFiles = files.filter(function (f) { return /\.jsonl$/i.test(f); }).sort().reverse();
+        for (var fi = 0; fi < jsonlFiles.length; fi++) {
+          allFiles.push(path.join(dayDir, jsonlFiles[fi]));
+          if (allFiles.length >= MAX_SESSION_SCAN) break;
+        }
+        if (allFiles.length >= MAX_SESSION_SCAN) break;
+      }
+      if (allFiles.length >= MAX_SESSION_SCAN) break;
+    }
+    if (allFiles.length >= MAX_SESSION_SCAN) break;
+  }
+
+  for (var i = 0; i < allFiles.length; i++) {
+    var session = await _parseCodexSessionFile(allFiles[i]);
     if (session) sessions.push(session);
   }
   return sessions;
