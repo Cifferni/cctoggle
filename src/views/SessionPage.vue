@@ -24,6 +24,7 @@ const {
   detailMessages,
   detailLoading,
   loadSessions,
+  switchApp,
   loadDetail,
   closeDetail,
   deleteSession,
@@ -91,7 +92,7 @@ function onCopyTo(targetApp) {
 
     <!-- Tab 筛选 -->
     <div class="filter-bar">
-      <n-tabs :value="activeApp" type="segment" size="small" @update:value="activeApp = $event">
+      <n-tabs :value="activeApp" type="segment" size="small" @update:value="switchApp">
         <n-tab-pane
           v-for="app in SESSION_APPS"
           :key="app.key"

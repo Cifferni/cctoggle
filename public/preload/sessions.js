@@ -394,25 +394,35 @@ function deleteSession(filePath) {
   }
 }
 
-// --- 主入口：扫描所有会话 ---
+// --- 主入口：扫描会话 ---
+// app 为空时扫描全部，指定 app 时只扫对应应用
 
-async function scanSessions() {
+var SCAN_MAP = {
+  claude: function (home) { return _scanClaudeSessions(home); },
+  codex: function (home) { return _scanCodexSessions(home); },
+  openclaw: function (home) { return _scanOpenClawSessions(home); },
+  "claude-desktop": function (home) { return _scanClaudeDesktopSessions(home); },
+};
+
+async function scanSessions(app) {
   try {
     var home = getHomeDir();
     var all = [];
 
-    var results = await Promise.all([
-      _scanClaudeSessions(home),
-      _scanCodexSessions(home),
-      _scanOpenClawSessions(home),
-      _scanClaudeDesktopSessions(home),
-    ]);
-
-    for (var i = 0; i < results.length; i++) {
-      all = all.concat(results[i]);
+    if (app && SCAN_MAP[app]) {
+      all = await SCAN_MAP[app](home);
+    } else {
+      var results = await Promise.all([
+        _scanClaudeSessions(home),
+        _scanCodexSessions(home),
+        _scanOpenClawSessions(home),
+        _scanClaudeDesktopSessions(home),
+      ]);
+      for (var i = 0; i < results.length; i++) {
+        all = all.concat(results[i]);
+      }
     }
 
-    // 按 updatedAt 降序排序
     all.sort(function (a, b) {
       return (b.updatedAt || "").localeCompare(a.updatedAt || "");
     });

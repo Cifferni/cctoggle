@@ -21,6 +21,7 @@ const SORT_OPTIONS = [
 ];
 
 // 模块级状态（单例）
+const cache = {};          // { claude: [...], codex: [...], ... }
 const allSessions = ref([]);
 const loading = ref(false);
 const activeApp = ref("claude");
@@ -31,14 +32,68 @@ const detailMessages = ref([]);
 const detailLoading = ref(false);
 const showDetail = ref(false);
 
+// 各应用统计（基于缓存）
+const appStats = ref(
+  SESSION_APPS.filter(function (a) { return a.key !== "all"; }).map(function (a) {
+    return { app: a.key, label: a.label, icon: APP_ICONS[a.key] || null, count: 0 };
+  })
+);
+
+function _updateStats() {
+  appStats.value = SESSION_APPS.filter(function (a) { return a.key !== "all"; }).map(function (a) {
+    return { app: a.key, label: a.label, icon: APP_ICONS[a.key] || null, count: (cache[a.key] || []).length };
+  });
+}
+
+// 按需加载单个 app 的会话
+async function loadSessions(app) {
+  app = app || activeApp.value;
+  loading.value = true;
+  try {
+    var result = await getSkillNest().scanSessions(app === "all" ? "" : app);
+    if (app === "all") {
+      // "全部" 模式：加载所有 app
+      var all = result.sessions || [];
+      allSessions.value = all;
+      // 按 app 分桶更新缓存
+      SESSION_APPS.forEach(function (a) {
+        if (a.key !== "all") cache[a.key] = all.filter(function (s) { return s.app === a.key; });
+      });
+    } else {
+      cache[app] = result.sessions || [];
+      allSessions.value = cache[app];
+    }
+    _updateStats();
+  } catch (e) {
+    console.error("Failed to load sessions:", e);
+    allSessions.value = [];
+  } finally {
+    loading.value = false;
+  }
+}
+
+// 切换 Tab 时调用
+async function switchApp(app) {
+  activeApp.value = app;
+  searchQuery.value = "";
+  if (app === "all") {
+    // 汇总所有已缓存的
+    var merged = [];
+    Object.keys(cache).forEach(function (k) { merged = merged.concat(cache[k]); });
+    if (merged.length) {
+      allSessions.value = merged;
+      return;
+    }
+  } else if (cache[app]) {
+    allSessions.value = cache[app];
+    return;
+  }
+  await loadSessions(app);
+}
+
 export function useSession() {
   const filteredSessions = computed(() => {
     var list = allSessions.value;
-
-    // 按应用筛选
-    if (activeApp.value !== "all") {
-      list = list.filter(function (s) { return s.app === activeApp.value; });
-    }
 
     // 搜索
     if (searchQuery.value) {
@@ -75,30 +130,6 @@ export function useSession() {
 
     return sorted;
   });
-
-  const appStats = computed(() => {
-    var counts = {};
-    SESSION_APPS.forEach(function (a) { if (a.key !== "all") counts[a.key] = 0; });
-    allSessions.value.forEach(function (s) {
-      if (counts.hasOwnProperty(s.app)) counts[s.app] += 1;
-    });
-    return SESSION_APPS.filter(function (a) { return a.key !== "all"; }).map(function (a) {
-      return { app: a.key, label: a.label, icon: APP_ICONS[a.key] || null, count: counts[a.key] || 0 };
-    });
-  });
-
-  async function loadSessions() {
-    loading.value = true;
-    try {
-      var result = await getSkillNest().scanSessions();
-      allSessions.value = result.sessions || [];
-    } catch (e) {
-      console.error("Failed to load sessions:", e);
-      allSessions.value = [];
-    } finally {
-      loading.value = false;
-    }
-  }
 
   async function loadDetail(session) {
     detailLoading.value = true;
@@ -260,6 +291,7 @@ export function useSession() {
 
     // 操作
     loadSessions,
+    switchApp,
     loadDetail,
     closeDetail,
     deleteSession,
