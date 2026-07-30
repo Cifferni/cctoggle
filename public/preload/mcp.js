@@ -2,6 +2,7 @@
 // MCP Server 配置管理：配置文件为源 + db 仅存 apps 映射
 
 var utils = require("./utils");
+var cleanup = require("./cleanup");
 var fs = utils.fs;
 var path = utils.path;
 var getHomeDir = utils.getHomeDir;
@@ -297,6 +298,7 @@ function _buildServer(name, def, apps, disabledSet) {
 function listMcpServers() {
   var configs = _readAllConfigs();
   var mapping = _getMapping();
+  cleanup.cleanMcpMapping(mapping, configs, ALL_APPS);
   var disabledSet = {};
   (mapping.disabled || []).forEach(function (n) { disabledSet[n] = true; });
 
@@ -306,8 +308,6 @@ function listMcpServers() {
   names.forEach(function (name) {
     var apps = _resolveApps(name, mapping, configs);
     var def = _findDef(name, configs);
-    // 跳过无定义且未禁用的残留条目（如旧版 node_repl）
-    if (!def && !disabledSet[name]) return;
     result.push(_buildServer(name, def, apps, disabledSet));
   });
 
@@ -420,8 +420,6 @@ function toggleMcpServer(name) {
 function syncFromConfigFiles() {
   var configs = _readAllConfigs();
   var mapping = _getMapping();
-  var disabledSet = {};
-  (mapping.disabled || []).forEach(function (n) { disabledSet[n] = true; });
 
   // 配置文件里有但 mapping 里没有 → 添加
   ALL_APPS.forEach(function (app) {
@@ -433,15 +431,8 @@ function syncFromConfigFiles() {
     });
   });
 
-  // mapping 里有但配置文件里没有、且未被禁用 → 移除
-  ALL_APPS.forEach(function (app) {
-    var configServers = configs[app] || {};
-    mapping[app] = (mapping[app] || []).filter(function (name) {
-      if (configServers[name]) return true;
-      if (disabledSet[name]) return true;
-      return false;
-    });
-  });
+  // 清理残留条目（如旧版 node_repl）
+  cleanup.cleanMcpMapping(mapping, configs, ALL_APPS);
 
   _putMapping(mapping);
 }
