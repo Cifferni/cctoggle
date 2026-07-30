@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import { useRouter } from "vue-router";
 import { NIcon, NTabs, NTabPane, NSwitch } from "naive-ui";
-import { BuildOutline, SettingsOutline, CubeOutline, StatsChartOutline } from "@vicons/ionicons5";
+import { BuildOutline, SettingsOutline, CubeOutline, StatsChartOutline, ChatbubblesOutline } from "@vicons/ionicons5";
 import { useProviders } from "../composables/useProviders.js";
 import { useRoutes } from "../composables/useRoutes.js";
 import { toast } from "../composables/useToast.js";
@@ -88,6 +88,9 @@ function onToggleProxy() {
     </button>
     <button class="nav-btn" title="MCP管理" @click="router.push('/mcp')">
       <n-icon :size="15"><cube-outline /></n-icon>
+    </button>
+    <button class="nav-btn" title="会话管理" @click="router.push('/sessions')">
+      <n-icon :size="15"><chatbubbles-outline /></n-icon>
     </button>
     <button class="nav-btn" title="设置" @click="router.push('/settings')">
       <n-icon :size="15"><settings-outline /></n-icon>

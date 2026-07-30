@@ -8,6 +8,7 @@ var skills = require("./skills");
 var stats = require("./stats");
 var proxy = require("./proxy");
 var mcpDb = require("./mcp");
+var sessions = require("./sessions");
 
 window.utoolsCctoggle = {
   // Paths
@@ -109,6 +110,11 @@ window.utoolsCctoggle = {
   deleteMcpServer: mcpDb.deleteMcpServer,
   toggleMcpServer: mcpDb.toggleMcpServer,
   syncFromConfigFiles: mcpDb.syncFromConfigFiles,
+
+  // Session management
+  scanSessions: sessions.scanSessions,
+  loadSessionDetail: sessions.loadSessionDetail,
+  deleteSession: sessions.deleteSession,
 };
 
 

@@ -7,6 +7,7 @@ const routes = [
   { path: "/skills", component: SkillsPage },
   { path: "/stats", component: () => import("../views/StatsPage.vue") },
   { path: "/mcp", component: () => import("../views/McpPage.vue") },
+  { path: "/sessions", component: () => import("../views/SessionPage.vue") },
   {
     path: "/settings",
     component: () => import("../views/SettingsPage.vue"),

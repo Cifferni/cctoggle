@@ -63,6 +63,9 @@ export function getSkillNest() {
     syncFromConfigFiles: () => {},
     readClaudeOnboarding: () => false,
     setClaudeOnboarding: () => {},
+    scanSessions: () => ({ sessions: [] }),
+    loadSessionDetail: () => [],
+    deleteSession: () => ({ success: false }),
     paths: {},
   };
 }
