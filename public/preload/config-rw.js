@@ -10,6 +10,7 @@ var getCodexConfigPath = utils.getCodexConfigPath;
 var getClaudeSettingsPath = utils.getClaudeSettingsPath;
 var getGeminiEnvPath = utils.getGeminiEnvPath;
 var getOpenClawConfigPath = utils.getOpenClawConfigPath;
+var getClaudeJsonPath = utils.getClaudeJsonPath;
 var getClaudeDesktopConfigPath = utils.getClaudeDesktopConfigPath;
 var ensureDir = utils.ensureDir;
 var getCodexInstructions = utils.getCodexInstructions;
@@ -192,6 +193,37 @@ function switchProviderClaudeDesktop(provider) {
   } catch (e) { /* ignore */ }
 
   writeClaudeDesktopConfig(config);
+  return true;
+}
+
+// ——————————— Claude Onboarding 跳过 ———————————
+
+function readClaudeOnboarding() {
+  try {
+    var p = getClaudeJsonPath();
+    if (fs.existsSync(p)) {
+      var config = JSON.parse(fs.readFileSync(p, "utf8"));
+      return !!config.hasCompletedOnboarding;
+    }
+  } catch (e) {}
+  return false;
+}
+
+function setClaudeOnboarding(skip) {
+  var p = getClaudeJsonPath();
+  var config = {};
+  try {
+    if (fs.existsSync(p)) config = JSON.parse(fs.readFileSync(p, "utf8"));
+  } catch (e) { config = {}; }
+
+  if (skip) {
+    config.hasCompletedOnboarding = true;
+  } else {
+    delete config.hasCompletedOnboarding;
+  }
+
+  ensureDir(p);
+  fs.writeFileSync(p, JSON.stringify(config, null, 2), "utf8");
   return true;
 }
 
@@ -452,6 +484,8 @@ module.exports = {
   writeOpenClawConfig: writeOpenClawConfig,
   readClaudeDesktopConfig: readClaudeDesktopConfig,
   writeClaudeDesktopConfig: writeClaudeDesktopConfig,
+  readClaudeOnboarding: readClaudeOnboarding,
+  setClaudeOnboarding: setClaudeOnboarding,
   getCurrentConfigs: getCurrentConfigs,
   switchProviderCodex: switchProviderCodex,
   switchProviderClaude: switchProviderClaude,

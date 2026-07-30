@@ -31,6 +31,10 @@ function getOpenClawConfigPath() {
   return path.join(getHomeDir(), ".openclaw", "openclaw.json");
 }
 
+function getClaudeJsonPath() {
+  return path.join(getHomeDir(), ".claude.json");
+}
+
 function getClaudeDesktopConfigPath() {
   var appData;
   try { appData = utools.getPath("appData"); } catch (e) { appData = ""; }
@@ -108,6 +112,7 @@ module.exports = {
   getClaudeSettingsPath: getClaudeSettingsPath,
   getGeminiEnvPath: getGeminiEnvPath,
   getOpenClawConfigPath: getOpenClawConfigPath,
+  getClaudeJsonPath: getClaudeJsonPath,
   getClaudeDesktopConfigPath: getClaudeDesktopConfigPath,
   expandHome: expandHome,
   ensureDir: ensureDir,

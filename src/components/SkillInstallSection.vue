@@ -1,6 +1,7 @@
 ﻿<script setup>
 import { ref, watch, onMounted, onBeforeUnmount } from "vue";
 import { toast } from "../composables/useToast.js";
+import { openUrl } from "../utils/openUrl.js";
 
 const searchQuery = ref("");
 const installing = ref(null);
@@ -98,7 +99,7 @@ function install(skill) {
           <span class="result-name">{{ s.name }}</span>
           <span class="result-installs">&#8595; {{ formatCount(s.installs || 0) }}</span>
         </div>
-        <a v-if="s.repo" :href="s.repo" target="_blank" class="result-repo" @click.stop>{{ s.repo }}</a>
+        <a v-if="s.repo" href="#" class="result-repo" @click.prevent.stop="openUrl(s.repo)">{{ s.repo }}</a>
         <button
           v-if="installedNames.has(skillKey(s))"
           class="btn-install btn-install--done"

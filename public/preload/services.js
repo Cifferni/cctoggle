@@ -28,6 +28,8 @@ window.utoolsCctoggle = {
   readGeminiEnv: configRw.readGeminiEnv,
   readOpenClawConfig: configRw.readOpenClawConfig,
   readClaudeDesktopConfig: configRw.readClaudeDesktopConfig,
+  readClaudeOnboarding: configRw.readClaudeOnboarding,
+  setClaudeOnboarding: configRw.setClaudeOnboarding,
 
   // Provider CRUD
   listProviders: providerDb.listProviders,

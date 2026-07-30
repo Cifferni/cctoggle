@@ -25,6 +25,7 @@ export function buildOverrides(theme, isDark) {
       borderColor: c.border,
       color: c.bgCard,
       colorModal: c.bgCard,
+      colorEmbedded: c.bgHover,
     },
     Drawer: {
       color: c.bg,

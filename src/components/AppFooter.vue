@@ -1,11 +1,12 @@
 ﻿<script setup>
 import { useProviders } from "../composables/useProviders.js";
+import { openUrl } from "../utils/openUrl.js";
 const { paths } = useProviders();
 </script>
 
 <template>
   <footer class="app-footer">
-    <a href="https://github.com/Cifferni/cctoggle" target="_blank" rel="noopener">GitHub</a>
+    <a href="#" @click.prevent="openUrl('https://github.com/Cifferni/cctoggle')">GitHub</a>
   </footer>
 </template>
 

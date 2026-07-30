@@ -6,6 +6,7 @@ const route = useRoute();
 const router = useRouter();
 
 const tabs = [
+  { path: "/settings/claude",  label: "通用配置" },
   { path: "/settings/routes",  label: "路由 / 代理" },
   { path: "/settings/storage", label: "Skill 存储" },
 ];

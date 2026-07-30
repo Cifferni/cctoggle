@@ -11,9 +11,10 @@ const routes = [
     path: "/settings",
     component: () => import("../views/SettingsPage.vue"),
     children: [
-      { path: "", redirect: "/settings/routes" },
+      { path: "", redirect: "/settings/claude" },
       { path: "routes", component: () => import("../views/settings/RoutesSettings.vue") },
       { path: "storage", component: () => import("../views/settings/StorageSettings.vue") },
+      { path: "claude", component: () => import("../views/settings/ClaudeSettings.vue") },
     ],
   },
 ];

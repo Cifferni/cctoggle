@@ -61,6 +61,8 @@ export function getSkillNest() {
     deleteMcpServer: () => {},
     toggleMcpServer: () => false,
     syncFromConfigFiles: () => {},
+    readClaudeOnboarding: () => false,
+    setClaudeOnboarding: () => {},
     paths: {},
   };
 }
