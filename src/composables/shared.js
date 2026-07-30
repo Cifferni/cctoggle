@@ -64,7 +64,7 @@ export function getSkillNest() {
     readClaudeOnboarding: () => false,
     setClaudeOnboarding: () => {},
     scanSessions: () => ({ sessions: [] }),
-    loadSessionDetail: () => [],
+    loadSessionDetail: async () => [],
     deleteSession: () => ({ success: false }),
     paths: {},
   };

@@ -313,27 +313,9 @@ async function _listJsonlRecursive(dir) {
 }
 
 // --- 加载会话详情（含消息历史）---
+// filePath 由 scanSessions 已经拿到，直接读，不重复搜索
 
-async function loadSessionDetail(sessionId, app) {
-  // sessionId 格式: "claude_xxx" 或原始 id，这里需要原始 sessionId
-  var rawId = sessionId;
-  var prefix = app + "_";
-  if (rawId.indexOf(prefix) === 0) rawId = rawId.substring(prefix.length);
-
-  var home = getHomeDir();
-  var filePath;
-
-  if (app === "claude") {
-    // 需要在 projects 目录中搜索
-    filePath = await _findSessionFile(path.join(home, ".claude", "projects"), rawId + ".jsonl");
-  } else if (app === "codex") {
-    filePath = await _findSessionFile(path.join(home, ".codex", "sessions"), rawId + ".jsonl");
-  } else if (app === "openclaw") {
-    filePath = path.join(home, ".openclaw", "sessions", rawId + ".jsonl");
-  } else if (app === "claude-desktop") {
-    filePath = await _findSessionFile(path.join(home, ".claude-desktop", "projects"), rawId + ".jsonl");
-  }
-
+async function loadSessionDetail(filePath) {
   if (!filePath) return null;
 
   var text;

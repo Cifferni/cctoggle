@@ -107,7 +107,7 @@ export function useSession() {
     detailMessages.value = [];
 
     try {
-      var msgs = await getSkillNest().loadSessionDetail(session.sessionId, session.app);
+      var msgs = await getSkillNest().loadSessionDetail(session.filePath);
       detailMessages.value = msgs || [];
     } catch (e) {
       console.error("Failed to load session detail:", e);
