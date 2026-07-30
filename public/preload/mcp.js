@@ -306,6 +306,8 @@ function listMcpServers() {
   names.forEach(function (name) {
     var apps = _resolveApps(name, mapping, configs);
     var def = _findDef(name, configs);
+    // 跳过无定义且未禁用的残留条目（如旧版 node_repl）
+    if (!def && !disabledSet[name]) return;
     result.push(_buildServer(name, def, apps, disabledSet));
   });
 
