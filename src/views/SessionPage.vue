@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
-import { NIcon, NTabs, NTabPane, NInput, NSelect, NSpace, NButton, NEmpty, NText } from "naive-ui";
+import { NIcon, NTabs, NTabPane, NInput, NSelect, NSpace, NButton, NEmpty, NText, NSkeleton } from "naive-ui";
 import { ArrowBackOutline, SearchOutline } from "@vicons/ionicons5";
 import { useSession } from "../composables/useSession.js";
 import { confirm } from "../composables/useConfirm.js";
@@ -126,7 +126,20 @@ function onCopyTo(targetApp) {
 
     <!-- 会话列表 -->
     <div class="page-body">
-      <n-empty v-if="!loading && filteredSessions.length === 0" description="暂无会话记录" style="padding: 60px 0;">
+      <!-- 骨架屏 -->
+      <template v-if="loading">
+        <div v-for="i in 5" :key="'sk-' + i" class="skeleton-card">
+          <n-skeleton circle width="32px" height="32px" />
+          <div class="skeleton-card__body">
+            <n-skeleton text width="60%" style="margin-bottom: 6px;" />
+            <n-skeleton text width="40%" style="margin-bottom: 4px;" />
+            <n-skeleton text width="50%" />
+          </div>
+        </div>
+      </template>
+
+      <!-- 空状态 -->
+      <n-empty v-else-if="filteredSessions.length === 0" description="暂无会话记录" style="padding: 60px 0;">
         <template #extra>
           <n-text depth="3" style="font-size: 13px;">
             {{ searchQuery ? "未找到匹配的会话" : "暂无本地会话数据" }}
@@ -134,8 +147,7 @@ function onCopyTo(targetApp) {
         </template>
       </n-empty>
 
-      <n-empty v-else-if="loading" description="加载中..." style="padding: 60px 0;" />
-
+      <!-- 会话卡片 -->
       <SessionCard
         v-for="s in filteredSessions"
         :key="s.id"
@@ -237,5 +249,22 @@ function onCopyTo(targetApp) {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+// 骨架屏卡片
+.skeleton-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+
+  &__body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
 }
 </style>
