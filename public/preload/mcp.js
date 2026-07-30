@@ -298,7 +298,7 @@ function _buildServer(name, def, apps, disabledSet) {
 function listMcpServers() {
   var configs = _readAllConfigs();
   var mapping = _getMapping();
-  cleanup.cleanMcpMapping(mapping, configs, ALL_APPS);
+  if (cleanup.cleanMcpMapping(mapping, configs, ALL_APPS)) _putMapping(mapping);
   var disabledSet = {};
   (mapping.disabled || []).forEach(function (n) { disabledSet[n] = true; });
 
