@@ -135,9 +135,14 @@ async function scanUsageLogs() {
   try {
     var home = getHomeDir();
     var cleared = _getClearedAt();
+    var sessionPaths = {};
+    try {
+      sessionPaths = utools.dbStorage.getItem("ccswitch_session_paths") || {};
+    } catch (e) { sessionPaths = {}; }
+
     var roots = [
-      { dir: path.join(home, ".claude", "projects"), appType: "claude" },
-      { dir: path.join(home, ".codex", "sessions"), appType: "codex" },
+      { dir: utils.getAgentSessionPath("claude") || path.join(home, ".claude", "projects"), appType: "claude" },
+      { dir: utils.getAgentSessionPath("codex") || path.join(home, ".codex", "sessions"), appType: "codex" },
     ];
     var acc = {}; // "<appType>_<day>" → 记录
     for (var r = 0; r < roots.length; r++) {

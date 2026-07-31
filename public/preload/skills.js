@@ -14,6 +14,24 @@ var copyDirSync = utils.copyDirSync;
 // --- Nest Directory ---
 
 function getNestDir() {
+  // 优先从配置读取
+  var configured = utools.dbStorage.getItem('ccswitch_nest_dir');
+  if (configured) {
+    var expanded = expandHome(configured);
+    ensureDir(expanded);
+    return expanded;
+  }
+
+  // 默认使用第一个配置的 agent 目录
+  var paths = getSkillStoragePaths();
+  var firstAgent = Object.keys(paths)[0];
+  if (firstAgent && paths[firstAgent]) {
+    var agentDir = expandHome(paths[firstAgent]);
+    ensureDir(agentDir);
+    return agentDir;
+  }
+
+  // 兜底：使用默认路径
   var home = getHomeDir();
   var nest = path.join(home, ".skillnest", "skills");
   ensureDir(nest);
@@ -469,8 +487,19 @@ function syncSkills(sourceApp, targetApps) {
   }
 }
 
+// 设置安装目录
+function setNestDir(dir) {
+  if (dir) {
+    utools.dbStorage.setItem('ccswitch_nest_dir', dir);
+  } else {
+    utools.dbStorage.removeItem('ccswitch_nest_dir');
+  }
+  return { success: true };
+}
+
 module.exports = {
   getNestDir: getNestDir,
+  setNestDir: setNestDir,
   listNestSkills: listNestSkills,
   getNestSkillMeta: getNestSkillMeta,
   setNestSkillMeta: setNestSkillMeta,

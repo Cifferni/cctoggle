@@ -23,6 +23,22 @@ window.utoolsCctoggle = {
     geminiEnv: utils.getGeminiEnvPath()
   },
 
+  // Agent 路径管理
+  getConfigPaths: function() {
+    return utools.dbStorage.getItem("ccswitch_config_paths") || {};
+  },
+  setConfigPaths: function(paths) {
+    utools.dbStorage.setItem("ccswitch_config_paths", paths);
+  },
+  getDefaultConfigDirs: utils.getDefaultConfigDirs,
+  getSessionPaths: function() {
+    return utools.dbStorage.getItem("ccswitch_session_paths") || {};
+  },
+  setSessionPaths: function(paths) {
+    utools.dbStorage.setItem("ccswitch_session_paths", paths);
+  },
+  getDefaultSessionDirs: utils.getDefaultSessionDirs,
+
   // Config read
   getCurrentConfigs: configRw.getCurrentConfigs,
   readCodexConfig: configRw.readCodexConfig,
@@ -71,6 +87,7 @@ window.utoolsCctoggle = {
 
   // SkillNest
   getNestDir: skills.getNestDir,
+  setNestDir: skills.setNestDir,
   listNestSkills: skills.listNestSkills,
   getNestSkillMeta: skills.getNestSkillMeta,
   deploySkill: skills.deploySkill,
