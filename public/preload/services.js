@@ -10,7 +10,7 @@ var proxy = require("./proxy");
 var mcpDb = require("./mcp");
 var sessions = require("./sessions");
 var promptsDb = require("./prompts");
-var migration = require("./migration");
+var cleanup = require("./cleanup");
 
 window.utoolsCctoggle = {
   // Paths
@@ -153,7 +153,7 @@ window.utoolsCctoggle = {
 
 try {
   // 执行数据迁移
-  migration.migrate();
+  cleanup.migrateAgentPaths();
 } catch (e) {
   console.error("[Services] Migration failed:", e);
 }

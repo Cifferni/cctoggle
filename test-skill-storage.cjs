@@ -185,15 +185,15 @@ utools.dbStorage.setItem("ccswitch_skill_paths", {
   openclaw: "~/.openclaw/skills",
 });
 
-// 加载迁移模块并执行迁移
-const migration = require("./public/preload/migration");
-migration.migrate();
+// 加载 cleanup 模块并执行迁移
+const cleanup = require("./public/preload/cleanup");
+cleanup.migrateAgentPaths();
 
 // 检查迁移结果
 const migratedConfigPaths = utools.dbStorage.getItem("ccswitch_config_paths");
 console.log("  迁移前 skill_paths:", JSON.stringify(utools.dbStorage.getItem("ccswitch_skill_paths")));
 console.log("  迁移后 config_paths:", JSON.stringify(migratedConfigPaths));
-console.log("  迁移版本:", migration.getMigrationVersion());
+console.log("  迁移版本:", cleanup.getMigrationVersion());
 
 // 验证迁移是否正确保留了用户自定义路径
 if (migratedConfigPaths && migratedConfigPaths.codex === "~/custom-codex") {
@@ -210,7 +210,7 @@ utools.dbStorage.removeItem("ccswitch_skill_paths");
 utools.dbStorage.removeItem("ccswitch_migration_version");
 
 // 执行迁移
-migration.migrate();
+cleanup.migrateAgentPaths();
 
 // 检查结果
 const newUserConfigPaths = utools.dbStorage.getItem("ccswitch_config_paths");
