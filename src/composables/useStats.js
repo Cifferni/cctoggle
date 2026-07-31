@@ -114,7 +114,7 @@ function cacheHitRate(t) {
 export function useStats() {
   return {
     APP_TYPES, APP_LABELS,
-    filter, stats, refreshing, initialLoading,
+    filter, stats, rawDaily, refreshing, initialLoading,
     refresh, setAppType, setDays, clearStats, cacheHitRate,
   };
 }

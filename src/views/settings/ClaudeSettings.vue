@@ -3,8 +3,10 @@ import { ref, onMounted } from "vue";
 import { useMessage } from "naive-ui";
 import { getSkillNest, APP_ICONS, APP_LABELS } from "../../composables/shared.js";
 import { useSkills } from "../../composables/useSkills.js";
+import { useTheme } from "../../composables/useTheme.js";
 
 const message = useMessage();
+const { currentThemeName, themes, setTheme } = useTheme();
 
 const skipOnboarding = ref(false);
 const loading = ref(false);
@@ -134,29 +136,36 @@ function onChange(val) {
       </n-space>
     </n-card>
 
-    <!-- 通用配置 -->
+    <!-- 跳过初次安装确认 -->
     <n-card size="small" :bordered="true">
-      <template #header>
-        <n-text depth="2" style="font-size: 12px; font-weight: 600;">通用配置</n-text>
-      </template>
+      <n-space align="center" :size="12">
+        <div style="flex: 1; min-width: 0;">
+          <n-text strong style="font-size: 12px; display: block;">
+            跳过初次安装确认
+          </n-text>
+          <n-text depth="3" style="font-size: 11px;">
+            开启后 Claude Code 将跳过首次运行的 onboarding 确认界面
+          </n-text>
+        </div>
+        <n-switch
+          :value="skipOnboarding"
+          :loading="loading"
+          @update:value="onChange"
+        />
+      </n-space>
+    </n-card>
 
-      <n-card size="small" :bordered="true" embedded>
-        <n-space align="center" :size="12">
-          <div style="flex: 1; min-width: 0;">
-            <n-text strong style="font-size: 12px; display: block;">
-              跳过初次安装确认
-            </n-text>
-            <n-text depth="3" style="font-size: 11px;">
-              开启后 Claude Code 将跳过首次运行的 onboarding 确认界面
-            </n-text>
-          </div>
-          <n-switch
-            :value="skipOnboarding"
-            :loading="loading"
-            @update:value="onChange"
-          />
-        </n-space>
-      </n-card>
+    <!-- 主题设置 -->
+    <n-card size="small" :bordered="true">
+      <n-space align="center" :size="12">
+        <n-text strong style="font-size: 12px;">主题风格</n-text>
+        <n-radio-group :value="currentThemeName" @update:value="setTheme" size="small">
+          <n-radio-button
+            v-for="t in themes" :key="t.name"
+            :value="t.name"
+          >{{ t.label }}</n-radio-button>
+        </n-radio-group>
+      </n-space>
     </n-card>
   </n-space>
 </template>
