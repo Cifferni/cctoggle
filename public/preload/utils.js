@@ -52,19 +52,26 @@ function getClaudeDesktopConfigPath() {
 // ─────────── 提示词文件路径 ───────────
 
 function getClaudeMdPath() {
+  var configDir = getAgentConfigPath("claude");
+  if (configDir) return path.join(configDir, "CLAUDE.md");
   return path.join(getHomeDir(), ".claude", "CLAUDE.md");
 }
 
 function getCodexAgentsMdPath() {
+  var configDir = getAgentConfigPath("codex");
+  if (configDir) return path.join(configDir, "AGENTS.md");
   return path.join(getHomeDir(), ".codex", "AGENTS.md");
 }
 
 function getGeminiMdPath() {
+  var configDir = getAgentConfigPath("gemini");
+  if (configDir) return path.join(configDir, "GEMINI.md");
   return path.join(getHomeDir(), ".gemini", "GEMINI.md");
 }
 
 function getOpenClawWorkspaceDir() {
-  var openclawDir = path.join(getHomeDir(), ".openclaw");
+  var configDir = getAgentConfigPath("openclaw");
+  var openclawDir = configDir || path.join(getHomeDir(), ".openclaw");
   try {
     if (!fs.existsSync(openclawDir)) return null;
     var entries = fs.readdirSync(openclawDir);
@@ -93,6 +100,47 @@ function expandHome(p) {
   if (p === "~") return getHomeDir();
   if (p.indexOf("~/") === 0 || p.indexOf("~\\") === 0) return path.join(getHomeDir(), p.slice(2));
   return p;
+}
+
+// ─────────── Agent 配置路径管理 ───────────
+
+// 获取默认的 agent 配置目录
+function getDefaultConfigDirs() {
+  var home = getHomeDir();
+  return {
+    claude: path.join(home, ".claude"),
+    codex: path.join(home, ".codex"),
+    gemini: path.join(home, ".gemini"),
+    openclaw: path.join(home, ".openclaw"),
+  };
+}
+
+// 获取 agent 配置路径（基础路径，所有其他路径从此派生）
+function getAgentConfigPath(appType) {
+  var configPaths = {};
+  try {
+    configPaths = utools.dbStorage.getItem("ccswitch_config_paths") || {};
+  } catch (e) { configPaths = {}; }
+  if (configPaths[appType]) return expandHome(configPaths[appType]);
+  var defaults = getDefaultConfigDirs();
+  return defaults[appType] || null;
+}
+
+// 获取 agent 会话路径（从配置路径派生）
+function getAgentSessionPath(appType) {
+  var configDir = getAgentConfigPath(appType);
+  if (!configDir) return null;
+
+  // 各 agent 的会话子目录
+  var sessionSubDirs = {
+    claude: "projects",
+    codex: "sessions",
+    openclaw: "agents",
+  };
+
+  var subDir = sessionSubDirs[appType];
+  if (!subDir) return null;
+  return path.join(configDir, subDir);
 }
 
 function ensureDir(filePath) {
@@ -164,4 +212,8 @@ module.exports = {
   getGeminiMdPath: getGeminiMdPath,
   getOpenClawWorkspaceDir: getOpenClawWorkspaceDir,
   getOpenClawAgentsMdPath: getOpenClawAgentsMdPath,
+  // Agent 路径管理
+  getDefaultConfigDirs: getDefaultConfigDirs,
+  getAgentConfigPath: getAgentConfigPath,
+  getAgentSessionPath: getAgentSessionPath,
 };

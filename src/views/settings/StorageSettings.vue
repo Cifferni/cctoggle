@@ -1,52 +1,23 @@
 <script setup>
 import { ref, onMounted, computed } from "vue";
 import { useSkills } from "../../composables/useSkills.js";
-import { APP_ICONS } from "../../composables/shared.js";
 
 const {
-  ALL_APPS, APP_LABELS,
-  storagePaths, nestSkills, projectTargets, syncMode,
-  loadStoragePaths, saveStoragePaths,
+  nestSkills, projectTargets, syncMode,
   loadNestSkills, loadProjectTargets, addProjectTarget, removeProjectTarget,
   loadSyncMode, saveSyncMode,
 } = useSkills();
 
 onMounted(() => {
-  loadStoragePaths();
   loadNestSkills();
   loadProjectTargets();
   loadSyncMode();
 });
 
-const agents = ALL_APPS.filter(a => ["codex", "claude", "gemini", "openclaw"].includes(a));
-const agentIcons = APP_ICONS;
-
 const nestDir = computed(() => {
   const fn = window.utoolsCctoggle?.getNestDir;
   return fn ? fn() : "~/.skillnest/skills";
 });
-
-// Path editing
-const editingAgent = ref(null);
-const editValue = ref("");
-
-function startEdit(app) {
-  editingAgent.value = app;
-  editValue.value = storagePaths.value[app] || "";
-}
-function confirmEdit(app) {
-  saveStoragePaths({ ...storagePaths.value, [app]: editValue.value });
-  editingAgent.value = null;
-}
-function cancelEdit() {
-  editingAgent.value = null;
-}
-function resetDefault(app) {
-  const fn = window.utoolsCctoggle?.getDefaultSkillDirs || (() => ({}));
-  const defaults = fn();
-  saveStoragePaths({ ...storagePaths.value, [app]: defaults[app] || `~/.generic/skills`.replace("generic", app) });
-  editingAgent.value = null;
-}
 
 // Project targets
 const newProjectPath = ref("");
@@ -73,68 +44,6 @@ function addProject() {
         <n-tag type="success" size="small" :bordered="false" round>
           {{ nestSkills.length }} skill
         </n-tag>
-      </n-space>
-    </n-card>
-
-    <!-- Agent 存储路径 -->
-    <n-card size="small" :bordered="true">
-      <template #header>
-        <n-text depth="2" style="font-size: 12px; font-weight: 600;">Agent 存储路径</n-text>
-      </template>
-
-      <n-space vertical :size="8">
-        <n-card
-          v-for="a in agents"
-          :key="a"
-          size="small"
-          :bordered="true"
-          embedded
-        >
-          <n-space align="center" :size="8" style="margin-bottom: 4px;">
-            <img :src="agentIcons[a]" :alt="APP_LABELS[a]" style="width: 16px; height: 16px; object-fit: contain;" />
-            <n-text strong style="font-size: 12px; flex: 1;">{{ APP_LABELS[a] }}</n-text>
-            <n-button
-              v-if="editingAgent !== a"
-              text
-              size="tiny"
-              @click="startEdit(a)"
-            >
-              编辑 ›
-            </n-button>
-          </n-space>
-
-          <!-- 展示态 -->
-          <n-tooltip v-if="editingAgent !== a" trigger="hover" placement="top-start">
-            <template #trigger>
-              <n-button text block class="path-btn" @click="startEdit(a)">
-                <n-text
-                  :type="storagePaths[a] ? 'default' : 'warning'"
-                  code
-                  style="font-size: 11px; flex: 1; text-align: left;"
-                >
-                  {{ storagePaths[a] || "未设置" }}
-                </n-text>
-              </n-button>
-            </template>
-            点击编辑存储路径
-          </n-tooltip>
-
-          <!-- 编辑态 -->
-          <n-space v-else vertical :size="6">
-            <n-input
-              v-model:value="editValue"
-              :placeholder="'~/.generic/skills'.replace('generic', a)"
-              size="small"
-              :autofocus="true"
-              @keydown.enter="confirmEdit(a)"
-              @keydown.escape="cancelEdit"
-            />
-            <n-space justify="end" :size="6">
-              <n-button size="tiny" quaternary @click="resetDefault(a)">重置默认</n-button>
-              <n-button size="tiny" type="primary" @click="confirmEdit(a)">确认</n-button>
-            </n-space>
-          </n-space>
-        </n-card>
       </n-space>
     </n-card>
 
@@ -218,19 +127,6 @@ function addProject() {
 <style scoped>
 .storage-settings {
   padding: 0;
-}
-
-.path-btn {
-  padding: 4px 8px !important;
-  border-radius: 4px;
-  border: 1px dashed var(--border);
-  transition: all .15s;
-  text-align: left;
-  width: 100%;
-}
-.path-btn:hover {
-  border-color: var(--primary);
-  background: var(--primary-light);
 }
 
 .sync-card--active {

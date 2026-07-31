@@ -14,13 +14,15 @@ var getClaudeJsonPath = utils.getClaudeJsonPath;
 var getClaudeDesktopConfigPath = utils.getClaudeDesktopConfigPath;
 var ensureDir = utils.ensureDir;
 var getCodexInstructions = utils.getCodexInstructions;
+var getAgentConfigPath = utils.getAgentConfigPath;
 
 // ——————————— Codex 配置读写 ———————————
 
 function readCodexConfig() {
   try {
-    const authPath = getCodexAuthPath();
-    const configPath = getCodexConfigPath();
+    const configDir = getAgentConfigPath("codex");
+    const authPath = configDir ? path.join(configDir, "auth.json") : getCodexAuthPath();
+    const configPath = configDir ? path.join(configDir, "config.toml") : getCodexConfigPath();
     let auth = {};
     let config = "";
     if (fs.existsSync(authPath)) {
@@ -36,8 +38,9 @@ function readCodexConfig() {
 }
 
 function writeCodexConfig(auth, configToml) {
-  const authPath = getCodexAuthPath();
-  const configPath = getCodexConfigPath();
+  const configDir = getAgentConfigPath("codex");
+  const authPath = configDir ? path.join(configDir, "auth.json") : getCodexAuthPath();
+  const configPath = configDir ? path.join(configDir, "config.toml") : getCodexConfigPath();
   ensureDir(authPath);
   ensureDir(configPath);
   fs.writeFileSync(authPath, JSON.stringify(auth, null, 2), "utf8");
@@ -128,7 +131,8 @@ function mergeCodexConfig(existing, incoming) {
 
 function readClaudeSettings() {
   try {
-    const settingsPath = getClaudeSettingsPath();
+    const configDir = getAgentConfigPath("claude");
+    const settingsPath = configDir ? path.join(configDir, "settings.json") : getClaudeSettingsPath();
     if (fs.existsSync(settingsPath)) {
       return JSON.parse(fs.readFileSync(settingsPath, "utf8"));
     }
@@ -139,7 +143,8 @@ function readClaudeSettings() {
 }
 
 function writeClaudeSettings(settings) {
-  const settingsPath = getClaudeSettingsPath();
+  const configDir = getAgentConfigPath("claude");
+  const settingsPath = configDir ? path.join(configDir, "settings.json") : getClaudeSettingsPath();
   ensureDir(settingsPath);
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");
   return true;
@@ -231,7 +236,8 @@ function setClaudeOnboarding(skip) {
 
 function readGeminiEnv() {
   try {
-    const envPath = getGeminiEnvPath();
+    const configDir = getAgentConfigPath("gemini");
+    const envPath = configDir ? path.join(configDir, ".env") : getGeminiEnvPath();
     if (fs.existsSync(envPath)) {
       return fs.readFileSync(envPath, "utf8");
     }
@@ -242,7 +248,8 @@ function readGeminiEnv() {
 }
 
 function writeGeminiEnv(envContent) {
-  const envPath = getGeminiEnvPath();
+  const configDir = getAgentConfigPath("gemini");
+  const envPath = configDir ? path.join(configDir, ".env") : getGeminiEnvPath();
   ensureDir(envPath);
   fs.writeFileSync(envPath, envContent, "utf8");
   return true;
@@ -252,14 +259,16 @@ function writeGeminiEnv(envContent) {
 
 function readOpenClawConfig() {
   try {
-    const p = getOpenClawConfigPath();
+    const configDir = getAgentConfigPath("openclaw");
+    const p = configDir ? path.join(configDir, "openclaw.json") : getOpenClawConfigPath();
     if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, "utf8"));
 } catch (e) { /* JSON5/损坏时回退默认 */ }
   return { models: { mode: "merge", providers: {} } };
 }
 
 function writeOpenClawConfig(config) {
-  const p = getOpenClawConfigPath();
+  const configDir = getAgentConfigPath("openclaw");
+  const p = configDir ? path.join(configDir, "openclaw.json") : getOpenClawConfigPath();
   ensureDir(p);
   fs.writeFileSync(p, JSON.stringify(config, null, 2), "utf8");
   return true;

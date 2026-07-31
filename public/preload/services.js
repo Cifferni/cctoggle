@@ -10,6 +10,7 @@ var proxy = require("./proxy");
 var mcpDb = require("./mcp");
 var sessions = require("./sessions");
 var promptsDb = require("./prompts");
+var cleanup = require("./cleanup");
 
 window.utoolsCctoggle = {
   // Paths
@@ -22,6 +23,15 @@ window.utoolsCctoggle = {
     openclawConfig: utils.getOpenClawConfigPath(),
     geminiEnv: utils.getGeminiEnvPath()
   },
+
+  // Agent 路径管理
+  getConfigPaths: function() {
+    return utools.dbStorage.getItem("ccswitch_config_paths") || {};
+  },
+  setConfigPaths: function(paths) {
+    utools.dbStorage.setItem("ccswitch_config_paths", paths);
+  },
+  getDefaultConfigDirs: utils.getDefaultConfigDirs,
 
   // Config read
   getCurrentConfigs: configRw.getCurrentConfigs,
@@ -71,6 +81,7 @@ window.utoolsCctoggle = {
 
   // SkillNest
   getNestDir: skills.getNestDir,
+  setNestDir: skills.setNestDir,
   listNestSkills: skills.listNestSkills,
   getNestSkillMeta: skills.getNestSkillMeta,
   deploySkill: skills.deploySkill,
@@ -139,6 +150,13 @@ window.utoolsCctoggle = {
 
 
 // --- Startup: mark current providers ---
+
+try {
+  // 执行数据迁移
+  cleanup.migrateAgentPaths();
+} catch (e) {
+  console.error("[Services] Migration failed:", e);
+}
 
 try {
   ["codex", "claude", "claude-desktop", "gemini"].forEach(function (appType) {

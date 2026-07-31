@@ -353,7 +353,7 @@ async function _scanClaudeSessions(home, opts) {
   var offset = opts.offset || 0;
   var limit = opts.limit != null ? opts.limit : 20;
 
-  var projectsDir = path.join(home, ".claude", "projects");
+  var projectsDir = utils.getAgentSessionPath("claude") || path.join(home, ".claude", "projects");
   var sessions = [];
   var entries;
   try { entries = await fs.promises.readdir(projectsDir, { withFileTypes: true }); } catch (e) { return { sessions: sessions, totalFiles: 0 }; }
@@ -398,19 +398,28 @@ async function _scanClaudeDesktopSessions(home, opts) {
   var offset = opts.offset || 0;
   var limit = opts.limit != null ? opts.limit : 20;
 
-  var projectsDir = path.join(home, ".claude-desktop", "projects");
+  var projectsDir = utils.getAgentSessionPath("claude-desktop") || path.join(home, ".claude-desktop", "projects");
   var entries;
   try { entries = await fs.promises.readdir(projectsDir, { withFileTypes: true }); } catch (e) {
-    var appData;
-    try { appData = process.env.APPDATA || ""; } catch (e2) { appData = ""; }
-    if (appData) {
-      try {
-        var altDir = path.join(appData, "Claude", "projects");
-        entries = await fs.promises.readdir(altDir, { withFileTypes: true });
-        projectsDir = altDir;
-      } catch (e3) { return { sessions: [], totalFiles: 0 }; }
-    } else {
-      return { sessions: [], totalFiles: 0 };
+    // 如果配置的路径不存在，尝试默认路径
+    if (utils.getAgentSessionPath("claude-desktop")) {
+      projectsDir = path.join(home, ".claude-desktop", "projects");
+      try { entries = await fs.promises.readdir(projectsDir, { withFileTypes: true }); } catch (e2) {
+        // 继续尝试 APPDATA
+      }
+    }
+    if (!entries) {
+      var appData;
+      try { appData = process.env.APPDATA || ""; } catch (e3) { appData = ""; }
+      if (appData) {
+        try {
+          var altDir = path.join(appData, "Claude", "projects");
+          entries = await fs.promises.readdir(altDir, { withFileTypes: true });
+          projectsDir = altDir;
+        } catch (e4) { return { sessions: [], totalFiles: 0 }; }
+      } else {
+        return { sessions: [], totalFiles: 0 };
+      }
     }
   }
 
@@ -458,7 +467,7 @@ async function _scanCodexSessions(home, opts) {
   var offset = opts.offset || 0;
   var limit = opts.limit != null ? opts.limit : 20;
 
-  var sessionsDir = path.join(home, ".codex", "sessions");
+  var sessionsDir = utils.getAgentSessionPath("codex") || path.join(home, ".codex", "sessions");
   var sessions = [];
   var totalFiles = 0;
   var scanned = 0; // 已处理（跳过或解析）的文件数
@@ -510,7 +519,7 @@ async function _scanOpenClawSessions(home, opts) {
   var offset = opts.offset || 0;
   var limit = opts.limit != null ? opts.limit : 20;
 
-  var agentsDir = path.join(home, ".openclaw", "agents");
+  var agentsDir = utils.getAgentSessionPath("openclaw") || path.join(home, ".openclaw", "agents");
   var sessions = [];
   var agentEntries;
   try { agentEntries = await fs.promises.readdir(agentsDir, { withFileTypes: true }); } catch (e) { return { sessions: sessions, totalFiles: 0 }; }

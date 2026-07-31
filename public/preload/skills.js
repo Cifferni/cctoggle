@@ -14,6 +14,15 @@ var copyDirSync = utils.copyDirSync;
 // --- Nest Directory ---
 
 function getNestDir() {
+  // 优先从配置读取
+  var configured = utools.dbStorage.getItem('ccswitch_nest_dir');
+  if (configured) {
+    var expanded = expandHome(configured);
+    ensureDir(expanded);
+    return expanded;
+  }
+
+  // 使用默认路径（SkillNest 是独立的中央存储，不从 agent 路径派生）
   var home = getHomeDir();
   var nest = path.join(home, ".skillnest", "skills");
   ensureDir(nest);
@@ -277,11 +286,72 @@ function getDefaultSkillDirs() {
 }
 
 function getSkillStoragePaths() {
+  // 优先从 agent 配置路径派生
+  var configPaths = {};
+  try {
+    configPaths = utools.dbStorage.getItem("ccswitch_config_paths") || {};
+  } catch (e) { configPaths = {}; }
+
+  // 如果有配置，从配置路径派生 skill 目录
+  if (Object.keys(configPaths).length > 0) {
+    var result = {};
+    Object.keys(configPaths).forEach(function(app) {
+      if (configPaths[app]) {
+        result[app] = path.join(expandHome(configPaths[app]), "skills");
+      }
+    });
+    // 补充未配置的 agent 使用默认路径
+    var defaults = getDefaultSkillDirs();
+    Object.keys(defaults).forEach(function(app) {
+      if (!result[app]) {
+        result[app] = defaults[app];
+      }
+    });
+    return result;
+  }
+
+  // 兼容旧的独立存储路径配置（向后兼容）
   var saved = utools.dbStorage.getItem('ccswitch_skill_paths');
-  if (saved) return saved;
-  var defaults = getDefaultSkillDirs();
-  utools.dbStorage.setItem('ccswitch_skill_paths', defaults);
-  return defaults;
+  if (saved) {
+    // 如果旧数据存在，尝试迁移
+    // 将旧数据转换为新的 config_paths 格式
+    var defaultSkillDirs = getDefaultSkillDirs();
+    var migratedConfigPaths = {};
+    Object.keys(saved).forEach(function(app) {
+      if (saved[app] && saved[app] !== defaultSkillDirs[app]) {
+        // 从 skill 路径推导出 agent 路径
+        var agentPath = saved[app].replace(/[\/\\]skills$/, "");
+        if (agentPath !== saved[app]) {
+          migratedConfigPaths[app] = agentPath;
+        }
+      }
+    });
+
+    // 如果有需要迁移的数据，保存到新格式
+    if (Object.keys(migratedConfigPaths).length > 0) {
+      utools.dbStorage.setItem("ccswitch_config_paths", migratedConfigPaths);
+      // 重新计算结果
+      var result2 = {};
+      Object.keys(migratedConfigPaths).forEach(function(app) {
+        if (migratedConfigPaths[app]) {
+          result2[app] = path.join(expandHome(migratedConfigPaths[app]), "skills");
+        }
+      });
+      var defaults2 = getDefaultSkillDirs();
+      Object.keys(defaults2).forEach(function(app) {
+        if (!result2[app]) {
+          result2[app] = defaults2[app];
+        }
+      });
+      return result2;
+    }
+
+    return saved;
+  }
+
+  // 首次使用，返回默认值
+  var defaults3 = getDefaultSkillDirs();
+  return defaults3;
 }
 
 function setSkillStoragePaths(paths) {
@@ -469,8 +539,19 @@ function syncSkills(sourceApp, targetApps) {
   }
 }
 
+// 设置安装目录
+function setNestDir(dir) {
+  if (dir) {
+    utools.dbStorage.setItem('ccswitch_nest_dir', dir);
+  } else {
+    utools.dbStorage.removeItem('ccswitch_nest_dir');
+  }
+  return { success: true };
+}
+
 module.exports = {
   getNestDir: getNestDir,
+  setNestDir: setNestDir,
   listNestSkills: listNestSkills,
   getNestSkillMeta: getNestSkillMeta,
   setNestSkillMeta: setNestSkillMeta,

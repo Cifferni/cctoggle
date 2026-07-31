@@ -14,10 +14,22 @@ var ALL_APPS = ["claude", "claude-desktop", "codex", "openclaw"];
 // ─────────── 配置文件路径 ───────────
 
 var CONFIG_PATHS = {
-  claude: function () { return path.join(getHomeDir(), ".claude.json"); },
+  claude: function () {
+    var configured = utils.getAgentConfigPath("claude");
+    if (configured) return path.join(configured, ".claude.json");
+    return path.join(getHomeDir(), ".claude.json");
+  },
   "claude-desktop": function () { return utils.getClaudeDesktopConfigPath(); },
-  codex: function () { return path.join(getHomeDir(), ".codex", "config.toml"); },
-  openclaw: function () { return path.join(getHomeDir(), ".openclaw", "openclaw.json"); },
+  codex: function () {
+    var configured = utils.getAgentConfigPath("codex");
+    if (configured) return path.join(configured, "config.toml");
+    return path.join(getHomeDir(), ".codex", "config.toml");
+  },
+  openclaw: function () {
+    var configured = utils.getAgentConfigPath("openclaw");
+    if (configured) return path.join(configured, "openclaw.json");
+    return path.join(getHomeDir(), ".openclaw", "openclaw.json");
+  },
 };
 
 // ─────────── db apps 映射读写 ───────────
