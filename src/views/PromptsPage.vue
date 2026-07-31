@@ -1,29 +1,32 @@
 <script setup>
 import { ref, onMounted } from "vue";
-import { NButton, NCard, NDrawer, NDrawerContent, NModal, NSpace, NText, useMessage } from "naive-ui";
+import { NButton, NCard, NCheckbox, NDrawer, NDrawerContent, NModal, NSpace, NText, useMessage, useDialog } from "naive-ui";
 import { usePrompts } from "../composables/usePrompts.js";
 import PromptCard from "../components/PromptCard.vue";
 import PromptEditor from "../components/PromptEditor.vue";
 import PromptPreview from "../components/PromptPreview.vue";
 
 const message = useMessage();
+const dialog = useDialog();
 
 const {
   prompts, loading, activePrompt, ALL_AGENTS, AGENT_LABELS,
   originalPrompts,
   loadPrompts, deletePrompt,
   setActivePrompt, exportPrompts, importPrompts,
-  loadBackups, backupOriginalPrompts, loadOriginalPrompts,
-  restoreOriginalPrompt, restoreAllOriginalPrompts, hasBackup,
+  loadBackups, backupOriginalPrompts, backupSelectedPrompts, loadOriginalPrompts,
+  restoreOriginalPrompt, restoreAllOriginalPrompts, hasBackup, getBackupContent,
 } = usePrompts();
 
 // UI state
 const showEditor = ref(false);
 const showPreview = ref(false);
 const showRestore = ref(false);
+const showBackupModal = ref(false);
 const editingPrompt = ref(null);
 const viewingAgent = ref(null);
 const viewingContent = ref("");
+const selectedBackupAgents = ref([]);
 
 // Load prompts on mount
 onMounted(() => {
@@ -103,17 +106,28 @@ function handleImport() {
   input.click();
 }
 
-// Backup original prompts
+// View backup content for agent
 function handleViewContent(agent) {
   viewingAgent.value = agent;
-  viewingContent.value = originalPrompts.value[agent] || "";
+  viewingContent.value = getBackupContent(agent) || "";
 }
 
-// Backup original prompts
+// Open backup modal
 function handleBackup() {
-  const result = backupOriginalPrompts();
+  selectedBackupAgents.value = [];
+  showBackupModal.value = true;
+}
+
+// Confirm backup selected agents
+function handleConfirmBackup() {
+  if (selectedBackupAgents.value.length === 0) {
+    message.warning("请至少选择一个 Agent");
+    return;
+  }
+  const result = backupSelectedPrompts(selectedBackupAgents.value);
   if (result.success) {
-    message.success("已备份原始提示词");
+    message.success(`已备份 ${selectedBackupAgents.value.length} 个 Agent 的原始提示词`);
+    showBackupModal.value = false;
   } else {
     message.error("备份失败：" + (result.error || "未知错误"));
   }
@@ -121,22 +135,49 @@ function handleBackup() {
 
 // Restore single agent prompt
 function handleRestore(agent) {
-  const result = restoreOriginalPrompt(agent);
-  if (result.success) {
-    message.success(`已恢复 ${AGENT_LABELS[agent]} 的原始提示词`);
-  } else {
-    message.error(`恢复失败：${result.error}`);
-  }
+  dialog.warning({
+    title: "恢复原始提示词",
+    content: `确定恢复 ${AGENT_LABELS[agent]} 的原始提示词？当前内容将被覆盖。`,
+    positiveText: "恢复",
+    negativeText: "取消",
+    onPositiveClick: () => {
+      const result = restoreOriginalPrompt(agent);
+      if (result.success) {
+        message.success(`已恢复 ${AGENT_LABELS[agent]} 的原始提示词`);
+      } else {
+        message.error(`恢复失败：${result.error}`);
+      }
+    },
+  });
 }
 
 // Restore all prompts
 function handleRestoreAll() {
-  const result = restoreAllOriginalPrompts();
-  if (result.success) {
-    message.success("已恢复所有原始提示词");
-  } else {
-    message.error("恢复失败");
+  const backupCount = ALL_AGENTS.filter(a => hasBackup(a)).length;
+  if (backupCount === 0) {
+    message.warning("没有可恢复的备份");
+    return;
   }
+  dialog.warning({
+    title: "恢复所有原始提示词",
+    content: `确定恢复所有 Agent 的原始提示词？共 ${backupCount} 个备份，当前内容将被覆盖。`,
+    positiveText: "恢复",
+    negativeText: "取消",
+    onPositiveClick: () => {
+      const result = restoreAllOriginalPrompts();
+      if (result.success) {
+        const count = result.succeeded?.length || 0;
+        const failCount = result.failed?.length || 0;
+        if (failCount > 0) {
+          message.warning(`已恢复 ${count} 个，${failCount} 个失败`);
+        } else {
+          message.success(`已恢复所有原始提示词（${count} 个）`);
+        }
+      } else {
+        message.error(result.error || "恢复失败");
+      }
+    },
+  });
 }
 </script>
 
@@ -210,11 +251,14 @@ function handleRestoreAll() {
                 未备份
               </span>
             </div>
-            <div class="restore-content" v-if="originalPrompts[agent]">
-              <pre>{{ originalPrompts[agent].substring(0, 80) }}{{ originalPrompts[agent].length > 80 ? '...' : '' }}</pre>
+            <div class="restore-content" v-if="hasBackup(agent) && getBackupContent(agent)">
+              <pre>{{ getBackupContent(agent).substring(0, 80) }}{{ getBackupContent(agent).length > 80 ? '...' : '' }}</pre>
+            </div>
+            <div class="restore-content restore-content--empty" v-else-if="hasBackup(agent)">
+              备份内容为空
             </div>
             <div class="restore-content restore-content--empty" v-else>
-              无提示词内容
+              无备份
             </div>
             <div class="restore-actions">
               <n-button
@@ -240,17 +284,53 @@ function handleRestoreAll() {
         <template #footer>
           <n-space justify="end">
             <n-button @click="showRestore = false">取消</n-button>
-            <n-button type="warning" @click="handleRestoreAll">恢复全部</n-button>
+            <n-button type="warning" :disabled="!ALL_AGENTS.some(a => hasBackup(a))" @click="handleRestoreAll">恢复全部</n-button>
           </n-space>
         </template>
       </n-drawer-content>
     </n-drawer>
 
+    <!-- Backup Selection Modal -->
+    <n-modal :show="showBackupModal" @update:show="showBackupModal = $event">
+      <n-card
+        style="width: 400px; max-width: 90vw;"
+        title="备份原始提示词"
+        :bordered="false"
+        size="small"
+      >
+        <div class="backup-agent-list">
+          <div v-for="agent in ALL_AGENTS" :key="agent" class="backup-agent-item" @click="selectedBackupAgents.includes(agent) ? selectedBackupAgents = selectedBackupAgents.filter(a => a !== agent) : selectedBackupAgents.push(agent)">
+            <n-checkbox
+              :checked="selectedBackupAgents.includes(agent)"
+              @update:checked="(val) => {
+                if (val) {
+                  if (!selectedBackupAgents.includes(agent)) selectedBackupAgents.push(agent);
+                } else {
+                  selectedBackupAgents = selectedBackupAgents.filter(a => a !== agent);
+                }
+              }"
+            >
+              {{ AGENT_LABELS[agent] }}
+            </n-checkbox>
+            <span v-if="hasBackup(agent)" class="backup-agent-hint">已备份</span>
+          </div>
+        </div>
+        <template #footer>
+          <n-space justify="end">
+            <n-button @click="showBackupModal = false">取消</n-button>
+            <n-button type="primary" :disabled="selectedBackupAgents.length === 0" @click="handleConfirmBackup">
+              备份（{{ selectedBackupAgents.length }}）
+            </n-button>
+          </n-space>
+        </template>
+      </n-card>
+    </n-modal>
+
     <!-- View Content Modal -->
     <n-modal :show="!!viewingAgent" @update:show="viewingAgent = null">
       <n-card
         style="width: 600px; max-width: 90vw; max-height: 80vh;"
-        :title="viewingAgent ? AGENT_LABELS[viewingAgent] + ' 原始提示词' : ''"
+        :title="viewingAgent ? AGENT_LABELS[viewingAgent] + ' 备份内容' : ''"
         :bordered="false"
         size="small"
       >
@@ -415,5 +495,32 @@ function handleRestoreAll() {
   background: var(--bg-hover);
   padding: 12px;
   border-radius: 6px;
+}
+
+.backup-agent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.backup-agent-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-hover);
+  cursor: pointer;
+  transition: border-color .15s;
+}
+
+.backup-agent-item:hover {
+  border-color: var(--primary);
+}
+
+.backup-agent-hint {
+  font-size: 11px;
+  color: var(--success);
 }
 </style>

@@ -12,6 +12,7 @@ const _ccs = () => window.utoolsCctoggle || {
   readOriginalPrompt: () => "",
   readAllOriginalPrompts: () => ({}),
   backupOriginalPrompts: () => ({ success: false }),
+  backupSelectedPrompts: () => ({ success: false }),
   getBackups: () => ({}),
   restoreOriginalPrompt: () => ({ success: false }),
   restoreAllOriginalPrompts: () => ({}),
@@ -197,6 +198,7 @@ function loadBackups() {
 
 // Backup current original prompts
 function backupOriginalPrompts() {
+  loading.value = true;
   try {
     const result = _ccs().backupOriginalPrompts();
     if (result?.success !== false) {
@@ -207,6 +209,26 @@ function backupOriginalPrompts() {
   } catch (e) {
     console.error("Failed to backup prompts:", e);
     return { success: false, error: e.message || "Unknown error" };
+  } finally {
+    loading.value = false;
+  }
+}
+
+// Backup selected agents' prompts
+function backupSelectedPrompts(agentList) {
+  loading.value = true;
+  try {
+    const result = _ccs().backupSelectedPrompts(agentList);
+    if (result?.success !== false) {
+      loadBackups();
+      return { success: true };
+    }
+    return { success: false, error: result?.error || "Backup failed" };
+  } catch (e) {
+    console.error("Failed to backup prompts:", e);
+    return { success: false, error: e.message || "Unknown error" };
+  } finally {
+    loading.value = false;
   }
 }
 
@@ -244,7 +266,14 @@ function restoreAllOriginalPrompts() {
   try {
     const results = _ccs().restoreAllOriginalPrompts();
     loadOriginalPrompts();
-    return { success: true, results };
+    // 检查是否有至少一个 Agent 恢复成功
+    const agents = Object.keys(results || {});
+    const succeeded = agents.filter(a => results[a]?.success);
+    const failed = agents.filter(a => !results[a]?.success);
+    if (succeeded.length === 0) {
+      return { success: false, error: "所有 Agent 恢复失败", results };
+    }
+    return { success: true, results, succeeded, failed };
   } catch (e) {
     console.error("Failed to restore all prompts:", e);
     return { success: false, error: e.message };
@@ -253,9 +282,9 @@ function restoreAllOriginalPrompts() {
   }
 }
 
-// Check if backup exists for agent
+// Check if backup exists for agent (backedUpAt indicates a backup was made, even if content was empty)
 function hasBackup(agent) {
-  return !!(backups.value[agent]?.content);
+  return !!(backups.value[agent]?.backedUpAt);
 }
 
 // Get backup content for agent
@@ -322,6 +351,7 @@ export function usePrompts() {
     createFromTemplate,
     loadBackups,
     backupOriginalPrompts,
+    backupSelectedPrompts,
     loadOriginalPrompts,
     restoreOriginalPrompt,
     restoreAllOriginalPrompts,

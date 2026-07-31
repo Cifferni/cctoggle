@@ -25,26 +25,23 @@ function isAgentAssociated(agent) {
   return props.prompt.agents?.includes(agent);
 }
 
-// Toggle agent association
+// Toggle agent association — apply to agent config when turning on, just un-associate when turning off
 function handleToggleAgent(agent) {
-  const result = togglePromptAgent(props.prompt.id, agent);
-  if (result.success) {
-    emit("updated");
-  }
-}
-
-// Apply prompt to agent (with auto-deselect others)
-function handleApply(agent) {
-  if (!isAgentAssociated(agent)) {
-    message.warning("请先关联该 Agent");
-    return;
-  }
-  const result = applyPromptToAgent(props.prompt.id, agent);
-  if (result.success) {
-    message.success(`已应用到 ${AGENT_LABELS[agent]}`);
-    emit("updated");
+  if (isAgentAssociated(agent)) {
+    // 取消关联：只更新数据库
+    const result = togglePromptAgent(props.prompt.id, agent);
+    if (result.success) {
+      emit("updated");
+    }
   } else {
-    message.error("应用失败：" + (result.error || "未知错误"));
+    // 关联：写入 Agent 配置文件
+    const result = applyPromptToAgent(props.prompt.id, agent);
+    if (result.success) {
+      message.success(`已应用到 ${AGENT_LABELS[agent]}`);
+      emit("updated");
+    } else {
+      message.error("应用失败：" + (result.error || "未知错误"));
+    }
   }
 }
 
@@ -76,7 +73,7 @@ function confirmDelete() {
         :key="agent"
         class="agent-chip"
         :class="{ 'agent-chip--on': isAgentAssociated(agent) }"
-        :title="isAgentAssociated(agent) ? '点击取消关联' : '点击关联'"
+        :title="isAgentAssociated(agent) ? '点击取消关联' : '点击应用到 ' + AGENT_LABELS[agent]"
         @click="handleToggleAgent(agent)"
       >
         {{ AGENT_LABELS[agent] }}

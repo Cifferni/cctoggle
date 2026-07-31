@@ -141,6 +141,7 @@ window.utoolsCctoggle = {
   readOriginalPrompt: promptsDb.readOriginalPrompt,
   readAllOriginalPrompts: promptsDb.readAllOriginalPrompts,
   backupOriginalPrompts: promptsDb.backupOriginalPrompts,
+  backupSelectedPrompts: promptsDb.backupSelectedPrompts,
   getBackups: promptsDb.getBackups,
   restoreOriginalPrompt: promptsDb.restoreOriginalPrompt,
   restoreAllOriginalPrompts: promptsDb.restoreAllOriginalPrompts,

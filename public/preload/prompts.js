@@ -285,6 +285,26 @@ function backupOriginalPrompts() {
   }
 }
 
+// 备份指定 Agent 的提示词
+function backupSelectedPrompts(agentList) {
+  if (!Array.isArray(agentList) || agentList.length === 0) {
+    return { success: false, error: "No agents selected" };
+  }
+  try {
+    var backups = _getBackups();
+    var now = new Date().toISOString();
+
+    agentList.forEach(function (agent) {
+      backups[agent] = { content: _readPromptFile(agent), backedUpAt: now };
+    });
+
+    _saveBackups(backups);
+    return { success: true, backups: backups };
+  } catch (e) {
+    return { success: false, error: e.message || "Backup failed" };
+  }
+}
+
 // 获取备份
 function getBackups() {
   return _getBackups();
@@ -295,12 +315,12 @@ function restoreOriginalPrompt(agent) {
   var backups = _getBackups();
   var backup = backups[agent];
 
-  if (!backup || !backup.content) {
+  if (!backup || !backup.backedUpAt) {
     return { success: false, error: "No backup found for " + agent };
   }
 
   try {
-    _writePromptFile(agent, backup.content);
+    _writePromptFile(agent, backup.content || "");
     return { success: true };
   } catch (e) {
     return { success: false, error: e.message };
@@ -366,7 +386,7 @@ function applyPromptToAgent(promptId, agent) {
   return { success: true, prompt: targetPrompt };
 }
 
-// 切换提示词对 Agent 的关联（不写入配置文件，只更新关联关系）
+// 切换提示词对 Agent 的关联，取消关联时同步清理 Agent 配置文件
 function togglePromptAgent(promptId, agent) {
   var prompts = _getAll();
   var targetPrompt = null;
@@ -388,9 +408,25 @@ function togglePromptAgent(promptId, agent) {
 
   var idx = targetPrompt.agents.indexOf(agent);
   if (idx === -1) {
+    // 关联：由前端调用 applyPromptToAgent 处理文件写入
     targetPrompt.agents.push(agent);
   } else {
+    // 取消关联：清理 Agent 配置文件中的提示词内容
     targetPrompt.agents.splice(idx, 1);
+    try {
+      var currentContent = _readPromptFile(agent);
+      if (currentContent === targetPrompt.content) {
+        var backups = _getBackups();
+        var backup = backups[agent];
+        if (backup && backup.content) {
+          _writePromptFile(agent, backup.content);
+        } else {
+          _writePromptFile(agent, "");
+        }
+      }
+    } catch (e) {
+      // 文件清理失败不阻断数据库更新
+    }
   }
 
   _saveAll(prompts);
@@ -410,6 +446,7 @@ module.exports = {
   readOriginalPrompt: readOriginalPrompt,
   readAllOriginalPrompts: readAllOriginalPrompts,
   backupOriginalPrompts: backupOriginalPrompts,
+  backupSelectedPrompts: backupSelectedPrompts,
   getBackups: getBackups,
   restoreOriginalPrompt: restoreOriginalPrompt,
   restoreAllOriginalPrompts: restoreAllOriginalPrompts,
