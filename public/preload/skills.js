@@ -295,11 +295,36 @@ function getDefaultSkillDirs() {
 }
 
 function getSkillStoragePaths() {
+  // 优先从 agent 配置路径派生
+  var configPaths = {};
+  try {
+    configPaths = utools.dbStorage.getItem("ccswitch_config_paths") || {};
+  } catch (e) { configPaths = {}; }
+
+  // 如果有配置，从配置路径派生 skill 目录
+  if (Object.keys(configPaths).length > 0) {
+    var result = {};
+    Object.keys(configPaths).forEach(function(app) {
+      if (configPaths[app]) {
+        result[app] = path.join(expandHome(configPaths[app]), "skills");
+      }
+    });
+    // 补充未配置的 agent 使用默认路径
+    var defaults = getDefaultSkillDirs();
+    Object.keys(defaults).forEach(function(app) {
+      if (!result[app]) {
+        result[app] = defaults[app];
+      }
+    });
+    return result;
+  }
+
+  // 兼容旧的独立存储路径配置
   var saved = utools.dbStorage.getItem('ccswitch_skill_paths');
   if (saved) return saved;
-  var defaults = getDefaultSkillDirs();
-  utools.dbStorage.setItem('ccswitch_skill_paths', defaults);
-  return defaults;
+  var defaults2 = getDefaultSkillDirs();
+  utools.dbStorage.setItem('ccswitch_skill_paths', defaults2);
+  return defaults2;
 }
 
 function setSkillStoragePaths(paths) {

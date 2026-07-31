@@ -5,16 +5,14 @@ import { APP_ICONS } from "../../composables/shared.js";
 
 const {
   ALL_APPS, APP_LABELS,
-  storagePaths, nestSkills, projectTargets, syncMode,
+  nestSkills, projectTargets, syncMode,
   configPaths,
-  loadStoragePaths, saveStoragePaths,
   loadNestSkills, loadProjectTargets, addProjectTarget, removeProjectTarget,
   loadSyncMode, saveSyncMode,
   loadConfigPaths, saveConfigPaths,
 } = useSkills();
 
 onMounted(() => {
-  loadStoragePaths();
   loadNestSkills();
   loadProjectTargets();
   loadSyncMode();
@@ -29,48 +27,26 @@ const nestDir = computed(() => {
   return fn ? fn() : "~/.skillnest/skills";
 });
 
-// Storage path editing
+// Agent path editing (unified)
 const editingAgent = ref(null);
 const editValue = ref("");
 
 function startEdit(app) {
   editingAgent.value = app;
-  editValue.value = storagePaths.value[app] || "";
+  editValue.value = configPaths.value[app] || "";
 }
 function confirmEdit(app) {
-  saveStoragePaths({ ...storagePaths.value, [app]: editValue.value });
+  saveConfigPaths({ ...configPaths.value, [app]: editValue.value });
   editingAgent.value = null;
 }
 function cancelEdit() {
   editingAgent.value = null;
 }
 function resetDefault(app) {
-  const fn = window.utoolsCctoggle?.getDefaultSkillDirs || (() => ({}));
-  const defaults = fn();
-  saveStoragePaths({ ...storagePaths.value, [app]: defaults[app] || `~/.generic/skills`.replace("generic", app) });
-  editingAgent.value = null;
-}
-
-// Config path editing
-const editingConfigAgent = ref(null);
-const editConfigValue = ref("");
-
-function startEditConfig(app) {
-  editingConfigAgent.value = app;
-  editConfigValue.value = configPaths.value[app] || "";
-}
-function confirmEditConfig(app) {
-  saveConfigPaths({ ...configPaths.value, [app]: editConfigValue.value });
-  editingConfigAgent.value = null;
-}
-function cancelEditConfig() {
-  editingConfigAgent.value = null;
-}
-function resetDefaultConfig(app) {
   const fn = window.utoolsCctoggle?.getDefaultConfigDirs || (() => ({}));
   const defaults = fn();
   saveConfigPaths({ ...configPaths.value, [app]: defaults[app] || "" });
-  editingConfigAgent.value = null;
+  editingAgent.value = null;
 }
 
 // Project targets
@@ -101,10 +77,13 @@ function addProject() {
       </n-space>
     </n-card>
 
-    <!-- Agent 存储路径 -->
+    <!-- Agent 路径（统一配置） -->
     <n-card size="small" :bordered="true">
       <template #header>
-        <n-text depth="2" style="font-size: 12px; font-weight: 600;">Agent 存储路径</n-text>
+        <n-text depth="2" style="font-size: 12px; font-weight: 600;">Agent 路径</n-text>
+      </template>
+      <template #header-extra>
+        <n-text depth="3" style="font-size: 11px;">Skill 存储 · 配置 · 会话 · MCP · Provider · 提示词</n-text>
       </template>
 
       <n-space vertical :size="8">
@@ -133,71 +112,6 @@ function addProject() {
             <template #trigger>
               <n-button text block class="path-btn" @click="startEdit(a)">
                 <n-text
-                  :type="storagePaths[a] ? 'default' : 'warning'"
-                  code
-                  style="font-size: 11px; flex: 1; text-align: left;"
-                >
-                  {{ storagePaths[a] || "未设置" }}
-                </n-text>
-              </n-button>
-            </template>
-            点击编辑存储路径
-          </n-tooltip>
-
-          <!-- 编辑态 -->
-          <n-space v-else vertical :size="6">
-            <n-input
-              v-model:value="editValue"
-              :placeholder="'~/.generic/skills'.replace('generic', a)"
-              size="small"
-              :autofocus="true"
-              @keydown.enter="confirmEdit(a)"
-              @keydown.escape="cancelEdit"
-            />
-            <n-space justify="end" :size="6">
-              <n-button size="tiny" quaternary @click="resetDefault(a)">重置默认</n-button>
-              <n-button size="tiny" type="primary" @click="confirmEdit(a)">确认</n-button>
-            </n-space>
-          </n-space>
-        </n-card>
-      </n-space>
-    </n-card>
-
-    <!-- Agent 配置路径 -->
-    <n-card size="small" :bordered="true">
-      <template #header>
-        <n-text depth="2" style="font-size: 12px; font-weight: 600;">Agent 配置路径</n-text>
-      </template>
-      <template #header-extra>
-        <n-text depth="3" style="font-size: 11px;">配置 · 会话 · MCP · Provider · 提示词</n-text>
-      </template>
-
-      <n-space vertical :size="8">
-        <n-card
-          v-for="a in agents"
-          :key="'config-' + a"
-          size="small"
-          :bordered="true"
-          embedded
-        >
-          <n-space align="center" :size="8" style="margin-bottom: 4px;">
-            <img :src="agentIcons[a]" :alt="APP_LABELS[a]" style="width: 16px; height: 16px; object-fit: contain;" />
-            <n-text strong style="font-size: 12px; flex: 1;">{{ APP_LABELS[a] }}</n-text>
-            <n-button
-              v-if="editingConfigAgent !== a"
-              text
-              size="tiny"
-              @click="startEditConfig(a)"
-            >
-              编辑 ›
-            </n-button>
-          </n-space>
-
-          <!-- 展示态 -->
-          <n-tooltip v-if="editingConfigAgent !== a" trigger="hover" placement="top-start">
-            <template #trigger>
-              <n-button text block class="path-btn" @click="startEditConfig(a)">
-                <n-text
                   :type="configPaths[a] ? 'default' : 'warning'"
                   code
                   style="font-size: 11px; flex: 1; text-align: left;"
@@ -206,22 +120,22 @@ function addProject() {
                 </n-text>
               </n-button>
             </template>
-            点击编辑配置路径（会话、MCP、Provider、提示词等路径均从此派生）
+            点击编辑 Agent 路径（Skill 存储、配置、会话、MCP、Provider、提示词等均从此派生）
           </n-tooltip>
 
           <!-- 编辑态 -->
           <n-space v-else vertical :size="6">
             <n-input
-              v-model:value="editConfigValue"
+              v-model:value="editValue"
               :placeholder="'~/.generic'.replace('generic', a)"
               size="small"
               :autofocus="true"
-              @keydown.enter="confirmEditConfig(a)"
-              @keydown.escape="cancelEditConfig"
+              @keydown.enter="confirmEdit(a)"
+              @keydown.escape="cancelEdit"
             />
             <n-space justify="end" :size="6">
-              <n-button size="tiny" quaternary @click="resetDefaultConfig(a)">重置默认</n-button>
-              <n-button size="tiny" type="primary" @click="confirmEditConfig(a)">确认</n-button>
+              <n-button size="tiny" quaternary @click="resetDefault(a)">重置默认</n-button>
+              <n-button size="tiny" type="primary" @click="confirmEdit(a)">确认</n-button>
             </n-space>
           </n-space>
         </n-card>
