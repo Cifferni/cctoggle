@@ -5,6 +5,7 @@ import SkillsPage from "../views/SkillsPage.vue";
 const routes = [
   { path: "/", component: ProviderListPage },
   { path: "/skills", component: SkillsPage },
+  { path: "/prompts", component: () => import("../views/PromptsPage.vue") },
   { path: "/stats", component: () => import("../views/StatsPage.vue") },
   { path: "/mcp", component: () => import("../views/McpPage.vue") },
   { path: "/sessions", component: () => import("../views/SessionPage.vue") },

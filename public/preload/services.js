@@ -9,6 +9,7 @@ var stats = require("./stats");
 var proxy = require("./proxy");
 var mcpDb = require("./mcp");
 var sessions = require("./sessions");
+var promptsDb = require("./prompts");
 
 window.utoolsCctoggle = {
   // Paths
@@ -117,6 +118,23 @@ window.utoolsCctoggle = {
   deleteSession: sessions.deleteSession,
   clearAllSessions: sessions.clearAllSessions,
   clearSessionCache: sessions.clearSessionCache,
+
+  // Prompt management
+  listPrompts: promptsDb.listPrompts,
+  getPrompt: promptsDb.getPrompt,
+  savePrompt: promptsDb.savePrompt,
+  deletePrompt: promptsDb.deletePrompt,
+  duplicatePrompt: promptsDb.duplicatePrompt,
+  exportPrompts: promptsDb.exportPrompts,
+  importPrompts: promptsDb.importPrompts,
+  readOriginalPrompt: promptsDb.readOriginalPrompt,
+  readAllOriginalPrompts: promptsDb.readAllOriginalPrompts,
+  backupOriginalPrompts: promptsDb.backupOriginalPrompts,
+  getBackups: promptsDb.getBackups,
+  restoreOriginalPrompt: promptsDb.restoreOriginalPrompt,
+  restoreAllOriginalPrompts: promptsDb.restoreAllOriginalPrompts,
+  applyPromptToAgent: promptsDb.applyPromptToAgent,
+  togglePromptAgent: promptsDb.togglePromptAgent,
 };
 
 

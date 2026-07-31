@@ -49,6 +49,44 @@ function getClaudeDesktopConfigPath() {
   return path.join(appData, "Claude", "claude_desktop_config.json");
 }
 
+// ─────────── 提示词文件路径 ───────────
+
+function getClaudeMdPath() {
+  return path.join(getHomeDir(), ".claude", "CLAUDE.md");
+}
+
+function getCodexAgentsMdPath() {
+  return path.join(getHomeDir(), ".codex", "AGENTS.md");
+}
+
+function getGeminiMdPath() {
+  return path.join(getHomeDir(), ".gemini", "GEMINI.md");
+}
+
+function getOpenClawWorkspaceDir() {
+  var openclawDir = path.join(getHomeDir(), ".openclaw");
+  try {
+    if (!fs.existsSync(openclawDir)) return null;
+    var entries = fs.readdirSync(openclawDir);
+    // 查找 workspace-* 目录
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].indexOf("workspace-") === 0) {
+        var fullPath = path.join(openclawDir, entries[i]);
+        if (fs.statSync(fullPath).isDirectory()) {
+          return fullPath;
+        }
+      }
+    }
+  } catch (e) { /* ignore */ }
+  return null;
+}
+
+function getOpenClawAgentsMdPath() {
+  var workspace = getOpenClawWorkspaceDir();
+  if (!workspace) return null;
+  return path.join(workspace, "AGENTS.md");
+}
+
 // 纯路径展开（~ → homeDir）
 function expandHome(p) {
   if (!p) return p;
@@ -120,4 +158,10 @@ module.exports = {
   CODEX_BASE_INSTRUCTIONS: CODEX_BASE_INSTRUCTIONS,
   getCodexInstructions: getCodexInstructions,
   copyDirSync: copyDirSync,
+  // 提示词文件路径
+  getClaudeMdPath: getClaudeMdPath,
+  getCodexAgentsMdPath: getCodexAgentsMdPath,
+  getGeminiMdPath: getGeminiMdPath,
+  getOpenClawWorkspaceDir: getOpenClawWorkspaceDir,
+  getOpenClawAgentsMdPath: getOpenClawAgentsMdPath,
 };

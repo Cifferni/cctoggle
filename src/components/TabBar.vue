@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import { useRouter } from "vue-router";
 import { NIcon, NTabs, NTabPane, NSwitch, useMessage } from "naive-ui";
-import { BuildOutline, SettingsOutline, CubeOutline, StatsChartOutline, ChatbubblesOutline } from "@vicons/ionicons5";
+import { BuildOutline, SettingsOutline, CubeOutline, StatsChartOutline, ChatbubblesOutline, DocumentTextOutline } from "@vicons/ionicons5";
 import { useProviders } from "../composables/useProviders.js";
 import { useRoutes } from "../composables/useRoutes.js";
 
@@ -83,6 +83,9 @@ function onToggleProxy() {
       <n-icon :size="15"><stats-chart-outline /></n-icon>
     </button>
 
+    <button class="nav-btn" title="提示词管理" @click="router.push('/prompts')">
+      <n-icon :size="15"><document-text-outline /></n-icon>
+    </button>
     <button class="nav-btn" title="Skill管理" @click="router.push('/skills')">
       <n-icon :size="15"><build-outline /></n-icon>
     </button>
