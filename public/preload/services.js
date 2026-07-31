@@ -31,13 +31,6 @@ window.utoolsCctoggle = {
     utools.dbStorage.setItem("ccswitch_config_paths", paths);
   },
   getDefaultConfigDirs: utils.getDefaultConfigDirs,
-  getSessionPaths: function() {
-    return utools.dbStorage.getItem("ccswitch_session_paths") || {};
-  },
-  setSessionPaths: function(paths) {
-    utools.dbStorage.setItem("ccswitch_session_paths", paths);
-  },
-  getDefaultSessionDirs: utils.getDefaultSessionDirs,
 
   // Config read
   getCurrentConfigs: configRw.getCurrentConfigs,

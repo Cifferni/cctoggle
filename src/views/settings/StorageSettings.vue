@@ -6,12 +6,11 @@ import { APP_ICONS } from "../../composables/shared.js";
 const {
   ALL_APPS, APP_LABELS,
   storagePaths, nestSkills, projectTargets, syncMode,
-  configPaths, sessionPaths,
+  configPaths,
   loadStoragePaths, saveStoragePaths,
   loadNestSkills, loadProjectTargets, addProjectTarget, removeProjectTarget,
   loadSyncMode, saveSyncMode,
   loadConfigPaths, saveConfigPaths,
-  loadSessionPaths, saveSessionPaths,
 } = useSkills();
 
 onMounted(() => {
@@ -20,7 +19,6 @@ onMounted(() => {
   loadProjectTargets();
   loadSyncMode();
   loadConfigPaths();
-  loadSessionPaths();
 });
 
 const agents = ALL_APPS.filter(a => ["codex", "claude", "gemini", "openclaw"].includes(a));
@@ -73,28 +71,6 @@ function resetDefaultConfig(app) {
   const defaults = fn();
   saveConfigPaths({ ...configPaths.value, [app]: defaults[app] || "" });
   editingConfigAgent.value = null;
-}
-
-// Session path editing
-const editingSessionAgent = ref(null);
-const editSessionValue = ref("");
-
-function startEditSession(app) {
-  editingSessionAgent.value = app;
-  editSessionValue.value = sessionPaths.value[app] || "";
-}
-function confirmEditSession(app) {
-  saveSessionPaths({ ...sessionPaths.value, [app]: editSessionValue.value });
-  editingSessionAgent.value = null;
-}
-function cancelEditSession() {
-  editingSessionAgent.value = null;
-}
-function resetDefaultSession(app) {
-  const fn = window.utoolsCctoggle?.getDefaultSessionDirs || (() => ({}));
-  const defaults = fn();
-  saveSessionPaths({ ...sessionPaths.value, [app]: defaults[app] || "" });
-  editingSessionAgent.value = null;
 }
 
 // Project targets
@@ -193,7 +169,7 @@ function addProject() {
         <n-text depth="2" style="font-size: 12px; font-weight: 600;">Agent 配置路径</n-text>
       </template>
       <template #header-extra>
-        <n-text depth="3" style="font-size: 11px;">MCP 配置 · Provider 切换 · 提示词文件</n-text>
+        <n-text depth="3" style="font-size: 11px;">配置 · 会话 · MCP · Provider · 提示词</n-text>
       </template>
 
       <n-space vertical :size="8">
@@ -230,7 +206,7 @@ function addProject() {
                 </n-text>
               </n-button>
             </template>
-            点击编辑配置路径
+            点击编辑配置路径（会话、MCP、Provider、提示词等路径均从此派生）
           </n-tooltip>
 
           <!-- 编辑态 -->
@@ -246,71 +222,6 @@ function addProject() {
             <n-space justify="end" :size="6">
               <n-button size="tiny" quaternary @click="resetDefaultConfig(a)">重置默认</n-button>
               <n-button size="tiny" type="primary" @click="confirmEditConfig(a)">确认</n-button>
-            </n-space>
-          </n-space>
-        </n-card>
-      </n-space>
-    </n-card>
-
-    <!-- Agent 会话路径 -->
-    <n-card size="small" :bordered="true">
-      <template #header>
-        <n-text depth="2" style="font-size: 12px; font-weight: 600;">Agent 会话路径</n-text>
-      </template>
-      <template #header-extra>
-        <n-text depth="3" style="font-size: 11px;">会话数据 · 统计数据</n-text>
-      </template>
-
-      <n-space vertical :size="8">
-        <n-card
-          v-for="a in agents.filter(a => ['claude', 'codex', 'openclaw'].includes(a))"
-          :key="'session-' + a"
-          size="small"
-          :bordered="true"
-          embedded
-        >
-          <n-space align="center" :size="8" style="margin-bottom: 4px;">
-            <img :src="agentIcons[a]" :alt="APP_LABELS[a]" style="width: 16px; height: 16px; object-fit: contain;" />
-            <n-text strong style="font-size: 12px; flex: 1;">{{ APP_LABELS[a] }}</n-text>
-            <n-button
-              v-if="editingSessionAgent !== a"
-              text
-              size="tiny"
-              @click="startEditSession(a)"
-            >
-              编辑 ›
-            </n-button>
-          </n-space>
-
-          <!-- 展示态 -->
-          <n-tooltip v-if="editingSessionAgent !== a" trigger="hover" placement="top-start">
-            <template #trigger>
-              <n-button text block class="path-btn" @click="startEditSession(a)">
-                <n-text
-                  :type="sessionPaths[a] ? 'default' : 'warning'"
-                  code
-                  style="font-size: 11px; flex: 1; text-align: left;"
-                >
-                  {{ sessionPaths[a] || "未设置" }}
-                </n-text>
-              </n-button>
-            </template>
-            点击编辑会话路径
-          </n-tooltip>
-
-          <!-- 编辑态 -->
-          <n-space v-else vertical :size="6">
-            <n-input
-              v-model:value="editSessionValue"
-              :placeholder="'~/.generic/sessions'.replace('generic', a)"
-              size="small"
-              :autofocus="true"
-              @keydown.enter="confirmEditSession(a)"
-              @keydown.escape="cancelEditSession"
-            />
-            <n-space justify="end" :size="6">
-              <n-button size="tiny" quaternary @click="resetDefaultSession(a)">重置默认</n-button>
-              <n-button size="tiny" type="primary" @click="confirmEditSession(a)">确认</n-button>
             </n-space>
           </n-space>
         </n-card>

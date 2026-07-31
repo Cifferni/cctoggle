@@ -38,7 +38,6 @@ const deployments = ref({});
 const projectTargets = ref([]);
 const repos = ref([]);
 const configPaths = ref({});
-const sessionPaths = ref({});
 
 function loadStoragePaths() {
   storagePaths.value = _ccs().getSkillStoragePaths();
@@ -132,21 +131,11 @@ function saveConfigPaths(paths) {
   configPaths.value = { ...paths };
 }
 
-// Session paths
-function loadSessionPaths() {
-  sessionPaths.value = _ccs().getSessionPaths();
-}
-
-function saveSessionPaths(paths) {
-  _ccs().setSessionPaths(paths);
-  sessionPaths.value = { ...paths };
-}
-
 export function useSkills() {
   return {
     ALL_APPS, APP_LABELS,
     storagePaths, allSkills, nestSkills, deployments, projectTargets, repos,
-    configPaths, sessionPaths,
+    configPaths,
     loadStoragePaths, saveStoragePaths,
     loadAllSkills, loadNestSkills, loadDeployments, loadProjectTargets,
     addProjectTarget, removeProjectTarget,
@@ -154,6 +143,5 @@ export function useSkills() {
     loadRepos, addRepo, removeRepo,
     syncSkillsTo, syncMode, loadSyncMode, saveSyncMode,
     loadConfigPaths, saveConfigPaths,
-    loadSessionPaths, saveSessionPaths,
   };
 }

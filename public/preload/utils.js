@@ -115,7 +115,7 @@ function getDefaultConfigDirs() {
   };
 }
 
-// 获取 agent 配置路径（MCP 配置文件 + Provider 切换 + 提示词文件）
+// 获取 agent 配置路径（基础路径，所有其他路径从此派生）
 function getAgentConfigPath(appType) {
   var configPaths = {};
   try {
@@ -126,25 +126,21 @@ function getAgentConfigPath(appType) {
   return defaults[appType] || null;
 }
 
-// 获取默认的 agent 会话目录
-function getDefaultSessionDirs() {
-  var home = getHomeDir();
-  return {
-    claude: path.join(home, ".claude", "projects"),
-    codex: path.join(home, ".codex", "sessions"),
-    openclaw: path.join(home, ".openclaw", "agents"),
-  };
-}
-
-// 获取 agent 会话路径（会话数据 + 统计数据）
+// 获取 agent 会话路径（从配置路径派生）
 function getAgentSessionPath(appType) {
-  var sessionPaths = {};
-  try {
-    sessionPaths = utools.dbStorage.getItem("ccswitch_session_paths") || {};
-  } catch (e) { sessionPaths = {}; }
-  if (sessionPaths[appType]) return expandHome(sessionPaths[appType]);
-  var defaults = getDefaultSessionDirs();
-  return defaults[appType] || null;
+  var configDir = getAgentConfigPath(appType);
+  if (!configDir) return null;
+
+  // 各 agent 的会话子目录
+  var sessionSubDirs = {
+    claude: "projects",
+    codex: "sessions",
+    openclaw: "agents",
+  };
+
+  var subDir = sessionSubDirs[appType];
+  if (!subDir) return null;
+  return path.join(configDir, subDir);
 }
 
 function ensureDir(filePath) {
@@ -219,6 +215,5 @@ module.exports = {
   // Agent 路径管理
   getDefaultConfigDirs: getDefaultConfigDirs,
   getAgentConfigPath: getAgentConfigPath,
-  getDefaultSessionDirs: getDefaultSessionDirs,
   getAgentSessionPath: getAgentSessionPath,
 };
