@@ -1,15 +1,34 @@
 ﻿<script setup>
-import { ref, watch, onMounted, onBeforeUnmount } from "vue";
-import { useMessage } from "naive-ui";
+import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
+import { useMessage, NInfiniteScroll } from "naive-ui";
 import { openUrl } from "../utils/openUrl.js";
 
 const message = useMessage();
 
+const PAGE_SIZE = 12;
 const searchQuery = ref("");
 const installing = ref(null);
 const installedNames = ref(new Set());
 const results = ref([]);
 const loading = ref(false);
+const displayCount = ref(PAGE_SIZE);
+
+const pagedResults = computed(function() {
+  return results.value.slice(0, displayCount.value);
+});
+
+const allLoaded = computed(function() {
+  return displayCount.value >= results.value.length;
+});
+
+function handleLoad() {
+  return new Promise(function(resolve) {
+    setTimeout(function() {
+      displayCount.value = Math.min(displayCount.value + PAGE_SIZE, results.value.length);
+      resolve();
+    }, 200);
+  });
+}
 
 let reqId = 0;
 let debounceTimer = null;
@@ -19,6 +38,7 @@ async function runSearch(q) {
   const myId = ++reqId;
   const fn = window.utoolsCctoggle?.searchSkills || (() => Promise.resolve([]));
   loading.value = true;
+  displayCount.value = PAGE_SIZE;
   try {
     const data = await fn(q || "");
     if (cancelled || myId !== reqId) return;
@@ -33,8 +53,9 @@ async function runSearch(q) {
 
 watch(searchQuery, function(q) {
   if (debounceTimer) clearTimeout(debounceTimer);
+  if (!q || !q.trim()) return;
   debounceTimer = setTimeout(() => runSearch(q), 250);
-}, { immediate: true });
+});
 
 onBeforeUnmount(function() {
   cancelled = true;
@@ -89,36 +110,49 @@ function install(skill) {
     </div>
 
     <div class="results">
-      <div v-if="loading && !results.length" class="results-loading">
-        <div class="spinner"></div>
-        <span>搜索中...</span>
+      <div v-if="!searchQuery.trim() && !results.length" class="results-hint">
+        <span class="hint-icon">&#128270;</span>
+        <span>输入关键词搜索可用的 Skill</span>
+      </div>
+      <div v-else-if="loading && !results.length" class="results-grid">
+        <div v-for="i in 6" :key="i" class="result-card skeleton-card">
+          <div class="skeleton-line skeleton-title"></div>
+          <div class="skeleton-line skeleton-url"></div>
+          <div class="skeleton-line skeleton-btn"></div>
+        </div>
       </div>
       <div v-else-if="searchQuery && results.length === 0" class="results-empty">无匹配结果</div>
 
-      <div v-if="results.length" class="results-grid">
-      <div v-for="s in results" :key="skillKey(s)" class="result-card">
-        <div class="card-top">
-          <span class="result-name">{{ s.name }}</span>
-          <span class="result-installs">&#8595; {{ formatCount(s.installs || 0) }}</span>
+      <n-infinite-scroll v-if="results.length" :distance="10" :loading="loading" @load="handleLoad" class="scroll-wrap">
+        <div class="results-grid">
+          <div v-for="s in pagedResults" :key="skillKey(s)" class="result-card">
+            <div class="card-top">
+              <span class="result-name">{{ s.name }}</span>
+              <span class="result-installs">&#8595; {{ formatCount(s.installs || 0) }}</span>
+            </div>
+            <a v-if="s.repo" href="#" class="result-repo" @click.prevent.stop="openUrl(s.repo)">{{ s.repo }}</a>
+            <button
+              v-if="installedNames.has(skillKey(s))"
+              class="btn-install btn-install--done"
+              disabled
+            >&#10003; 已安装</button>
+            <button
+              v-else-if="installing === skillKey(s)"
+              class="btn-install btn-install--loading"
+              disabled
+            >安装中...</button>
+            <button
+              v-else
+              class="btn-install"
+              @click="install(s)"
+            >安装</button>
+          </div>
         </div>
-        <a v-if="s.repo" href="#" class="result-repo" @click.prevent.stop="openUrl(s.repo)">{{ s.repo }}</a>
-        <button
-          v-if="installedNames.has(skillKey(s))"
-          class="btn-install btn-install--done"
-          disabled
-        >&#10003; 已安装</button>
-        <button
-          v-else-if="installing === skillKey(s)"
-          class="btn-install btn-install--loading"
-          disabled
-        >安装中...</button>
-        <button
-          v-else
-          class="btn-install"
-          @click="install(s)"
-        >安装</button>
-      </div>
-    </div>
+        <div v-if="!allLoaded" class="scroll-loading">
+          <span class="scroll-spinner"></span>
+          <span>加载更多...</span>
+        </div>
+      </n-infinite-scroll>
     </div>
   </div>
 </template>
@@ -149,20 +183,26 @@ function install(skill) {
 }
 @keyframes spin { to { transform: translateY(-50%) rotate(360deg); } }
 
-.results { flex: 1; overflow-y: auto; }
+.results { flex: 1; overflow: hidden; }
 .results-empty { text-align: center; padding: 40px 0; font-size: 14px; color: var(--text-muted); }
 
-.results-loading {
-  display: flex; flex-direction: column; align-items: center; gap: 12px;
+.results-hint {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
   padding: 60px 0; color: var(--text-muted); font-size: 14px;
 }
-.results-loading .spinner {
-  width: 28px; height: 28px;
-  border: 3px solid var(--border);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: spin .6s linear infinite;
+.hint-icon { font-size: 32px; opacity: .5; }
+
+.skeleton-card { pointer-events: none; }
+.skeleton-line {
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--bg-hover) 25%, var(--border) 50%, var(--bg-hover) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
 }
+.skeleton-title { height: 14px; width: 50%; margin-bottom: 8px; }
+.skeleton-url   { height: 10px; width: 75%; margin-bottom: 12px; }
+.skeleton-btn   { height: 28px; width: 64px; }
+@keyframes shimmer { to { background-position: -200% 0; } }
 
 .results-grid {
   display: grid;
@@ -212,5 +252,18 @@ function install(skill) {
 }
 .btn-install--loading {
   opacity: .6; cursor: default;
+}
+
+.scroll-wrap { height: 100%; }
+.scroll-loading {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 16px 0; font-size: 12px; color: var(--text-muted);
+}
+.scroll-spinner {
+  width: 14px; height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
 }
 </style>
