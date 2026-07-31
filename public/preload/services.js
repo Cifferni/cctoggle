@@ -10,6 +10,7 @@ var proxy = require("./proxy");
 var mcpDb = require("./mcp");
 var sessions = require("./sessions");
 var promptsDb = require("./prompts");
+var migration = require("./migration");
 
 window.utoolsCctoggle = {
   // Paths
@@ -149,6 +150,13 @@ window.utoolsCctoggle = {
 
 
 // --- Startup: mark current providers ---
+
+try {
+  // 执行数据迁移
+  migration.migrate();
+} catch (e) {
+  console.error("[Services] Migration failed:", e);
+}
 
 try {
   ["codex", "claude", "claude-desktop", "gemini"].forEach(function (appType) {

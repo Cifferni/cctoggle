@@ -319,12 +319,48 @@ function getSkillStoragePaths() {
     return result;
   }
 
-  // 兼容旧的独立存储路径配置
+  // 兼容旧的独立存储路径配置（向后兼容）
   var saved = utools.dbStorage.getItem('ccswitch_skill_paths');
-  if (saved) return saved;
-  var defaults2 = getDefaultSkillDirs();
-  utools.dbStorage.setItem('ccswitch_skill_paths', defaults2);
-  return defaults2;
+  if (saved) {
+    // 如果旧数据存在，尝试迁移
+    // 将旧数据转换为新的 config_paths 格式
+    var defaultSkillDirs = getDefaultSkillDirs();
+    var migratedConfigPaths = {};
+    Object.keys(saved).forEach(function(app) {
+      if (saved[app] && saved[app] !== defaultSkillDirs[app]) {
+        // 从 skill 路径推导出 agent 路径
+        var agentPath = saved[app].replace(/[\/\\]skills$/, "");
+        if (agentPath !== saved[app]) {
+          migratedConfigPaths[app] = agentPath;
+        }
+      }
+    });
+
+    // 如果有需要迁移的数据，保存到新格式
+    if (Object.keys(migratedConfigPaths).length > 0) {
+      utools.dbStorage.setItem("ccswitch_config_paths", migratedConfigPaths);
+      // 重新计算结果
+      var result2 = {};
+      Object.keys(migratedConfigPaths).forEach(function(app) {
+        if (migratedConfigPaths[app]) {
+          result2[app] = path.join(expandHome(migratedConfigPaths[app]), "skills");
+        }
+      });
+      var defaults2 = getDefaultSkillDirs();
+      Object.keys(defaults2).forEach(function(app) {
+        if (!result2[app]) {
+          result2[app] = defaults2[app];
+        }
+      });
+      return result2;
+    }
+
+    return saved;
+  }
+
+  // 首次使用，返回默认值
+  var defaults3 = getDefaultSkillDirs();
+  return defaults3;
 }
 
 function setSkillStoragePaths(paths) {

@@ -170,9 +170,63 @@ if (missingAPIs.length > 0) {
   console.log("  ✅ 通过\n");
 }
 
-console.log("=== 所有测试完成 ===");
-console.log("\n设计说明：");
-console.log("- Agent 路径是所有路径的统一配置入口");
-console.log("- Skill 存储路径从 Agent 路径派生（如 ~/.claude → ~/.claude/skills）");
-console.log("- 会话路径从 Agent 路径派生（如 ~/.claude → ~/.claude/projects）");
-console.log("- MCP 配置、Provider 切换、提示词文件都使用 Agent 路径");
+// 测试 15: 数据迁移 - 旧用户升级场景
+console.log("【测试 15】数据迁移 - 旧用户升级场景");
+// 清除所有数据
+utools.dbStorage.removeItem("ccswitch_config_paths");
+utools.dbStorage.removeItem("ccswitch_skill_paths");
+utools.dbStorage.removeItem("ccswitch_migration_version");
+
+// 模拟旧用户数据
+utools.dbStorage.setItem("ccswitch_skill_paths", {
+  claude: "~/.claude/skills",
+  codex: "~/custom-codex/skills",  // 用户自定义了路径
+  gemini: "~/.gemini/skills",
+  openclaw: "~/.openclaw/skills",
+});
+
+// 加载迁移模块并执行迁移
+const migration = require("./public/preload/migration");
+migration.migrate();
+
+// 检查迁移结果
+const migratedConfigPaths = utools.dbStorage.getItem("ccswitch_config_paths");
+console.log("  迁移前 skill_paths:", JSON.stringify(utools.dbStorage.getItem("ccswitch_skill_paths")));
+console.log("  迁移后 config_paths:", JSON.stringify(migratedConfigPaths));
+console.log("  迁移版本:", migration.getMigrationVersion());
+
+// 验证迁移是否正确保留了用户自定义路径
+if (migratedConfigPaths && migratedConfigPaths.codex === "~/custom-codex") {
+  console.log("  ✅ 通过 - 用户自定义路径已正确迁移");
+} else {
+  console.log("  ❌ 失败 - 用户自定义路径未正确迁移");
+}
+
+// 测试 16: 新用户场景
+console.log("\n【测试 16】新用户场景");
+// 清除所有数据
+utools.dbStorage.removeItem("ccswitch_config_paths");
+utools.dbStorage.removeItem("ccswitch_skill_paths");
+utools.dbStorage.removeItem("ccswitch_migration_version");
+
+// 执行迁移
+migration.migrate();
+
+// 检查结果
+const newUserConfigPaths = utools.dbStorage.getItem("ccswitch_config_paths");
+const newUserSkillPaths = skills.getSkillStoragePaths();
+console.log("  新用户 config_paths:", JSON.stringify(newUserConfigPaths));
+console.log("  新用户 skill_paths:", JSON.stringify(newUserSkillPaths));
+
+if (!newUserConfigPaths || Object.keys(newUserConfigPaths).length === 0) {
+  console.log("  ✅ 通过 - 新用户无迁移数据");
+} else {
+  console.log("  ❌ 失败 - 新用户不应有迁移数据");
+}
+
+console.log("\n=== 所有测试完成 ===");
+console.log("\n数据兼容性说明：");
+console.log("- 旧用户升级：自动迁移自定义路径到新格式");
+console.log("- 新用户：直接使用新格式，无迁移");
+console.log("- 旧数据保留：迁移后旧数据仍保留，便于回滚");
+console.log("- 默认路径：未自定义的路径使用默认值");
