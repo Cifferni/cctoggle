@@ -49,7 +49,7 @@
 
 ## 模拟测试结果
 
-使用 `node test-skill-storage.cjs` 进行数据模拟测试，共 13 个测试用例全部通过：
+使用 `node test-skill-storage.cjs` 进行数据模拟测试，共 14 个测试用例全部通过：
 
 | 测试项 | 测试内容 | 结果 |
 |--------|----------|------|
@@ -57,15 +57,16 @@
 | 2 | 获取 Agent 配置路径（未配置） | ✅ 通过 |
 | 3 | 设置自定义配置路径 | ✅ 通过 |
 | 4 | 会话路径从配置路径派生 | ✅ 通过 |
-| 5 | 未配置时会话路径使用默认值 | ✅ 通过 |
-| 6 | getNestDir 默认行为 | ✅ 通过 |
-| 7 | getNestDir 使用配置的 agent 目录 | ✅ 通过 |
-| 8 | getNestDir 使用自定义安装目录 | ✅ 通过 |
-| 9 | setNestDir 设置 | ✅ 通过 |
-| 10 | setNestDir 清除 | ✅ 通过 |
-| 11 | 提示词文件路径 | ✅ 通过 |
-| 12 | services.js API 检查 | ✅ 通过 |
-| 13 | API 功能测试 | ✅ 通过 |
+| 5 | Skill 存储路径从配置路径派生 | ✅ 通过 |
+| 6 | 未配置时使用默认值 | ✅ 通过 |
+| 7 | getNestDir 默认行为 | ✅ 通过 |
+| 8 | getNestDir 使用配置的 agent 目录 | ✅ 通过 |
+| 9 | getNestDir 使用自定义安装目录 | ✅ 通过 |
+| 10 | setNestDir 设置 | ✅ 通过 |
+| 11 | setNestDir 清除 | ✅ 通过 |
+| 12 | 提示词文件路径 | ✅ 通过 |
+| 13 | services.js API 检查 | ✅ 通过 |
+| 14 | API 功能测试 | ✅ 通过 |
 
 ## 功能测试（需要手动验证）
 
@@ -144,21 +145,24 @@
 
 ## 设计说明
 
-**简化后的路径配置逻辑：**
+**统一的 Agent 路径配置逻辑：**
 
-1. **Agent 配置路径**（统一设置）
+1. **Agent 路径**（统一设置）
    - 用户只需设置一个基础路径，如 `~/.claude`
    - 所有其他路径从此路径自动派生
 
 2. **路径派生规则**
-   - Claude: `~/.claude` → 会话 `~/.claude/projects`、配置 `~/.claude/settings.json`、提示词 `~/.claude/CLAUDE.md`
-   - Codex: `~/.codex` → 会话 `~/.codex/sessions`、配置 `~/.codex/config.toml`、提示词 `~/.codex/AGENTS.md`
-   - OpenClaw: `~/.openclaw` → 会话 `~/.openclaw/agents`、配置 `~/.openclaw/openclaw.json`
+   - **Skill 存储**: `~/.claude` → `~/.claude/skills`
+   - **会话数据**: `~/.claude` → `~/.claude/projects`
+   - **配置文件**: `~/.claude` → `~/.claude/settings.json`
+   - **提示词文件**: `~/.claude` → `~/.claude/CLAUDE.md`
+   - **MCP 配置**: `~/.claude` → `~/.claude.json`
 
 3. **优势**
    - 配置更简单，只需设置一个路径
    - 所有路径保持一致性
    - 减少用户配置负担
+   - UI 更简洁，只有一个 Agent 路径设置区域
 
 ## 测试结果汇总
 
