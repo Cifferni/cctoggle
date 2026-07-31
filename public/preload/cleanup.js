@@ -64,7 +64,7 @@ function getDefaultSkillDirs() {
 }
 
 // 执行数据迁移
-function migrateAgentPaths() {
+function migrateAgentPaths() { 
   var currentVersion = getMigrationVersion();
 
   if (currentVersion >= MIGRATION_VERSION) {
