@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import { useMessage } from "naive-ui";
-import { getSkillNest, APP_ICONS } from "../../composables/shared.js";
+import { getSkillNest, APP_ICONS, APP_LABELS } from "../../composables/shared.js";
 import { useSkills } from "../../composables/useSkills.js";
 
 const message = useMessage();
@@ -11,12 +11,11 @@ const loading = ref(false);
 
 // Agent 路径配置
 const {
-  ALL_APPS, APP_LABELS,
   configPaths,
   loadConfigPaths, saveConfigPaths,
 } = useSkills();
 
-const agents = ALL_APPS.filter(a => ["codex", "claude", "gemini", "openclaw"].includes(a));
+const agents = ["codex", "claude", "gemini", "openclaw"];
 const agentIcons = APP_ICONS;
 
 // Agent path editing
