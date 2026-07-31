@@ -22,16 +22,7 @@ function getNestDir() {
     return expanded;
   }
 
-  // 默认使用第一个配置的 agent 目录
-  var paths = getSkillStoragePaths();
-  var firstAgent = Object.keys(paths)[0];
-  if (firstAgent && paths[firstAgent]) {
-    var agentDir = expandHome(paths[firstAgent]);
-    ensureDir(agentDir);
-    return agentDir;
-  }
-
-  // 兜底：使用默认路径
+  // 使用默认路径（SkillNest 是独立的中央存储，不从 agent 路径派生）
   var home = getHomeDir();
   var nest = path.join(home, ".skillnest", "skills");
   ensureDir(nest);

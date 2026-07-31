@@ -85,23 +85,23 @@ console.log("  Codex Skills:", defaultSkillPaths.codex);
 console.log("  预期: 使用默认路径（~/.claude/skills）");
 console.log("  ✅ 通过\n");
 
-// 测试 7: getNestDir 默认行为
+// 测试 7: getNestDir 默认行为（SkillNest 是独立的中央存储）
 console.log("【测试 7】getNestDir 默认行为");
 utools.dbStorage.removeItem("ccswitch_nest_dir");
 const defaultNestDir = skills.getNestDir();
 console.log("  默认安装目录:", defaultNestDir);
-console.log("  预期: 使用默认 skillnest 路径");
+console.log("  预期: 使用默认 skillnest 路径（~/.skillnest/skills）");
 console.log("  ✅ 通过\n");
 
-// 测试 8: getNestDir 使用配置的 agent 目录
-console.log("【测试 8】getNestDir 使用配置的 agent 目录");
+// 测试 8: getNestDir 与 Agent 路径独立
+console.log("【测试 8】getNestDir 与 Agent 路径独立");
 utools.dbStorage.setItem("ccswitch_config_paths", {
   claude: "~/.claude",
   codex: "~/.codex",
 });
-const agentNestDir = skills.getNestDir();
-console.log("  Agent 安装目录:", agentNestDir);
-console.log("  预期: 使用第一个 agent 的技能目录");
+const nestDirWithAgent = skills.getNestDir();
+console.log("  设置 Agent 路径后 SkillNest:", nestDirWithAgent);
+console.log("  预期: 仍然是默认 skillnest 路径（不从 Agent 路径派生）");
 console.log("  ✅ 通过\n");
 
 // 测试 9: getNestDir 使用自定义安装目录
