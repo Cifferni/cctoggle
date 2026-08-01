@@ -2,8 +2,8 @@
 import { onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
 import { useDialog } from "naive-ui";
-import { useStats } from "../composables/useStats.js";
-import { themeVars } from "../composables/useTheme.js";
+import { useStats } from "../composables/useStats";
+import { themeVars } from "../composables/useTheme";
 import EChart from "../components/EChart.vue";
 
 const dialog = useDialog();

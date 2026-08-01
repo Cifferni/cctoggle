@@ -1,4 +1,4 @@
-import { refreshOnEnter } from "./composables/useProviders.js";
+import { refreshOnEnter } from "./composables/useProviders";
 
 export function setupDynamicCommands() {
   if (typeof utools === "undefined" || typeof utools.onPluginEnter !== "function") return;

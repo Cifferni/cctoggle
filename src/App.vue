@@ -1,5 +1,5 @@
 <script setup>
-import { useTheme } from './composables/useTheme.js'
+import { useTheme } from './composables/useTheme'
 import { zhCN, dateZhCN } from 'naive-ui'
 import AppFooter from './components/AppFooter.vue'
 

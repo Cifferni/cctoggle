@@ -1,6 +1,6 @@
 <script setup>
 import { NDrawer, NDrawerContent, NDescriptions, NDescriptionsItem, NDivider, NTag, NText, NSpace, NButton, NSpin } from "naive-ui";
-import { APP_LABELS } from "../composables/shared.js";
+import { APP_LABELS } from "../composables/shared";
 
 const props = defineProps({
   show: { type: Boolean, default: false },

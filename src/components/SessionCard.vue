@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from "vue";
 import { NCard, NText, NSpace, NButton, NPopconfirm, NIcon } from "naive-ui";
-import { APP_ICONS, APP_LABELS } from "../composables/shared.js";
+import { APP_ICONS, APP_LABELS } from "../composables/shared";
 
 const props = defineProps({
   session: { type: Object, required: true },

@@ -1,5 +1,5 @@
 ﻿<script setup>
-import { useProviders } from "../composables/useProviders.js";
+import { useProviders } from "../composables/useProviders";
 import { openUrl } from "../utils/openUrl.js";
 const { paths } = useProviders();
 </script>

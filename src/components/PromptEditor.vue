@@ -3,7 +3,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import {
   NDrawer, NDrawerContent, NInput, NButton, NSpace, NText, NTabs, NTabPane,
 } from "naive-ui";
-import { usePrompts } from "../composables/usePrompts.js";
+import { usePrompts } from "../composables/usePrompts";
 import { renderMarkdown } from "../utils/markdown.js";
 
 const props = defineProps({

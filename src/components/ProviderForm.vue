@@ -4,7 +4,7 @@ import { NInput, NButton, NFlex } from "naive-ui";
 const props = defineProps({ visible: Boolean, initialData: Object });
 const emit = defineEmits(["close", "save"]);
 
-import { useProviders } from "../composables/useProviders.js";
+import { useProviders } from "../composables/useProviders";
 const { PRESETS, activeTab, presetToProviderData } = useProviders();
 const tab = computed(() => activeTab());
 

@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from "vue";
-import { useProviders } from "../composables/useProviders.js";
+import { useProviders } from "../composables/useProviders";
 import TabBar from "../components/TabBar.vue";
 import ProviderCard from "../components/ProviderCard.vue";
 import ProviderForm from "../components/ProviderForm.vue";

@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from "vue";
-import { APP_LABELS, APP_ICONS, APP_OPTIONS } from "../composables/shared.js";
+import { APP_LABELS, APP_ICONS, APP_OPTIONS } from "../composables/shared";
 
 const props = defineProps({ server: Object });
 const emit = defineEmits(["edit", "delete", "toggle", "update-apps"]);

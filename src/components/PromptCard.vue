@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from "vue";
 import { useMessage, useDialog } from "naive-ui";
-import { usePrompts } from "../composables/usePrompts.js";
+import { usePrompts } from "../composables/usePrompts";
 
 const props = defineProps({
   prompt: { type: Object, required: true },

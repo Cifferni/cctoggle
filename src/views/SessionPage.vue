@@ -3,7 +3,7 @@ import { onMounted, ref, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { NIcon, NTabs, NTabPane, NInput, NSelect, NSpace, NButton, NEmpty, NText, NSkeleton, NSpin, useMessage, useDialog } from "naive-ui";
 import { ArrowBackOutline, SearchOutline } from "@vicons/ionicons5";
-import { useSession } from "../composables/useSession.js";
+import { useSession } from "../composables/useSession";
 import AppDashboard from "../components/AppDashboard.vue";
 import SessionCard from "../components/SessionCard.vue";
 import SessionDetail from "../components/SessionDetail.vue";
