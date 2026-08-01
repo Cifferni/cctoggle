@@ -4,8 +4,9 @@ import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import {
   NDrawer, NDrawerContent, NInput, NButton, NSpace, NText, NTabs, NTabPane,
 } from "naive-ui";
-import { usePrompts } from "../composables/usePrompts";
-import { renderMarkdown } from "../utils/markdown";
+import { usePrompts } from "../../composables/usePrompts";
+import { useAiOptimize } from "../../composables/useAiOptimize";
+import { renderMarkdown } from "../../utils/markdown";
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -15,6 +16,7 @@ const props = defineProps({
 const emit = defineEmits(["update:show", "save", "cancel"]);
 
 const { savePrompt } = usePrompts();
+const { streaming: aiStreaming, optimize, abort: abortAi } = useAiOptimize();
 
 // Form state
 const formData = ref({
@@ -85,6 +87,20 @@ function handleCancel() {
   emit("update:show", false);
 }
 
+// AI Optimize handler
+async function handleAiOptimize() {
+  const content = formData.value.content.trim();
+  if (!content) return;
+
+  try {
+    await optimize(content, (text) => {
+      formData.value.content = text;
+    });
+  } catch {
+    // 用户中止或错误，不做额外处理
+  }
+}
+
 // Keyboard shortcuts
 function handleKeydown(e) {
   if (e.ctrlKey && e.key === "s") {
@@ -130,12 +146,25 @@ onUnmounted(() => {
             </div>
 
             <div class="prompt-editor__field">
-              <n-text depth="3" class="prompt-editor__label">内容</n-text>
+              <div class="prompt-editor__label-row">
+                <n-text depth="3" class="prompt-editor__label">内容</n-text>
+                <n-button
+                  size="tiny"
+                  quaternary
+                  type="primary"
+                  :loading="aiStreaming"
+                  :disabled="!formData.content.trim()"
+                  @click="aiStreaming ? abortAi() : handleAiOptimize()"
+                >
+                  {{ aiStreaming ? '中止' : '✨ AI 优化' }}
+                </n-button>
+              </div>
               <n-input
                 v-model:value="formData.content"
                 type="textarea"
                 placeholder="输入提示词内容（支持 Markdown）"
                 :autosize="{ minRows: 12, maxRows: 25 }"
+                :disabled="aiStreaming"
               />
             </div>
           </div>
@@ -153,7 +182,7 @@ onUnmounted(() => {
             type="primary"
             size="small"
             :loading="isSaving"
-            :disabled="!formData.name.trim()"
+            :disabled="!formData.name.trim() || aiStreaming"
             @click="handleSave"
           >
             保存 (Ctrl+S)
@@ -187,6 +216,12 @@ onUnmounted(() => {
   font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
+}
+
+.prompt-editor__label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .prompt-editor__preview {

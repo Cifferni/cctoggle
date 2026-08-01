@@ -5,7 +5,7 @@ import { useRouter } from "vue-router";
 import { useDialog } from "naive-ui";
 import { useStats } from "../composables/useStats";
 import { themeVars } from "../composables/useTheme";
-import EChart from "../components/EChart.vue";
+import EChart from "../components/common/EChart.vue";
 
 const dialog = useDialog();
 

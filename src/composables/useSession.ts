@@ -295,7 +295,19 @@ export function useSession() {
 
     for (const msg of messages || []) {
       lines.push(`### ${msg.role === 'user' ? 'User' : 'Assistant'}`)
-      lines.push(msg.content)
+      for (const block of msg.contentBlocks || []) {
+        if (block.type === 'text' && block.text) {
+          lines.push(block.text)
+        } else if (block.type === 'thinking' && block.text) {
+          lines.push('> [!thinking]')
+          lines.push(block.text.split('\n').map(l => '> ' + l).join('\n'))
+        } else if (block.type === 'tool_use') {
+          lines.push(`> 🔧 \`${block.name}\``)
+        } else if (block.type === 'tool_result' && block.text) {
+          lines.push('> [!result]')
+          lines.push(block.text.split('\n').map(l => '> ' + l).join('\n'))
+        }
+      }
       lines.push('')
     }
 

@@ -569,21 +569,78 @@ function _detectApp(filePath) {
   return "claude";
 }
 
-// 从 content 字段提取文本
-function _extractContent(content) {
-  if (!content) return "";
-  if (typeof content === "string") return content;
+// 从 content 字段提取结构化内容块
+function _extractContentBlocks(content) {
+  if (!content) return [];
+  if (typeof content === "string") return [{ type: "text", text: content }];
   if (Array.isArray(content)) {
-    var parts = [];
+    var blocks = [];
     for (var i = 0; i < content.length; i++) {
       var item = content[i];
-      if (item.type === "text" && item.text) parts.push(item.text);
-      else if (item.type === "toolCall") parts.push("[工具调用: " + (item.name || "unknown") + "]");
-      else if (item.type === "thinking") parts.push("[思考: " + (item.thinking || "").substring(0, 100) + "...]");
+      if (!item || typeof item !== "object") continue;
+      if (item.type === "text" && item.text) {
+        blocks.push({ type: "text", text: item.text });
+      } else if (item.type === "thinking" && item.thinking) {
+        blocks.push({ type: "thinking", text: item.thinking });
+      } else if (item.type === "tool_use") {
+        blocks.push({ type: "tool_use", name: item.name || "unknown", input: item.input || {} });
+      } else if (item.type === "toolCall") {
+        blocks.push({ type: "tool_use", name: item.name || "unknown", input: {} });
+      } else if (item.type === "tool_result") {
+        // 工具执行结果：从嵌套的 content 中提取文本
+        var resultText = _extractToolResultText(item);
+        if (resultText) blocks.push({ type: "tool_result", text: resultText, name: item.tool_use_id || "" });
+      }
     }
-    return parts.join("");
+    return blocks;
   }
-  return JSON.stringify(content);
+  return [{ type: "text", text: JSON.stringify(content) }];
+}
+
+// 从 tool_result 中提取文本内容
+function _extractToolResultText(item) {
+  if (!item) return "";
+  var c = item.content;
+  if (typeof c === "string") return c;
+  if (Array.isArray(c)) {
+    var parts = [];
+    for (var i = 0; i < c.length; i++) {
+      if (c[i] && c[i].type === "text" && c[i].text) parts.push(c[i].text);
+    }
+    return parts.join("\n");
+  }
+  return "";
+}
+
+// 兼容旧接口：提取纯文本
+function _extractContent(content) {
+  var blocks = _extractContentBlocks(content);
+  var parts = [];
+  for (var i = 0; i < blocks.length; i++) {
+    var b = blocks[i];
+    if (b.type === "text") parts.push(b.text);
+    else if (b.type === "thinking") parts.push(b.text);
+    else if (b.type === "tool_use") parts.push("[工具调用: " + b.name + "]");
+  }
+  return parts.join("");
+}
+
+// 合并连续同角色消息
+function _mergeMessages(messages) {
+  if (messages.length <= 1) return messages;
+  var merged = [messages[0]];
+  for (var i = 1; i < messages.length; i++) {
+    var prev = merged[merged.length - 1];
+    var cur = messages[i];
+    if (cur.role === prev.role) {
+      // 合并 contentBlocks，使用最后一条的时间戳
+      prev.contentBlocks = prev.contentBlocks.concat(cur.contentBlocks);
+      if (cur.timestamp) prev.timestamp = cur.timestamp;
+    } else {
+      merged.push(cur);
+    }
+  }
+  return merged;
 }
 
 // 解析 OpenClaw 消息
@@ -597,8 +654,8 @@ function _parseOpenClawMessages(lines) {
     if (!d || d.type !== "message" || !d.message) continue;
     var role = d.message.role || "";
     if (role !== "user" && role !== "assistant") continue;
-    var content = _extractContent(d.message.content);
-    if (content) messages.push({ role: role, content: content, timestamp: d.timestamp || "" });
+    var blocks = _extractContentBlocks(d.message.content);
+    if (blocks.length > 0) messages.push({ role: role, contentBlocks: blocks, timestamp: d.timestamp || "" });
   }
   return messages;
 }
@@ -613,9 +670,9 @@ function _parseCodexMessages(lines) {
     try { d = JSON.parse(line); } catch (e) { continue; }
     if (!d || d.type !== "event_msg" || !d.payload) continue;
     if (d.payload.type === "user_message" && d.payload.message) {
-      messages.push({ role: "user", content: d.payload.message, timestamp: d.timestamp || "" });
+      messages.push({ role: "user", contentBlocks: [{ type: "text", text: d.payload.message }], timestamp: d.timestamp || "" });
     } else if (d.payload.type === "agent_message" && d.payload.message) {
-      messages.push({ role: "assistant", content: d.payload.message, timestamp: d.timestamp || "" });
+      messages.push({ role: "assistant", contentBlocks: [{ type: "text", text: d.payload.message }], timestamp: d.timestamp || "" });
     }
   }
   return messages;
@@ -631,11 +688,13 @@ function _parseClaudeMessages(lines) {
     try { d = JSON.parse(line); } catch (e) { continue; }
     if (!d || typeof d !== "object") continue;
     if (d.type === "human" || d.type === "user") {
-      var c = d.message ? _extractContent(d.message.content) : _extractContent(d.content);
-      if (c) messages.push({ role: "user", content: c, timestamp: d.timestamp || "" });
+      var raw = d.message ? d.message.content : d.content;
+      var blocks = _extractContentBlocks(raw);
+      if (blocks.length > 0) messages.push({ role: "user", contentBlocks: blocks, timestamp: d.timestamp || "" });
     } else if (d.type === "assistant") {
-      var ac = d.message ? _extractContent(d.message.content) : _extractContent(d.content);
-      if (ac) messages.push({ role: "assistant", content: ac, timestamp: d.timestamp || "" });
+      var araw = d.message ? d.message.content : d.content;
+      var ablocks = _extractContentBlocks(araw);
+      if (ablocks.length > 0) messages.push({ role: "assistant", contentBlocks: ablocks, timestamp: d.timestamp || "" });
     }
   }
   return messages;
@@ -665,7 +724,7 @@ async function loadSessionDetail(filePath) {
 
   var lines = text.split(/\r?\n/);
   var parser = _MESSAGE_PARSERS[app] || _parseClaudeMessages;
-  var messages = parser(lines);
+  var messages = _mergeMessages(parser(lines));
 
   _sessionCache[filePath] = messages;
   return messages;

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { computed } from "vue";
-import { APP_LABELS, APP_ICONS, APP_OPTIONS } from "../composables/shared";
+import { APP_LABELS, APP_ICONS, APP_OPTIONS } from "../../composables/shared";
 
 const props = defineProps({ server: Object });
 const emit = defineEmits(["edit", "delete", "toggle", "update-apps"]);

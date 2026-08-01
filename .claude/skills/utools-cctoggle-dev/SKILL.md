@@ -47,12 +47,19 @@ description: Development standards for the uTools CCToggle plugin - AI provider 
 
 ## 命令
 
+**开发（按场景选择）：**
 ```bash
-pnpm dev              # 启动开发服务器 (http://localhost:5173)
-pnpm build            # 完整构建（preload + 前端类型检查 + Vite 打包）
+pnpm dev              # 仅前端开发（Vite, http://localhost:5173）
+pnpm dev:all          # 前端 + preload 开发（uTools 内调试）
+pnpm dev:browser      # 前端 + preload 开发（纯浏览器调试, http://localhost:3456）
+```
+
+**构建：**
+```bash
+pnpm build            # 完整构建（preload + 类型检查 + Vite 打包）
 pnpm build:preload    # 仅编译 preload TypeScript → public/preload/
-pnpm type-check       # 仅前端类型检查（vue-tsc --noEmit）
 pnpm preview          # 预览生产构建
+pnpm type-check       # 仅前端类型检查（vue-tsc --noEmit）
 ```
 
 ---
@@ -72,7 +79,7 @@ src/
 ├── preload/             # 后端源码（TypeScript, 编译输出到 public/preload/）
 ├── utils/               # 工具函数（.ts）
 ├── assets/images/agents/ # Agent SVG 图标
-├── router/index.ts, setup.ts, App.vue, main.ts, style.css
+├── router/index.ts, setup.ts, App.vue, main.ts, assets/style.css
 
 public/preload/          # 后端编译产物（tsc 输出, .gitignore 排除）
 ├── services.js          # 入口：组装 window.utoolsCctoggle

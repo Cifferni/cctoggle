@@ -5,15 +5,24 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "pnpm build:preload && vue-tsc --noEmit && vite build",
-    "build:preload": "tsc -p tsconfig.preload.json && node -e \"require('fs').copyFileSync('src/preload/package.json','public/preload/package.json');require('fs').copyFileSync('src/preload/proxy-daemon.html','public/preload/proxy-daemon.html')\"",
+    "dev:all": "pnpm build:preload && pnpm parallel:vue-preload",
+    "dev:browser": "pnpm build:preload && pnpm parallel:vue-preload-api",
+    "build": "pnpm build:preload && pnpm tsc:check && vite build",
+    "build:preload": "pnpm tsc:preload && pnpm copy:preload",
     "preview": "vite preview",
-    "type-check": "vue-tsc --noEmit"
+    "type-check": "pnpm tsc:check",
+    "parallel:vue-preload": "concurrently -n vue,preload \"vite\" \"pnpm tsc:preload:watch\"",
+    "parallel:vue-preload-api": "concurrently -n vue,preload,api \"vite\" \"pnpm tsc:preload:watch\" \"node scripts/dev-api-server.cjs\"",
+    "tsc:preload": "tsc -p tsconfig.preload.json",
+    "tsc:preload:watch": "tsc -p tsconfig.preload.json --watch --preserveWatchOutput",
+    "tsc:check": "vue-tsc --noEmit",
+    "copy:preload": "node scripts/copy-preload-assets.cjs"
   },
   "dependencies": {
     "@vicons/ionicons5": "^0.13.0",
     "chart.js": "^4.5.1",
     "chartjs-chart-matrix": "^3.0.5",
+    "diff": "^9.0.0",
     "marked": "^18.0.7",
     "naive-ui": "^2.44.1",
     "vue": "^3.5.0",
@@ -23,6 +32,7 @@
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.0",
     "@vue/tsconfig": "^0.9.1",
+    "concurrently": "^10.0.4",
     "sass": "^1.102.0",
     "sharp": "^0.35.3",
     "typescript": "^5.9.3",

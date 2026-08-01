@@ -3,9 +3,9 @@
 import { ref, onMounted } from "vue";
 import { NButton, NCard, NCheckbox, NDrawer, NDrawerContent, NModal, NSpace, NText, useMessage, useDialog } from "naive-ui";
 import { usePrompts } from "../composables/usePrompts";
-import PromptCard from "../components/PromptCard.vue";
-import PromptEditor from "../components/PromptEditor.vue";
-import PromptPreview from "../components/PromptPreview.vue";
+import PromptCard from "../components/prompt/PromptCard.vue";
+import PromptEditor from "../components/prompt/PromptEditor.vue";
+import PromptPreview from "../components/prompt/PromptPreview.vue";
 
 const message = useMessage();
 const dialog = useDialog();

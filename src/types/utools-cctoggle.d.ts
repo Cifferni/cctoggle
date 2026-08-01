@@ -274,9 +274,16 @@ export interface SessionMeta {
   filePath: string
 }
 
+export interface SessionContentBlock {
+  type: 'text' | 'thinking' | 'tool_use' | 'tool_result'
+  text?: string
+  name?: string
+  input?: any
+}
+
 export interface SessionMessage {
   role: 'user' | 'assistant'
-  content: string
+  contentBlocks: SessionContentBlock[]
   timestamp: string
 }
 

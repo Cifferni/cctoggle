@@ -6,8 +6,8 @@ import { NIcon, useDialog } from "naive-ui";
 import { ArrowBackOutline } from "@vicons/ionicons5";
 import { useMcp } from "../composables/useMcp";
 import { APP_LABELS, APP_ICONS } from "../composables/shared";
-import McpCard from "../components/McpCard.vue";
-import McpForm from "../components/McpForm.vue";
+import McpCard from "../components/mcp/McpCard.vue";
+import McpForm from "../components/mcp/McpForm.vue";
 
 const dialog = useDialog();
 

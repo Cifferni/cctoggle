@@ -4,8 +4,8 @@ import { computed } from "vue";
 import { useRouter } from "vue-router";
 import { NIcon, NTabs, NTabPane, NSwitch, useMessage } from "naive-ui";
 import { BuildOutline, SettingsOutline, CubeOutline, StatsChartOutline, ChatbubblesOutline, DocumentTextOutline } from "@vicons/ionicons5";
-import { useProviders } from "../composables/useProviders";
-import { useRoutes } from "../composables/useRoutes";
+import { useProviders } from "../../composables/useProviders";
+import { useRoutes } from "../../composables/useRoutes";
 
 const message = useMessage();
 const { APP_TYPES, APP_LABELS, APP_ICONS, activeTab, setActiveTab } = useProviders();

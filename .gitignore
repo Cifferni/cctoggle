@@ -13,3 +13,6 @@ components.d.ts
 
 # preload 编译产物
 public/preload/
+
+# 开发数据库
+.dev-db.json

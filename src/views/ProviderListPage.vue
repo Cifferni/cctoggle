@@ -2,9 +2,9 @@
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { ref, computed, onMounted } from "vue";
 import { useProviders } from "../composables/useProviders";
-import TabBar from "../components/TabBar.vue";
-import ProviderCard from "../components/ProviderCard.vue";
-import ProviderForm from "../components/ProviderForm.vue";
+import TabBar from "../components/common/TabBar.vue";
+import ProviderCard from "../components/provider/ProviderCard.vue";
+import ProviderForm from "../components/provider/ProviderForm.vue";
 
 const { providers, loadProviders, switchProvider, saveProvider, deleteProvider, getFullProvider } = useProviders();
 const showForm = ref(false), editingId = ref(null), formInitialData = ref(null);
