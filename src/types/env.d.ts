@@ -3,40 +3,6 @@
 
 export {}
 
-// Vue SFC 模块声明
-declare module '*.vue' {
-  import type { DefineComponent } from 'vue'
-  const component: DefineComponent<Record<string, unknown>, Record<string, unknown>, unknown>
-  export default component
-}
-
-// SVG 模块声明
-declare module '*.svg' {
-  const src: string
-  export default src
-}
-
-// 图片模块声明
-declare module '*.png' {
-  const src: string
-  export default src
-}
-
-declare module '*.jpg' {
-  const src: string
-  export default src
-}
-
-declare module '*.jpeg' {
-  const src: string
-  export default src
-}
-
-declare module '*.webp' {
-  const src: string
-  export default src
-}
-
 // @vicons/ionicons5 缺少类型声明
 declare module '@vicons/ionicons5' {
   import type { Component } from 'vue'
