@@ -34,22 +34,25 @@ description: Development standards for the uTools CCToggle plugin - AI provider 
 
 ## 技术栈
 
+- **语言**: TypeScript 5.9+（前端 + 后端 preload）
 - **前端**: Vue 3.5+ / Vite 6+ / Vue Router 4
 - **UI**: Naive UI 2.44+ / @vicons/ionicons5 + 自定义 SVG
 - **图表**: Chart.js 4 + vue-chartjs 5 + chartjs-chart-matrix（热力图）
 - **Markdown**: marked 18+
 - **样式**: Sass/SCSS / BEM 命名 / CSS 自定义属性
 - **包管理**: pnpm / UTF-8 无 BOM
-- **运行环境**: uTools 插件（preload 为 Node.js，前端为浏览器环境）
+- **运行环境**: uTools 插件（preload 为 Node.js CommonJS，前端为浏览器环境）
 
 ---
 
 ## 命令
 
 ```bash
-pnpm dev          # 启动开发服务器 (http://localhost:5173)
-pnpm build        # 生产环境构建到 dist/
-pnpm preview      # 预览生产构建
+pnpm dev              # 启动开发服务器 (http://localhost:5173)
+pnpm build            # 完整构建（preload + 前端类型检查 + Vite 打包）
+pnpm build:preload    # 仅编译 preload TypeScript → public/preload/
+pnpm type-check       # 仅前端类型检查（vue-tsc --noEmit）
+pnpm preview          # 预览生产构建
 ```
 
 ---
@@ -58,28 +61,31 @@ pnpm preview      # 预览生产构建
 
 ```
 src/
-├── components/          # 可复用 UI 组件（PascalCase）
-├── composables/         # 业务逻辑（camelCase, use* 前缀）
-├── views/               # 页面级组件
-├── data/                # 静态数据和预设
-├── themes/              # 主题系统
-├── utils/               # 工具函数
+├── components/          # 可复用 UI 组件（PascalCase, .vue）
+├── composables/         # 业务逻辑（camelCase, use* 前缀, .ts）
+├── views/               # 页面级组件（.vue）
+├── data/                # 静态数据和预设（.ts）
+├── themes/              # 主题系统（.ts）
+├── types/               # TypeScript 类型定义
+│   ├── utools-cctoggle.d.ts  # preload API 完整类型
+│   └── env.d.ts              # 全局环境声明
+├── preload/             # 后端源码（TypeScript, 编译输出到 public/preload/）
+├── utils/               # 工具函数（.ts）
 ├── assets/images/agents/ # Agent SVG 图标
-├── router/index.js, setup.js, App.vue, main.js, style.css
+├── router/index.ts, setup.ts, App.vue, main.ts, style.css
 
-public/preload/          # 后端（Node.js, CommonJS）
+public/preload/          # 后端编译产物（tsc 输出, .gitignore 排除）
 ├── services.js          # 入口：组装 window.utoolsCctoggle
-├── utils.js, config-rw.js, provider-db.js
-├── skills.js, stats.js, proxy.js, proxy-daemon.js, proxy-converter.js
-├── mcp.js, sessions.js, prompts.js, cleanup.js
+├── package.json         # uTools preload 模块配置
+├── proxy-daemon.html    # 代理守护进程页面
 ```
 
 ---
 
 ## 路由
 
-```javascript
-// router/index.js — createMemoryHistory()
+```typescript
+// router/index.ts — createMemoryHistory()
 /              → ProviderListPage    # 主页
 /skills        → SkillsPage          # Skill 管理
 /prompts       → PromptsPage         # 提示词管理（懒加载）
@@ -104,11 +110,12 @@ public/preload/          # 后端（Node.js, CommonJS）
 详见 → `references/code-style.md`
 
 **关键要点：**
-- `<script setup>` + `defineProps`/`defineEmits`
-- 组件 PascalCase，composable camelCase + `use` 前缀
+- `<script setup lang="ts">` + `defineProps`/`defineEmits`（泛型语法）
+- 组件 PascalCase，composable camelCase + `use` 前缀，文件 `.ts`
 - **禁止** `var`、`window.confirm/alert/prompt`、Options API
-- 提示用 `toast()`，确认用 `confirm()`（`useConfirm.js`）
+- 提示用 `appMessage`，确认用 `appDialog`（`useAppMessage.ts`）
 - SCSS + BEM + CSS 变量，禁止 `!important` 和内联样式
+- 导入路径不带 `.js` 后缀（Vite bundler 解析）
 
 ---
 
@@ -121,30 +128,33 @@ public/preload/          # 后端（Node.js, CommonJS）
 UI (Vue SFC) ↔ Composables (reactive) ↔ window.utoolsCctoggle (preload) ↔ 文件系统/uTools API
 ```
 
-**后端模块（13 个）：**
-`services.js`(入口) + `utils` + `config-rw` + `provider-db` + `skills` + `stats` + `proxy`/`proxy-daemon`/`proxy-converter` + `mcp` + `sessions` + `prompts` + `cleanup`
+**后端模块（13 个 TypeScript 源码）：**
+`services`(入口) + `utils` + `config-rw` + `provider-db` + `skills` + `stats` + `proxy`/`proxy-daemon`/`proxy-converter` + `mcp` + `sessions` + `prompts` + `cleanup`
+
+源码在 `src/preload/`，`tsc` 编译输出到 `public/preload/`（CommonJS，可读 JS，不开压缩）。
 
 **循环依赖**：`provider-db` ↔ `proxy`，通过懒加载 `require("./proxy")` 打破。
 
-**安全访问**：前端通过 `getSkillNest()` 访问后端 API，含 fallback stubs。
+**安全访问**：前端通过 `getSkillNest()` 访问后端 API，返回类型为 `UtoolsCctoggle`。
 
 ---
 
 ## 共享常量
 
-```javascript
-// composables/shared.js
-APP_TYPES    = ["codex", "claude", "claude-desktop", "openclaw", "gemini"]
-APP_LABELS   = { codex, claude, "claude-desktop": "Desktop", openclaw, gemini, all: "全部" }
-APP_ICONS    = { codex: SVG, claude: SVG, ... }  // 非 emoji，从 assets/images/agents/ 导入
-APP_OPTIONS  = [{ value, label }]  // 用于下拉选择（不含 gemini）
+```typescript
+// composables/shared.ts
+APP_TYPES: AppType[]  = ["codex", "claude", "claude-desktop", "openclaw", "gemini"]
+APP_LABELS: Record<string, string>  = { codex, claude, "claude-desktop": "Desktop", openclaw, gemini, all: "全部" }
+APP_ICONS: Record<string, string>   = { codex: SVG, claude: SVG, ... }  // 从 assets/images/agents/ 导入
+APP_OPTIONS = [{ value, label }]    // 用于下拉选择（不含 gemini）
 ```
 
 ### 工具函数
-```javascript
-// composables/shared.js
-getSkillNest()  // 安全访问 window.utoolsCctoggle API（含 fallback stubs）
-toPlain(v)      // Vue 响应式代理 → 普通对象（避免 IPC 克隆错误）
+```typescript
+// composables/shared.ts
+getSkillNest(): UtoolsCctoggle  // 访问 window.utoolsCctoggle API（类型安全）
+hasSkillNest(): boolean         // 检查 preload API 是否可用
+toPlain<T>(v: T): T             // Vue 响应式代理 → 普通对象（避免 IPC 克隆错误）
 ```
 
 ---
