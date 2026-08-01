@@ -1,6 +1,7 @@
-<script setup>
+<script setup lang="ts">
+// @ts-nocheck TODO: 逐步添加类型注解后移除
 import { ref, computed, onMounted } from "vue";
-import { useProviders } from "../composables/useProviders.js";
+import { useProviders } from "../composables/useProviders";
 import TabBar from "../components/TabBar.vue";
 import ProviderCard from "../components/ProviderCard.vue";
 import ProviderForm from "../components/ProviderForm.vue";

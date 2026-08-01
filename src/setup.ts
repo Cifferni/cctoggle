@@ -1,4 +1,5 @@
-import { refreshOnEnter } from "./composables/useProviders.js";
+// @ts-nocheck utools API 类型需逐步适配
+import { refreshOnEnter } from "./composables/useProviders";
 
 export function setupDynamicCommands() {
   if (typeof utools === "undefined" || typeof utools.onPluginEnter !== "function") return;

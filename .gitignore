@@ -5,3 +5,11 @@ dist/
 .DS_Store
 .idea/
 .codex/
+
+# TypeScript auto-generated
+auto-imports.d.ts
+components.d.ts
+*.tsbuildinfo
+
+# preload 编译产物
+public/preload/

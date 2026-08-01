@@ -1,6 +1,7 @@
-﻿<script setup>
+﻿<script setup lang="ts">
+// @ts-nocheck TODO: 逐步添加类型注解后移除
 import { onMounted } from "vue";
-import { useSkills } from "../../composables/useSkills.js";
+import { useSkills } from "../../composables/useSkills";
 
 const { syncMode, loadSyncMode, saveSyncMode } = useSkills();
 onMounted(() => loadSyncMode());

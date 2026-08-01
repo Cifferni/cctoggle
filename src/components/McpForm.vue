@@ -1,4 +1,5 @@
-<script setup>
+<script setup lang="ts">
+// @ts-nocheck TODO: 逐步添加类型注解后移除
 import { reactive, watch, computed, ref } from "vue";
 
 const props = defineProps({ visible: Boolean, initialData: Object });

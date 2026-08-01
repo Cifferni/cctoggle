@@ -3,7 +3,7 @@
  * 优先使用 uTools API，降级到 window.open
  * @param {string} url
  */
-export function openUrl(url) {
+export function openUrl(url: string): void {
   try {
     window.utools?.shellOpenExternal?.(url);
   } catch (e) {

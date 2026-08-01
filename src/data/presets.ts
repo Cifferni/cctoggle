@@ -1,12 +1,13 @@
+// @ts-nocheck TODO: 添加类型注解后移除
 // Presets aggregator - merges provider metadata + per-app diffs
 // Public API is unchanged: import { PRESETS } from "./presets"
 
-import { PROVIDERS } from "./providers.js";
-import codexRaw from "./presets-codex.js";
-import claudeRaw from "./presets-claude.js";
-import claudeDesktopRaw from "./presets-claude-desktop.js";
-import openclawRaw from "./presets-openclaw.js";
-import geminiRaw from "./presets-gemini.js";
+import { PROVIDERS } from "./providers";
+import codexRaw from "./presets-codex";
+import claudeRaw from "./presets-claude";
+import claudeDesktopRaw from "./presets-claude-desktop";
+import openclawRaw from "./presets-openclaw";
+import geminiRaw from "./presets-gemini";
 
 const CODEX_DEFAULTS = {
   configType: "openai",

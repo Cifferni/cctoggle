@@ -1,6 +1,7 @@
-<script setup>
+<script setup lang="ts">
+// @ts-nocheck TODO: 逐步添加类型注解后移除
 import { computed } from "vue";
-import { useProviders } from "../composables/useProviders.js";
+import { useProviders } from "../composables/useProviders";
 const { PRESETS, activeTab } = useProviders();
 const emit = defineEmits(["import"]);
 const currentPresets = computed(() => PRESETS[activeTab()] || []);

@@ -1,4 +1,5 @@
-<script setup>
+<script setup lang="ts">
+// @ts-nocheck TODO: 逐步添加类型注解后移除
 import { computed } from "vue";
 const props = defineProps({ provider: Object, compact: Boolean });
 const emit = defineEmits(["switch", "edit", "delete"]);

@@ -1,7 +1,8 @@
-﻿<script setup>
+﻿<script setup lang="ts">
+// @ts-nocheck TODO: 逐步添加类型注解后移除
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import { useMessage, NInfiniteScroll } from "naive-ui";
-import { openUrl } from "../utils/openUrl.js";
+import { openUrl } from "../utils/openUrl";
 
 const message = useMessage();
 

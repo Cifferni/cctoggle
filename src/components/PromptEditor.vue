@@ -1,10 +1,11 @@
-<script setup>
+<script setup lang="ts">
+// @ts-nocheck TODO: 逐步添加类型注解后移除
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import {
   NDrawer, NDrawerContent, NInput, NButton, NSpace, NText, NTabs, NTabPane,
 } from "naive-ui";
-import { usePrompts } from "../composables/usePrompts.js";
-import { renderMarkdown } from "../utils/markdown.js";
+import { usePrompts } from "../composables/usePrompts";
+import { renderMarkdown } from "../utils/markdown";
 
 const props = defineProps({
   show: { type: Boolean, default: false },

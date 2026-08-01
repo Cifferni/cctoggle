@@ -3,10 +3,12 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-"scripts": {
+  "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "pnpm build:preload && vue-tsc --noEmit && vite build",
+    "build:preload": "tsc -p tsconfig.preload.json && node -e \"require('fs').copyFileSync('src/preload/package.json','public/preload/package.json');require('fs').copyFileSync('src/preload/proxy-daemon.html','public/preload/proxy-daemon.html')\"",
+    "preview": "vite preview",
+    "type-check": "vue-tsc --noEmit"
   },
   "dependencies": {
     "@vicons/ionicons5": "^0.13.0",
@@ -20,13 +22,16 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.0",
+    "@vue/tsconfig": "^0.9.1",
     "sass": "^1.102.0",
     "sharp": "^0.35.3",
+    "typescript": "^5.9.3",
     "unplugin-auto-import": "^21.0.0",
     "unplugin-vue-components": "^32.1.0",
     "utools-api-types": "^7.5.1",
     "vite": "^6.0.0",
-    "vite-plugin-image-optimizer": "^2.0.3"
+    "vite-plugin-image-optimizer": "^2.0.3",
+    "vue-tsc": "^3.3.9"
   },
   "author": "dfy",
   "pnpm": {

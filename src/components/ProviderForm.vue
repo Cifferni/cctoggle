@@ -1,10 +1,11 @@
-<script setup>
+<script setup lang="ts">
+// @ts-nocheck TODO: 逐步添加类型注解后移除
 import { reactive, watch, ref, computed, h } from "vue";
 import { NInput, NButton, NFlex } from "naive-ui";
 const props = defineProps({ visible: Boolean, initialData: Object });
 const emit = defineEmits(["close", "save"]);
 
-import { useProviders } from "../composables/useProviders.js";
+import { useProviders } from "../composables/useProviders";
 const { PRESETS, activeTab, presetToProviderData } = useProviders();
 const tab = computed(() => activeTab());
 
