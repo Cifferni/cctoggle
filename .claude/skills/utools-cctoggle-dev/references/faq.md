@@ -225,3 +225,59 @@ A: 添加新模块的步骤：
 A: uTools 提供三种存储 API：
 
 详见 → `backend.md` 的「数据存储方式」章节
+
+## Q: Claude Desktop 代理调试
+
+### 启用文件日志
+
+在 `src/preload/proxy-daemon.ts` 的 `log()` 函数中添加文件日志：
+
+```typescript
+function log(level, msg, meta) {
+  try {
+    utools.sendToParent("proxy-log", {
+      ts: Date.now(), level: level, msg: msg, meta: meta || null,
+    });
+  } catch (e) {}
+  // 临时调试：写入文件日志
+  try {
+    var fs = require("fs");
+    var path = require("path");
+    var os = require("os");
+    var logDir = path.join(os.homedir(), ".cctoggle");
+    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+    var logFile = path.join(logDir, "proxy-debug.log");
+    var line = JSON.stringify({ ts: new Date().toISOString(), level, msg, meta: meta || null }) + "\n";
+    fs.appendFileSync(logFile, line);
+  } catch (e) {}
+}
+```
+
+日志文件位置：`~/.cctoggle/proxy-debug.log`
+
+### 常见问题排查
+
+1. **模型名映射不生效**
+   - 检查 `desktopModelMap` 是否正确传递到 daemon
+   - 确认 `outBody` 在模型映射后同步更新（`outBody = reqBody`）
+   - 查看日志中的 `desktop model mapped` 条目
+
+2. **Claude Desktop 报 "Configured model not available"**
+   - 检查 profile 文件：`%LOCALAPPDATA%/Claude-3p/configLibrary/*.json`
+   - 确认 `inferenceModels` 使用 Anthropic 官方模型名
+   - 确认 `inferenceGatewayBaseUrl` 指向代理地址
+
+3. **上游返回 400 错误**
+   - 检查日志中的 `upstream 400 error` 条目
+   - 确认模型映射后的 body 被正确发送到上游
+   - 检查 provider 的 `settingsConfig.env` 是否包含正确的模型映射
+
+4. **配置文件路径**
+   - 主配置：`%LOCALAPPDATA%/Claude/claude_desktop_config.json`
+   - 3p 配置：`%LOCALAPPDATA%/Claude-3p/claude_desktop_config.json`
+   - Profile：`%LOCALAPPDATA%/Claude-3p/configLibrary/<profile-id>.json`
+   - Meta：`%LOCALAPPDATA%/Claude-3p/configLibrary/_meta.json`
+
+### 调试完成后
+
+**务必删除临时调试代码**，避免日志文件持续增长。

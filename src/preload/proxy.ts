@@ -353,6 +353,7 @@ function takeoverApp(appType, listenPort) {
     };
     if (appType === "codex") configRw.switchProviderCodex(fake);
     else if (appType === "claude") configRw.switchProviderClaude(fake);
+    else if (appType === "claude-desktop") configRw.switchProviderClaudeDesktop(fake);
     else if (appType === "openclaw") configRw.switchProviderOpenclaw(fake);
     else if (appType === "gemini") configRw.switchProviderGemini(fake);
     return { success: true, baseUrl: baseUrl };

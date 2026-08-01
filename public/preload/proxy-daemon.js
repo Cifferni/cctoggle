@@ -244,6 +244,18 @@ function forward(member, req, res, attemptsLeft, reqBody, reasoningStripped) {
         var outBody = reqBody;
         var upstream;
         try {
+            if (member.desktopModelMap && req.method === "POST" && reqBody && reqBody.length) {
+                try {
+                    var bodyObj = JSON.parse(reqBody.toString("utf8"));
+                    var mapped = member.desktopModelMap[bodyObj.model];
+                    if (mapped && mapped !== bodyObj.model) {
+                        bodyObj.model = mapped;
+                        reqBody = Buffer.from(JSON.stringify(bodyObj), "utf8");
+                        outBody = reqBody;
+                    }
+                }
+                catch (e) { }
+            }
             if (doConvert) {
                 var parsed = JSON.parse(reqBody.toString("utf8"));
                 var conv = converter.convertRequest(member, parsed, reqPath);
@@ -630,6 +642,7 @@ ipcRenderer.on("cfg", function (_e, payload) {
             maxOutputTokens: m.maxOutputTokens || "", customUserAgent: m.customUserAgent || "",
             headersOverride: m.headersOverride || "", bodyOverride: m.bodyOverride || "",
             authField: m.authField || "",
+            desktopModelMap: m.desktopModelMap || null,
             state: "closed", fails: 0, openUntil: 0, latency: 0, up: true,
         };
     });

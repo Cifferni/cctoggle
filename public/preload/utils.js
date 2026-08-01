@@ -25,23 +25,32 @@ function getOpenClawConfigPath() {
 function getClaudeJsonPath() {
     return path.join(getHomeDir(), ".claude.json");
 }
+var CLAUDE_DESKTOP_PROFILE_ID = "00000000-0000-4000-8000-000000157210";
+function _getClaudeDesktopLocalAppDataDir() {
+    if (process.platform === "darwin") {
+        return path.join(getHomeDir(), "Library", "Application Support", "Claude");
+    }
+    var localAppData = process.env.LOCALAPPDATA || path.join(getHomeDir(), "AppData", "Local");
+    return path.join(localAppData, "Claude");
+}
+function _getClaudeDesktop3pDir() {
+    if (process.platform === "darwin") {
+        return path.join(getHomeDir(), "Library", "Application Support", "Claude-3p");
+    }
+    var localAppData = process.env.LOCALAPPDATA || path.join(getHomeDir(), "AppData", "Local");
+    return path.join(localAppData, "Claude-3p");
+}
 function getClaudeDesktopConfigPath() {
-    var appData;
-    try {
-        appData = utools.getPath("appData");
-    }
-    catch (e) {
-        appData = "";
-    }
-    if (!appData || !appData.trim()) {
-        if (process.platform === "darwin") {
-            appData = path.join(getHomeDir(), "Library", "Application Support");
-        }
-        else {
-            appData = process.env.APPDATA || path.join(getHomeDir(), "AppData", "Roaming");
-        }
-    }
-    return path.join(appData, "Claude", "claude_desktop_config.json");
+    return path.join(_getClaudeDesktopLocalAppDataDir(), "claude_desktop_config.json");
+}
+function getClaudeDesktop3pConfigPath() {
+    return path.join(_getClaudeDesktop3pDir(), "claude_desktop_config.json");
+}
+function getClaudeDesktopProfilePath() {
+    return path.join(_getClaudeDesktop3pDir(), "configLibrary", CLAUDE_DESKTOP_PROFILE_ID + ".json");
+}
+function getClaudeDesktopMetaPath() {
+    return path.join(_getClaudeDesktop3pDir(), "configLibrary", "_meta.json");
 }
 function getClaudeMdPath() {
     var configDir = getAgentConfigPath("claude");
@@ -183,6 +192,9 @@ module.exports = {
     getOpenClawConfigPath: getOpenClawConfigPath,
     getClaudeJsonPath: getClaudeJsonPath,
     getClaudeDesktopConfigPath: getClaudeDesktopConfigPath,
+    getClaudeDesktop3pConfigPath: getClaudeDesktop3pConfigPath,
+    getClaudeDesktopProfilePath: getClaudeDesktopProfilePath,
+    getClaudeDesktopMetaPath: getClaudeDesktopMetaPath,
     expandHome: expandHome,
     ensureDir: ensureDir,
     generateId: generateId,

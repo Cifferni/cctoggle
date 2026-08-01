@@ -228,7 +228,23 @@ function switchProviderClaudeDesktop(provider) {
   _writeDeploymentMode(getClaudeDesktopConfigPath(), "3p");
   _writeDeploymentMode(getClaudeDesktop3pConfigPath(), "3p");
 
+  // 1.5 更新 claude_desktop_config.json 中的 apiProviders 指向代理
+  // 确保探测请求也走代理路径
+  var mainConfigPath = getClaudeDesktopConfigPath();
+  var mainConfig = {};
+  try {
+    if (fs.existsSync(mainConfigPath)) mainConfig = JSON.parse(fs.readFileSync(mainConfigPath, "utf8"));
+  } catch (e) { mainConfig = {}; }
+  mainConfig.apiProviders = {
+    "custom-provider": {
+      "apiBase": baseUrl,
+      "apiKey": apiKey
+    }
+  };
+  try { fs.writeFileSync(mainConfigPath, JSON.stringify(mainConfig, null, 2), "utf8"); } catch (e) { }
+
   // 2. 写入 profile 文件
+  // inferenceModels 必须使用 Anthropic 官方模型名，模型映射由网关处理
   var profile = {
     inferenceProvider: "gateway",
     inferenceGatewayBaseUrl: baseUrl,
@@ -237,8 +253,7 @@ function switchProviderClaudeDesktop(provider) {
     inferenceModels: [
       { name: "claude-sonnet-5", supports1m: true },
       { name: "claude-opus-4-8", supports1m: true },
-      { name: "claude-haiku-4-5", supports1m: true },
-      { name: "claude-fable-5", supports1m: true }
+      { name: "claude-haiku-4-5", supports1m: true }
     ],
     disableDeploymentModeChooser: true,
     coworkEgressAllowedHosts: ["*"]

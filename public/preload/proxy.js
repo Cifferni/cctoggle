@@ -80,6 +80,16 @@ function _resolveMembers(appType, group) {
         const p = providerDb.getProvider(appType, m.providerId);
         if (!p)
             return null;
+        var desktopModelMap = null;
+        if (appType === "claude-desktop") {
+            var env = (p.settingsConfig && p.settingsConfig.env) || {};
+            desktopModelMap = {
+                "claude-sonnet-5": env.ANTHROPIC_DEFAULT_SONNET_MODEL || p.model || "",
+                "claude-opus-4-8": env.ANTHROPIC_DEFAULT_OPUS_MODEL || p.model || "",
+                "claude-haiku-4-5": env.ANTHROPIC_DEFAULT_HAIKU_MODEL || p.model || "",
+                "claude-fable-5": env.ANTHROPIC_DEFAULT_FABLE_MODEL || env.ANTHROPIC_DEFAULT_OPUS_MODEL || p.model || "",
+            };
+        }
         return {
             providerId: p.id,
             name: p.name,
@@ -96,6 +106,7 @@ function _resolveMembers(appType, group) {
             bodyOverride: p.bodyOverride || "",
             authField: p.authField || "ANTHROPIC_AUTH_TOKEN",
             impersonateClaudeCode: p.impersonateClaudeCode || false,
+            desktopModelMap: desktopModelMap,
         };
     }).filter(Boolean);
 }
@@ -357,6 +368,8 @@ function takeoverApp(appType, listenPort) {
             configRw.switchProviderCodex(fake);
         else if (appType === "claude")
             configRw.switchProviderClaude(fake);
+        else if (appType === "claude-desktop")
+            configRw.switchProviderClaudeDesktop(fake);
         else if (appType === "openclaw")
             configRw.switchProviderOpenclaw(fake);
         else if (appType === "gemini")

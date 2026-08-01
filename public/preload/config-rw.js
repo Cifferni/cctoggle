@@ -9,6 +9,9 @@ var getGeminiEnvPath = utils.getGeminiEnvPath;
 var getOpenClawConfigPath = utils.getOpenClawConfigPath;
 var getClaudeJsonPath = utils.getClaudeJsonPath;
 var getClaudeDesktopConfigPath = utils.getClaudeDesktopConfigPath;
+var getClaudeDesktop3pConfigPath = utils.getClaudeDesktop3pConfigPath;
+var getClaudeDesktopProfilePath = utils.getClaudeDesktopProfilePath;
+var getClaudeDesktopMetaPath = utils.getClaudeDesktopMetaPath;
 var ensureDir = utils.ensureDir;
 var getCodexInstructions = utils.getCodexInstructions;
 var getAgentConfigPath = utils.getAgentConfigPath;
@@ -159,27 +162,149 @@ function writeClaudeDesktopConfig(config) {
 function switchProviderClaudeDesktop(provider) {
     if (!provider)
         return { success: false, error: "provider not found" };
-    var config = readClaudeDesktopConfig();
-    var apiProvider = {};
-    var envSrc = (provider.settingsConfig && provider.settingsConfig.env) || {};
-    var baseUrl = envSrc.ANTHROPIC_BASE_URL || provider.baseUrl || "";
-    if (baseUrl)
-        apiProvider.apiBase = baseUrl;
-    if (provider.apiKey) {
-        apiProvider.apiKey = provider.apiKey;
-    }
-    config.apiProviders = { "custom-provider": apiProvider };
-    if (config.env)
-        delete config.env;
+    var proxyPort = 0;
+    var proxyToken = "";
     try {
-        var extra = JSON.parse(provider.extraConfig);
-        Object.keys(extra).forEach(function (k) {
-            if (k !== "mcpServers")
-                config[k] = extra[k];
-        });
+        var proxy = require("./proxy");
+        var rt = proxy.getProxyStatus("claude-desktop");
+        if (rt && rt.running) {
+            proxyPort = rt.port || 8788;
+            var groupId = rt.groupId;
+            if (groupId) {
+                var g = proxy.getRouteGroup("claude-desktop", groupId);
+                if (g)
+                    proxyToken = g.authToken || "";
+            }
+        }
+        if (!proxyPort && proxy.proxyRuntime && proxy.proxyRuntime["claude-desktop"]) {
+            var prt = proxy.proxyRuntime["claude-desktop"];
+            if (prt.running) {
+                proxyPort = prt.port || 8788;
+                var gid = prt.groupId;
+                if (gid) {
+                    var pg = proxy.getRouteGroup("claude-desktop", gid);
+                    if (pg)
+                        proxyToken = pg.authToken || "";
+                }
+            }
+        }
+        if (proxyPort && !proxyToken) {
+            var groups = proxy.listRouteGroups("claude-desktop");
+            for (var i = 0; i < groups.length; i++) {
+                var gg = proxy.getRouteGroup("claude-desktop", groups[i].id);
+                if (gg && gg.authToken) {
+                    proxyToken = gg.authToken;
+                    break;
+                }
+            }
+        }
     }
     catch (e) { }
-    writeClaudeDesktopConfig(config);
+    var baseUrl, apiKey;
+    if (proxyPort && proxyToken) {
+        baseUrl = "http://127.0.0.1:" + proxyPort;
+        apiKey = proxyToken;
+    }
+    else {
+        var envSrc = (provider.settingsConfig && provider.settingsConfig.env) || {};
+        baseUrl = envSrc.ANTHROPIC_BASE_URL || provider.baseUrl || "";
+        apiKey = provider.apiKey || envSrc.ANTHROPIC_AUTH_TOKEN || envSrc.ANTHROPIC_API_KEY || "";
+        if (!baseUrl)
+            return { success: false, error: "missing ANTHROPIC_BASE_URL" };
+        if (!apiKey)
+            return { success: false, error: "missing API key" };
+    }
+    _writeDeploymentMode(getClaudeDesktopConfigPath(), "3p");
+    _writeDeploymentMode(getClaudeDesktop3pConfigPath(), "3p");
+    var mainConfigPath = getClaudeDesktopConfigPath();
+    var mainConfig = {};
+    try {
+        if (fs.existsSync(mainConfigPath))
+            mainConfig = JSON.parse(fs.readFileSync(mainConfigPath, "utf8"));
+    }
+    catch (e) {
+        mainConfig = {};
+    }
+    mainConfig.apiProviders = {
+        "custom-provider": {
+            "apiBase": baseUrl,
+            "apiKey": apiKey
+        }
+    };
+    try {
+        fs.writeFileSync(mainConfigPath, JSON.stringify(mainConfig, null, 2), "utf8");
+    }
+    catch (e) { }
+    var profile = {
+        inferenceProvider: "gateway",
+        inferenceGatewayBaseUrl: baseUrl,
+        inferenceGatewayApiKey: apiKey,
+        inferenceGatewayAuthScheme: "bearer",
+        inferenceModels: [
+            { name: "claude-sonnet-5", supports1m: true },
+            { name: "claude-opus-4-8", supports1m: true },
+            { name: "claude-haiku-4-5", supports1m: true }
+        ],
+        disableDeploymentModeChooser: true,
+        coworkEgressAllowedHosts: ["*"]
+    };
+    var profilePath = getClaudeDesktopProfilePath();
+    ensureDir(profilePath);
+    fs.writeFileSync(profilePath, JSON.stringify(profile, null, 2), "utf8");
+    var PROFILE_ID = "00000000-0000-4000-8000-000000157210";
+    var metaPath = getClaudeDesktopMetaPath();
+    var meta = {};
+    try {
+        if (fs.existsSync(metaPath))
+            meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+    }
+    catch (e) {
+        meta = {};
+    }
+    var entries = (meta.entries || []).filter(function (e) { return e.id !== PROFILE_ID; });
+    entries.push({ id: PROFILE_ID, name: "CC Toggle" });
+    meta.entries = entries;
+    meta.appliedId = PROFILE_ID;
+    ensureDir(metaPath);
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf8");
+    return { success: true, mode: proxyPort ? "proxy" : "direct", port: proxyPort };
+}
+function _writeDeploymentMode(configPath, mode) {
+    var config = {};
+    try {
+        if (fs.existsSync(configPath))
+            config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    }
+    catch (e) {
+        config = {};
+    }
+    if (typeof config !== "object" || config === null)
+        config = {};
+    config.deploymentMode = mode;
+    ensureDir(configPath);
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
+}
+function restoreOfficialClaudeDesktop() {
+    var PROFILE_ID = "00000000-0000-4000-8000-000000157210";
+    _writeDeploymentMode(getClaudeDesktopConfigPath(), "1p");
+    _writeDeploymentMode(getClaudeDesktop3pConfigPath(), "1p");
+    var profilePath = getClaudeDesktopProfilePath();
+    try {
+        if (fs.existsSync(profilePath))
+            fs.unlinkSync(profilePath);
+    }
+    catch (e) { }
+    var metaPath = getClaudeDesktopMetaPath();
+    try {
+        if (fs.existsSync(metaPath)) {
+            var meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+            if (meta.appliedId === PROFILE_ID)
+                delete meta.appliedId;
+            meta.entries = (meta.entries || []).filter(function (e) { return e.id !== PROFILE_ID; });
+            fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf8");
+        }
+    }
+    catch (e) { }
     return true;
 }
 function readClaudeOnboarding() {
@@ -451,4 +576,5 @@ module.exports = {
     switchProviderGemini: switchProviderGemini,
     switchProviderOpenclaw: switchProviderOpenclaw,
     switchProviderClaudeDesktop: switchProviderClaudeDesktop,
+    restoreOfficialClaudeDesktop: restoreOfficialClaudeDesktop,
 };

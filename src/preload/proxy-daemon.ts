@@ -264,7 +264,7 @@ function forward(member, req, res, attemptsLeft, reqBody, reasoningStripped) {
           if (mapped && mapped !== bodyObj.model) {
             bodyObj.model = mapped;
             reqBody = Buffer.from(JSON.stringify(bodyObj), "utf8");
-            log("info", "desktop model mapped", { from: bodyObj.model, to: mapped });
+            outBody = reqBody;
           }
         } catch (e) { /* 非 JSON body，跳过 */ }
       }
