@@ -15,5 +15,5 @@
     "auto-imports.d.ts",
     "components.d.ts"
   ],
-  "exclude": ["node_modules", "dist", "public"]
+  "exclude": ["node_modules", "dist", "public", "src/preload"]
 }
