@@ -36,18 +36,40 @@ function getClaudeJsonPath() {
   return path.join(getHomeDir(), ".claude.json");
 }
 
-function getClaudeDesktopConfigPath() {
-  var appData;
-  try { appData = utools.getPath("appData"); } catch (e) { appData = ""; }
-  if (!appData || !appData.trim()) {
-    // fallback: macOS ~/Library/Application Support, Windows %APPDATA%
-    if (process.platform === "darwin") {
-      appData = path.join(getHomeDir(), "Library", "Application Support");
-    } else {
-      appData = process.env.APPDATA || path.join(getHomeDir(), "AppData", "Roaming");
-    }
+// Claude Desktop 固定 profile ID（与 cc-switch 一致）
+var CLAUDE_DESKTOP_PROFILE_ID = "00000000-0000-4000-8000-000000157210";
+
+function _getClaudeDesktopLocalAppDataDir() {
+  // Claude Desktop 使用 LOCALAPPDATA（Windows）或 ~/Library/Application Support（macOS）
+  if (process.platform === "darwin") {
+    return path.join(getHomeDir(), "Library", "Application Support", "Claude");
   }
-  return path.join(appData, "Claude", "claude_desktop_config.json");
+  var localAppData = process.env.LOCALAPPDATA || path.join(getHomeDir(), "AppData", "Local");
+  return path.join(localAppData, "Claude");
+}
+
+function _getClaudeDesktop3pDir() {
+  if (process.platform === "darwin") {
+    return path.join(getHomeDir(), "Library", "Application Support", "Claude-3p");
+  }
+  var localAppData = process.env.LOCALAPPDATA || path.join(getHomeDir(), "AppData", "Local");
+  return path.join(localAppData, "Claude-3p");
+}
+
+function getClaudeDesktopConfigPath() {
+  return path.join(_getClaudeDesktopLocalAppDataDir(), "claude_desktop_config.json");
+}
+
+function getClaudeDesktop3pConfigPath() {
+  return path.join(_getClaudeDesktop3pDir(), "claude_desktop_config.json");
+}
+
+function getClaudeDesktopProfilePath() {
+  return path.join(_getClaudeDesktop3pDir(), "configLibrary", CLAUDE_DESKTOP_PROFILE_ID + ".json");
+}
+
+function getClaudeDesktopMetaPath() {
+  return path.join(_getClaudeDesktop3pDir(), "configLibrary", "_meta.json");
 }
 
 // ─────────── 提示词文件路径 ───────────
@@ -201,6 +223,9 @@ module.exports = {
   getOpenClawConfigPath: getOpenClawConfigPath,
   getClaudeJsonPath: getClaudeJsonPath,
   getClaudeDesktopConfigPath: getClaudeDesktopConfigPath,
+  getClaudeDesktop3pConfigPath: getClaudeDesktop3pConfigPath,
+  getClaudeDesktopProfilePath: getClaudeDesktopProfilePath,
+  getClaudeDesktopMetaPath: getClaudeDesktopMetaPath,
   expandHome: expandHome,
   ensureDir: ensureDir,
   generateId: generateId,

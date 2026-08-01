@@ -13,6 +13,9 @@ var getGeminiEnvPath = utils.getGeminiEnvPath;
 var getOpenClawConfigPath = utils.getOpenClawConfigPath;
 var getClaudeJsonPath = utils.getClaudeJsonPath;
 var getClaudeDesktopConfigPath = utils.getClaudeDesktopConfigPath;
+var getClaudeDesktop3pConfigPath = utils.getClaudeDesktop3pConfigPath;
+var getClaudeDesktopProfilePath = utils.getClaudeDesktopProfilePath;
+var getClaudeDesktopMetaPath = utils.getClaudeDesktopMetaPath;
 var ensureDir = utils.ensureDir;
 var getCodexInstructions = utils.getCodexInstructions;
 var getAgentConfigPath = utils.getAgentConfigPath;
@@ -170,68 +173,95 @@ function writeClaudeDesktopConfig(config) {
 
 function switchProviderClaudeDesktop(provider) {
   if (!provider) return { success: false, error: "provider not found" };
-  // 读取现有配置，保留 mcpServers 等字段
-  var config = readClaudeDesktopConfig();
-  var env = {};
 
-  // 优先使用预设 settingsConfig.env
-  if (provider.settingsConfig && provider.settingsConfig.env) {
-    Object.keys(provider.settingsConfig.env).forEach(function (k) {
-      env[k] = provider.settingsConfig.env[k];
-    });
-  }
+  // 提取 baseUrl 和 apiKey
+  var envSrc = (provider.settingsConfig && provider.settingsConfig.env) || {};
+  var baseUrl = envSrc.ANTHROPIC_BASE_URL || provider.baseUrl || "";
+  var apiKey = provider.apiKey || envSrc.ANTHROPIC_AUTH_TOKEN || envSrc.ANTHROPIC_API_KEY || "";
 
-  // 兼容旧字段
-  if (provider.model) env.ANTHROPIC_MODEL = provider.model;
-  if (provider.apiKey) {
-    var field = provider.authField || (env.ANTHROPIC_API_KEY !== undefined ? "ANTHROPIC_API_KEY" : "ANTHROPIC_AUTH_TOKEN");
-    env[field] = provider.apiKey;
-  }
+  if (!baseUrl) return { success: false, error: "missing ANTHROPIC_BASE_URL" };
+  if (!apiKey) return { success: false, error: "missing API key" };
 
-  config.env = env;
+  // 1. 设置 deploymentMode: "3p" 到两个配置文件
+  _writeDeploymentMode(getClaudeDesktopConfigPath(), "3p");
+  _writeDeploymentMode(getClaudeDesktop3pConfigPath(), "3p");
 
-  // 合并 extraConfig（JSON）
+  // 2. 写入 profile 文件
+  var profile = {
+    inferenceProvider: "gateway",
+    inferenceGatewayBaseUrl: baseUrl,
+    inferenceGatewayApiKey: apiKey,
+    inferenceGatewayAuthScheme: "bearer",
+    inferenceModels: [
+      { name: "claude-sonnet-5", supports1m: true },
+      { name: "claude-opus-4-8", supports1m: true },
+      { name: "claude-haiku-4-5", supports1m: true },
+      { name: "claude-fable-5", supports1m: true }
+    ],
+    disableDeploymentModeChooser: true,
+    coworkEgressAllowedHosts: ["*"]
+  };
+
+  var profilePath = getClaudeDesktopProfilePath();
+  ensureDir(profilePath);
+  fs.writeFileSync(profilePath, JSON.stringify(profile, null, 2), "utf8");
+
+  // 3. 写入 meta 文件
+  var PROFILE_ID = "00000000-0000-4000-8000-000000157210";
+  var metaPath = getClaudeDesktopMetaPath();
+  var meta = {};
   try {
-    var extra = JSON.parse(provider.extraConfig);
-    Object.keys(extra).forEach(function (k) {
-      if (k !== "mcpServers") config[k] = extra[k];
-    });
-  } catch (e) { /* ignore */ }
+    if (fs.existsSync(metaPath)) meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+  } catch (e) { meta = {}; }
 
-  writeClaudeDesktopConfig(config);
+  // 移除旧条目，添加新条目
+  var entries = (meta.entries || []).filter(function (e) { return e.id !== PROFILE_ID; });
+  entries.push({ id: PROFILE_ID, name: "CC Toggle" });
+  meta.entries = entries;
+  meta.appliedId = PROFILE_ID;
 
-  // 同步写入系统环境变量（Claude Desktop 某些版本只读系统环境变量）
-  _syncClaudeDesktopEnv(env);
+  ensureDir(metaPath);
+  fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf8");
 
   return true;
 }
 
-// 设置系统用户级环境变量（Windows setx，macOS launchctl）
-function _syncClaudeDesktopEnv(env) {
+// 写入 deploymentMode 到指定配置文件
+function _writeDeploymentMode(configPath, mode) {
+  var config = {};
   try {
-    var keys = ["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL",
-      "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL"];
-    if (process.platform === "win32") {
-      keys.forEach(function (k) {
-        var val = env[k] || "";
-        try {
-          if (val) {
-            require("child_process").execSync('setx "' + k + '" "' + val + '"', { stdio: "ignore" });
-          } else {
-            // 空值时删除环境变量
-            require("child_process").execSync('reg delete "HKCU\\Environment" /v "' + k + '" /f 2>nul', { stdio: "ignore" });
-          }
-        } catch (e) { /* ignore */ }
-      });
-    } else if (process.platform === "darwin") {
-      keys.forEach(function (k) {
-        var val = env[k] || "";
-        try {
-          require("child_process").execSync('launchctl setenv "' + k + '" "' + val + '"', { stdio: "ignore" });
-        } catch (e) { /* ignore */ }
-      });
+    if (fs.existsSync(configPath)) config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  } catch (e) { config = {}; }
+  if (typeof config !== "object" || config === null) config = {};
+  config.deploymentMode = mode;
+  ensureDir(configPath);
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
+}
+
+// 恢复 Claude Desktop 官方配置（1p 模式）
+function restoreOfficialClaudeDesktop() {
+  var PROFILE_ID = "00000000-0000-4000-8000-000000157210";
+
+  // 1. 设置 deploymentMode: "1p"
+  _writeDeploymentMode(getClaudeDesktopConfigPath(), "1p");
+  _writeDeploymentMode(getClaudeDesktop3pConfigPath(), "1p");
+
+  // 2. 删除 profile 文件
+  var profilePath = getClaudeDesktopProfilePath();
+  try { if (fs.existsSync(profilePath)) fs.unlinkSync(profilePath); } catch (e) { /* ignore */ }
+
+  // 3. 清除 meta 文件中的 appliedId
+  var metaPath = getClaudeDesktopMetaPath();
+  try {
+    if (fs.existsSync(metaPath)) {
+      var meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+      if (meta.appliedId === PROFILE_ID) delete meta.appliedId;
+      meta.entries = (meta.entries || []).filter(function (e) { return e.id !== PROFILE_ID; });
+      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf8");
     }
   } catch (e) { /* ignore */ }
+
+  return true;
 }
 
 // ——————————— Claude Onboarding 跳过 ———————————
@@ -534,4 +564,5 @@ module.exports = {
   switchProviderGemini: switchProviderGemini,
   switchProviderOpenclaw: switchProviderOpenclaw,
   switchProviderClaudeDesktop: switchProviderClaudeDesktop,
+  restoreOfficialClaudeDesktop: restoreOfficialClaudeDesktop,
 };
