@@ -1,4 +1,5 @@
-<script setup>
+<script setup lang="ts">
+// @ts-nocheck TODO: 逐步添加类型注解后移除
 import { ref, onMounted, computed } from "vue";
 import { useSkills } from "../../composables/useSkills.js";
 

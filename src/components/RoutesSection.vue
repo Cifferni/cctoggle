@@ -1,4 +1,5 @@
-<script setup>
+<script setup lang="ts">
+// @ts-nocheck TODO: 逐步添加类型注解后移除
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { useMessage } from "naive-ui";
 import { useProviders } from "../composables/useProviders";
