@@ -1,8 +1,3 @@
-// @ts-nocheck TODO: 逐步添加类型注解后移除
-// proxy-converter.js
-// 协议转换：Codex Responses API ↔ OpenAI Chat Completions / Anthropic Messages
-// 用于路由接管时，让只支持 Chat/Anthropic 的供应商也能在 Codex 中使用
-// ── 工具 ──
 function extractContent(item) {
     if (!item || !item.content)
         return '';
@@ -25,7 +20,6 @@ function extractContentFromChat(choice) {
     var toolCalls = msg.tool_calls;
     return { text: text, toolCalls: toolCalls, finishReason: choice.finish_reason };
 }
-// 角色映射：Codex Responses 可能出现 developer 角色，OpenAI Chat / Anthropic 不支持
 function mapRoleForChat(role) {
     if (role === 'developer')
         return 'system';
@@ -34,12 +28,10 @@ function mapRoleForChat(role) {
     return 'user';
 }
 function mapRoleForAnthropic(role) {
-    // Anthropic messages 仅支持 user / assistant；system 单独字段处理
     if (role === 'assistant')
         return 'assistant';
     return 'user';
 }
-// ── Responses API → Chat Completions（请求转换） ──
 function responsesToChat(body, model) {
     var messages = [];
     if (body.instructions) {
@@ -56,7 +48,6 @@ function responsesToChat(body, model) {
                     messages.push({ role: mapRoleForChat(item.role), content: c });
             }
             else if (item.type === 'function_call') {
-                // 助手发起的工具调用 → Chat 的 assistant.tool_calls
                 messages.push({
                     role: 'assistant',
                     content: null,
@@ -68,7 +59,6 @@ function responsesToChat(body, model) {
                 });
             }
             else if (item.type === 'function_call_output') {
-                // 工具执行结果 → Chat 的 tool 消息，缺失会导致多轮工具对话断裂
                 var out = item.output;
                 if (typeof out !== 'string') {
                     try {
@@ -89,7 +79,6 @@ function responsesToChat(body, model) {
     };
     if (body.tools)
         chatReq.tools = body.tools.map(function (t) {
-            // Codex Responses 工具是扁平结构；Chat Completions 需要 function 包裹
             if (t.type === 'function' && t.function)
                 return t;
             if (t.type === 'function' || t.name) {
@@ -107,30 +96,23 @@ function responsesToChat(body, model) {
         chatReq.max_tokens = body.max_output_tokens;
     if (body.temperature !== undefined)
         chatReq.temperature = body.temperature;
-    // 严格的 OpenAI 兼容上游（vLLM / 企业网关）在 tools 为空时携带 tool_choice /
-    // parallel_tool_calls 会返回 400/503，转换后若无有效 tools 则一并删除。
     var hasTools = Array.isArray(chatReq.tools) && chatReq.tools.length > 0;
     if (!hasTools) {
         delete chatReq.tools;
         delete chatReq.tool_choice;
         delete chatReq.parallel_tool_calls;
     }
-    // 流式下 OpenAI 兼容上游默认不在 SSE 里返回 usage，需显式声明 include_usage，
-    // 否则 kimi / MiniMax 等第三方供应商的 token 用量全部漏记。
     if (chatReq.stream)
         chatReq.stream_options = { include_usage: true };
     return chatReq;
 }
-// ── Chat Completions SSE → Responses SSE（流式转换） ──
 function sseChatToResponses(raw, respId, state) {
-    // state: { outputId, msgId, text, toolCalls, responseJson }
     var lines = [];
     raw.split('\n').forEach(function (line) {
         if (line.indexOf('data: ') !== 0)
             return;
         var payload = line.slice(6);
         if (payload === '[DONE]') {
-            // 发送 final output_text.done + output_item.done + response.done
             if (state.text) {
                 lines.push('event: response.output_text.done');
                 lines.push('data: ' + JSON.stringify({ type: 'output_text.done', text: state.text, id: state.msgId }));
@@ -139,7 +121,6 @@ function sseChatToResponses(raw, respId, state) {
                 var content = [];
                 if (state.text)
                     content.push({ type: 'output_text', text: state.text, annotations: [] });
-                // state.toolCalls 是以 index 为键的对象；按 index 顺序输出
                 Object.keys(state.toolCalls || {})
                     .sort(function (a, b) { return Number(a) - Number(b); })
                     .forEach(function (k) {
@@ -156,7 +137,6 @@ function sseChatToResponses(raw, respId, state) {
                 var msg = { type: 'message', id: state.msgId, status: 'completed', role: 'assistant', content: content };
                 lines.push('event: response.output_item.done');
                 lines.push('data: ' + JSON.stringify(msg));
-                // response.done
                 state.responseJson.output = state.responseJson.output || [];
                 state.responseJson.output.push(msg);
                 lines.push('event: response.done');
@@ -180,23 +160,18 @@ function sseChatToResponses(raw, respId, state) {
                 state.responseJson.created = Math.floor(Date.now() / 1000);
                 state.responseJson.model = d.model || '';
                 state.responseJson.output = [];
-                // 发送 output_item.added（message）
                 lines.push('event: response.output_item.added');
                 var msgAdded = { type: 'message', id: state.msgId, status: 'in_progress', role: 'assistant', content: [] };
                 lines.push('data: ' + JSON.stringify(msgAdded));
-                // 发送 content_part.added（output_text）
                 if (info.text !== undefined || info.text !== null) {
                     lines.push('event: response.content_part.added');
                     lines.push('data: ' + JSON.stringify({ type: 'content_part.added', part: { type: 'output_text', text: '' } }));
                 }
             }
-            // tool_calls handling
             if (info.toolCalls && info.toolCalls.length) {
                 info.toolCalls.forEach(function (tc) {
                     if (!state.toolCalls)
                         state.toolCalls = {};
-                    // 标准 OpenAI Chat 流式仅首帧带 id/name，后续帧只有 index + 参数增量，
-                    // 因此必须用 index 作为累积键，否则同一调用会被拆散或丢失。
                     var key = (tc.index !== undefined && tc.index !== null) ? tc.index : (tc.id || 0);
                     if (!state.toolCalls[key]) {
                         state.toolCalls[key] = { id: tc.id || ('call_' + key), name: '', arguments: '' };
@@ -220,7 +195,6 @@ function sseChatToResponses(raw, respId, state) {
                     }
                 });
             }
-            // text delta
             if (info.text) {
                 lines.push('event: response.output_text.delta');
                 lines.push('data: ' + JSON.stringify({ type: 'output_text.delta', delta: info.text, id: state.msgId }));
@@ -230,11 +204,10 @@ function sseChatToResponses(raw, respId, state) {
                 state.responseJson.usage = d.usage;
             }
         }
-        catch (e) { /* ignore parse errors */ }
+        catch (e) { }
     });
     return lines.join('\n') + (lines.length ? '\n' : '');
 }
-// ── Chat Completions（非流式）→ Responses ──
 function chatToResponses(chatResp, model) {
     var resp = {
         id: 'resp_' + (chatResp.id || 'chat'),
@@ -274,7 +247,6 @@ function chatToResponses(chatResp, model) {
     resp.output_text = chatResp.choices && chatResp.choices[0] && chatResp.choices[0].message && chatResp.choices[0].message.content || '';
     return resp;
 }
-// ── Responses API → Anthropic Messages（请求转换） ──
 function responsesToAnthropic(body, model) {
     var system = body.instructions || '';
     var messages = [];
@@ -295,7 +267,6 @@ function responsesToAnthropic(body, model) {
                 }
             }
             else if (item.type === 'function_call') {
-                // 助手工具调用 → Anthropic assistant.tool_use 块
                 var input = {};
                 try {
                     input = item.arguments ? JSON.parse(item.arguments) : {};
@@ -309,7 +280,6 @@ function responsesToAnthropic(body, model) {
                 });
             }
             else if (item.type === 'function_call_output') {
-                // 工具结果 → Anthropic user.tool_result 块
                 var out = item.output;
                 if (typeof out !== 'string') {
                     try {
@@ -336,19 +306,17 @@ function responsesToAnthropic(body, model) {
         anthReq.system = system;
     if (body.tools)
         anthReq.tools = body.tools.map(function (t) {
-            // Responses tool format → Anthropic tool format
             return { name: t.name || t.function && t.function.name || '', description: t.description || t.function && t.function.description || '', input_schema: t.input_schema || t.parameters || t.function && t.function.parameters || {} };
         });
     if (body.temperature !== undefined)
         anthReq.temperature = body.temperature;
     return anthReq;
 }
-// ── Anthropic Messages SSE → Responses SSE（流式转换） ──
 function sseAnthropicToResponses(raw, respId, state) {
     var lines = [];
     raw.split('\n').forEach(function (line) {
         if (line.indexOf('event: ') === 0)
-            return; // skip event type, use data only
+            return;
         if (line.indexOf('data: ') !== 0)
             return;
         try {
@@ -371,7 +339,6 @@ function sseAnthropicToResponses(raw, respId, state) {
             else if (d.type === 'content_block_start') {
                 if (d.content_block && d.content_block.type === 'tool_use') {
                     var tc = d.content_block;
-                    // 用 Anthropic 的内容块序号 d.index 作累积键；后续 input_json_delta 只带 in
                     state.toolCalls[d.index] = { id: tc.id, name: tc.name, arguments: '' };
                     lines.push('event: response.output_item.added');
                     lines.push('data: ' + JSON.stringify({ type: 'function_call', id: tc.id, call_id: tc.id, name: tc.name, arguments: '', status: 'in_progress' }));
@@ -421,11 +388,10 @@ function sseAnthropicToResponses(raw, respId, state) {
                 }
             }
         }
-        catch (e) { /* ignore */ }
+        catch (e) { }
     });
     return lines.join('\n') + (lines.length ? '\n' : '');
 }
-// ── Anthropic Messages（非流式）→ Responses ──
 function anthropicToResponses(anthResp, model) {
     var resp = {
         id: 'resp_anth_' + (anthResp.id || ''),
@@ -460,7 +426,6 @@ function anthropicToResponses(anthResp, model) {
     }
     return resp;
 }
-// ── 路由转换入口 ──
 function convertRequest(member, body, path) {
     var apiFormat = member.apiFormat || '';
     if (apiFormat === 'openai_chat') {
@@ -469,7 +434,6 @@ function convertRequest(member, body, path) {
     if (apiFormat === 'anthropic') {
         return { body: JSON.stringify(responsesToAnthropic(body, member.model)), path: '/v1/messages' };
     }
-    // openai_responses / 空 = 透传
     return { body: JSON.stringify(body), path: path };
 }
 function convertResponse(member, bodyStr, isStream) {
@@ -478,7 +442,6 @@ function convertResponse(member, bodyStr, isStream) {
         return bodyStr;
     try {
         var body = JSON.parse(bodyStr);
-        // 上游错误体（鉴权失败、模型名错误、参数非法等）原样透传，避免被转成空 output 吞掉
         if (body && body.error)
             return bodyStr;
         if (apiFormat === 'openai_chat') {
@@ -492,7 +455,7 @@ function convertResponse(member, bodyStr, isStream) {
             return JSON.stringify(anthropicToResponses(body, member.model));
         }
     }
-    catch (e) { /* pass through */ }
+    catch (e) { }
     return bodyStr;
 }
 function convertSse(member, chunk, state) {

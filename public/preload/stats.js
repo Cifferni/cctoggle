@@ -1,16 +1,9 @@
-// @ts-nocheck TODO: 逐步添加类型注解后移除
-// uTools ccToggle - stats.js
-// 用量统计（无缓存：每次直接扫描本地 CLI 会话日志）
 var utils = require("./utils");
 var fs = utils.fs;
 var path = utils.path;
 var getHomeDir = utils.getHomeDir;
-// 不在 db 存聚合数据。仅存一个「清除时间戳」文档用于隐藏历史。
-// Claude Code: ~/.claude/projects/**/*.jsonl（assistant 行带 message.usage + model）
-// Codex:       ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl（token_count 的 last_token_usage 增量）
 var CLEARED_KEY = "cctoggle_stat_clearedAt";
 function _statDayKey(d) {
-    // 本地日期 YYYY-MM-DD
     var y = d.getFullYear();
     var m = ("0" + (d.getMonth() + 1)).slice(-2);
     var day = ("0" + d.getDate()).slice(-2);
@@ -29,9 +22,7 @@ function _dayFromTs(ts) {
         return "";
     }
 }
-// 所有已知 appType（与前端 shared.js APP_TYPES 保持同步）
 var ALL_APP_TYPES = ["codex", "claude", "claude-desktop", "openclaw", "gemini"];
-// 读取各 agent 的清除时间戳（毫秒）；无则为 0
 function _getClearedAt() {
     var doc = utools.db.get(CLEARED_KEY) || {};
     var result = {};
@@ -41,7 +32,6 @@ function _getClearedAt() {
     }
     return result;
 }
-// 递归列出目录下所有 .jsonl 文件（绝对路径，异步以让出主线程）
 async function _listJsonl(dir, out) {
     out = out || [];
     var entries;
@@ -63,8 +53,6 @@ async function _listJsonl(dir, out) {
     }
     return out;
 }
-// 解析单个日志文件，把用量累加进 acc（按 "<appType>_<day>" → { appType, day, ...6字段, models }）
-// clearedMs：早于此时间戳的条目跳过（清除点之前的历史被隐藏）
 async function _parseLogFile(file, appType, clearedMs, acc) {
     var text;
     try {
@@ -74,7 +62,7 @@ async function _parseLogFile(file, appType, clearedMs, acc) {
         return;
     }
     var lines = text.split(/\r?\n/);
-    var codexModel = ""; // Codex: 随 turn_context 更新，归因后续 token_count
+    var codexModel = "";
     function bucketFor(day, model) {
         var dayKey = appType + "_" + day;
         var d = acc[dayKey] || (acc[dayKey] = { appType: appType, day: day,
@@ -112,7 +100,6 @@ async function _parseLogFile(file, appType, clearedMs, acc) {
         if (!d || typeof d !== "object")
             continue;
         if (appType === "claude") {
-            // assistant 消息：message.usage 为单次增量
             if (d.type !== "assistant" || !d.message)
                 continue;
             var mu = d.message.usage;
@@ -132,7 +119,6 @@ async function _parseLogFile(file, appType, clearedMs, acc) {
             addUsage(day, d.message.model || "unknown", cIn, cOut, cRead, cCreate);
         }
         else {
-            // codex
             if (d.type === "turn_context" && d.payload && d.payload.model) {
                 codexModel = d.payload.model;
                 continue;
@@ -140,7 +126,7 @@ async function _parseLogFile(file, appType, clearedMs, acc) {
             if (d.type !== "event_msg" || !d.payload || d.payload.type !== "token_count")
                 continue;
             var info = d.payload.info;
-            var last = info && info.last_token_usage; // 增量，禁用 total_token_usage（累计值）
+            var last = info && info.last_token_usage;
             if (!last)
                 continue;
             if (clearedMs && d.timestamp && new Date(d.timestamp).getTime() <= clearedMs)
@@ -150,7 +136,7 @@ async function _parseLogFile(file, appType, clearedMs, acc) {
                 continue;
             var totalIn = Number(last.input_tokens) || 0;
             var cachedIn = Number(last.cached_input_tokens) || 0;
-            var freshIn = Math.max(0, totalIn - cachedIn); // input_tokens 含缓存命中，拆出新增输入
+            var freshIn = Math.max(0, totalIn - cachedIn);
             var out = Number(last.output_tokens) || 0;
             var cacheCreate = Number(last.cache_write_input_tokens) || 0;
             if (!totalIn && !out && !cacheCreate)
@@ -159,9 +145,6 @@ async function _parseLogFile(file, appType, clearedMs, acc) {
         }
     }
 }
-// 扫描本地日志并返回全部原始按天记录（不写 db）。前端在内存中按 appType/天数过滤。
-// 返回 { daily: [{ appType, day, ...6字段, models }], error? }
-// 异步以让出渲染进程主线程，扫描期间 UI 不卡死
 async function scanUsageLogs() {
     try {
         var home = getHomeDir();
@@ -177,7 +160,7 @@ async function scanUsageLogs() {
             { dir: utils.getAgentSessionPath("claude") || path.join(home, ".claude", "projects"), appType: "claude" },
             { dir: utils.getAgentSessionPath("codex") || path.join(home, ".codex", "sessions"), appType: "codex" },
         ];
-        var acc = {}; // "<appType>_<day>" → 记录
+        var acc = {};
         for (var r = 0; r < roots.length; r++) {
             var root = roots[r];
             var clearedMs = cleared[root.appType] || 0;
@@ -193,7 +176,6 @@ async function scanUsageLogs() {
         return { daily: [], error: String(e && e.message ? e.message : e) };
     }
 }
-// 清除统计：记录当前时间戳，扫描时早于此的条目被隐藏（appType="all" 则清全部）
 function clearStats(appType) {
     var doc = utools.db.get(CLEARED_KEY) || { _id: CLEARED_KEY };
     var now = Date.now();

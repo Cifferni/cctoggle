@@ -1,13 +1,9 @@
-// @ts-nocheck TODO: 逐步添加类型注解后移除
-// uTools ccToggle - prompts.js
-// 提示词管理：使用 utools.db 存储提示词数据
 var utils = require("./utils");
 var configRw = require("./config-rw");
 var fs = utils.fs;
 var path = utils.path;
 var DB_KEY = "cctoggle_prompts";
 var BACKUP_KEY = "cctoggle_prompts_backup";
-// ─────────── 数据库操作 ───────────
 function _getAll() {
     try {
         var doc = utools.db.get(DB_KEY);
@@ -26,7 +22,6 @@ function _saveAll(prompts) {
             existing = utools.db.get(DB_KEY);
         }
         catch (e) { }
-        // 深拷贝确保是纯 JSON 对象
         var cleanPrompts = JSON.parse(JSON.stringify(prompts));
         var doc = { _id: DB_KEY, prompts: cleanPrompts };
         if (existing && existing._rev)
@@ -40,7 +35,6 @@ function _saveAll(prompts) {
 function _generateId() {
     return "prompt_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
 }
-// ─────────── CRUD ───────────
 function listPrompts() {
     return _getAll();
 }
@@ -124,7 +118,6 @@ function duplicatePrompt(id) {
     _saveAll(prompts);
     return { success: true, prompt: newPrompt };
 }
-// ─────────── 导入导出 ───────────
 function exportPrompts() {
     var prompts = _getAll();
     return JSON.stringify(prompts, null, 2);
@@ -166,8 +159,6 @@ function importPrompts(jsonString) {
         return { success: false, error: e.message };
     }
 }
-// ─────────── 读取各 Agent 原始提示词 ───────────
-// 获取 Agent 对应的提示词文件路径
 function _getAgentPromptPath(agent) {
     switch (agent) {
         case "claude": return utils.getClaudeMdPath();
@@ -177,7 +168,6 @@ function _getAgentPromptPath(agent) {
         default: return null;
     }
 }
-// 读取指定 Agent 的提示词文件
 function _readPromptFile(agent) {
     try {
         var filePath = _getAgentPromptPath(agent);
@@ -190,7 +180,6 @@ function _readPromptFile(agent) {
         return "";
     }
 }
-// 写入提示词到指定 Agent 的文件
 function _writePromptFile(agent, content) {
     var filePath = _getAgentPromptPath(agent);
     if (!filePath) {
@@ -213,7 +202,6 @@ function readAllOriginalPrompts() {
         gemini: _readPromptFile("gemini"),
     };
 }
-// ─────────── 备份与恢复 ───────────
 function _getBackups() {
     try {
         var doc = utools.db.get(BACKUP_KEY);
@@ -232,7 +220,6 @@ function _saveBackups(backups) {
             existing = utools.db.get(BACKUP_KEY);
         }
         catch (e) { }
-        // 深拷贝确保是纯 JSON 对象
         var cleanBackups = JSON.parse(JSON.stringify(backups));
         var doc = { _id: BACKUP_KEY, backups: cleanBackups };
         if (existing && existing._rev)
@@ -244,7 +231,6 @@ function _saveBackups(backups) {
         throw new Error("Failed to save backups: " + (e.message || e));
     }
 }
-// 备份当前各 Agent 的提示词
 function backupOriginalPrompts() {
     try {
         var backups = _getBackups();
@@ -260,7 +246,6 @@ function backupOriginalPrompts() {
         return { success: false, error: e.message || "Backup failed" };
     }
 }
-// 备份指定 Agent 的提示词
 function backupSelectedPrompts(agentList) {
     if (!Array.isArray(agentList) || agentList.length === 0) {
         return { success: false, error: "No agents selected" };
@@ -278,11 +263,9 @@ function backupSelectedPrompts(agentList) {
         return { success: false, error: e.message || "Backup failed" };
     }
 }
-// 获取备份
 function getBackups() {
     return _getBackups();
 }
-// 恢复指定 Agent 的原始提示词
 function restoreOriginalPrompt(agent) {
     var backups = _getBackups();
     var backup = backups[agent];
@@ -297,7 +280,6 @@ function restoreOriginalPrompt(agent) {
         return { success: false, error: e.message };
     }
 }
-// 恢复所有 Agent 的原始提示词
 function restoreAllOriginalPrompts() {
     var results = {};
     ["codex", "claude", "openclaw", "gemini"].forEach(function (agent) {
@@ -305,12 +287,9 @@ function restoreAllOriginalPrompts() {
     });
     return results;
 }
-// ─────────── 应用提示词到 Agent ───────────
-// 应用提示词到指定 Agent，并自动取消其他提示词对该 Agent 的关联
 function applyPromptToAgent(promptId, agent) {
     var prompts = _getAll();
     var targetPrompt = null;
-    // 找到目标提示词
     for (var i = 0; i < prompts.length; i++) {
         if (prompts[i].id === promptId) {
             targetPrompt = prompts[i];
@@ -320,7 +299,6 @@ function applyPromptToAgent(promptId, agent) {
     if (!targetPrompt) {
         return { success: false, error: "Prompt not found" };
     }
-    // 自动取消其他提示词对该 Agent 的关联
     prompts.forEach(function (p) {
         if (p.id !== promptId && Array.isArray(p.agents)) {
             var idx = p.agents.indexOf(agent);
@@ -329,16 +307,13 @@ function applyPromptToAgent(promptId, agent) {
             }
         }
     });
-    // 确保目标提示词关联了该 Agent
     if (!Array.isArray(targetPrompt.agents)) {
         targetPrompt.agents = [];
     }
     if (targetPrompt.agents.indexOf(agent) === -1) {
         targetPrompt.agents.push(agent);
     }
-    // 保存更新后的提示词
     _saveAll(prompts);
-    // 将提示词内容写入对应的 md 文件
     try {
         _writePromptFile(agent, targetPrompt.content);
     }
@@ -347,7 +322,6 @@ function applyPromptToAgent(promptId, agent) {
     }
     return { success: true, prompt: targetPrompt };
 }
-// 切换提示词对 Agent 的关联，取消关联时同步清理 Agent 配置文件
 function togglePromptAgent(promptId, agent) {
     var prompts = _getAll();
     var targetPrompt = null;
@@ -365,11 +339,9 @@ function togglePromptAgent(promptId, agent) {
     }
     var idx = targetPrompt.agents.indexOf(agent);
     if (idx === -1) {
-        // 关联：由前端调用 applyPromptToAgent 处理文件写入
         targetPrompt.agents.push(agent);
     }
     else {
-        // 取消关联：清理 Agent 配置文件中的提示词内容
         targetPrompt.agents.splice(idx, 1);
         try {
             var currentContent = _readPromptFile(agent);
@@ -385,13 +357,11 @@ function togglePromptAgent(promptId, agent) {
             }
         }
         catch (e) {
-            // 文件清理失败不阻断数据库更新
         }
     }
     _saveAll(prompts);
     return { success: true, prompt: targetPrompt, associated: idx === -1 };
 }
-// ─────────── 导出 ───────────
 module.exports = {
     listPrompts: listPrompts,
     getPrompt: getPrompt,

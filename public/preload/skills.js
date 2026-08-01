@@ -1,6 +1,3 @@
-// @ts-nocheck TODO: 逐步添加类型注解后移除
-// uTools ccToggle - skills.js
-// SkillNest 技能管理、部署、搜索
 var utils = require("./utils");
 var fs = utils.fs;
 var path = utils.path;
@@ -8,23 +5,18 @@ var getHomeDir = utils.getHomeDir;
 var expandHome = utils.expandHome;
 var ensureDir = utils.ensureDir;
 var copyDirSync = utils.copyDirSync;
-// ===== SkillNest: Central Skill Nest + Deploy Engine =====
-// --- Nest Directory ---
 function getNestDir() {
-    // 优先从配置读取
     var configured = utools.dbStorage.getItem('ccswitch_nest_dir');
     if (configured) {
         var expanded = expandHome(configured);
         ensureDir(expanded);
         return expanded;
     }
-    // 使用默认路径（SkillNest 是独立的中央存储，不从 agent 路径派生）
     var home = getHomeDir();
     var nest = path.join(home, ".skillnest", "skills");
     ensureDir(nest);
     return nest;
 }
-// 校验技能名合法：非空、无路径分隔符、无 ".."，避免目录穿越
 function _safeSkillName(name) {
     if (!name || typeof name !== "string")
         return false;
@@ -36,7 +28,6 @@ function _safeSkillName(name) {
         return false;
     return true;
 }
-// 断言 target 落在 root 目录内（防止拼接出的路径逃逸后被递归删除）
 function _assertInside(root, target) {
     var r = path.resolve(root);
     var t = path.resolve(target);
@@ -45,7 +36,6 @@ function _assertInside(root, target) {
         throw new Error("unsafe path outside target root: " + target);
     }
 }
-// --- Nest Skill Listing ---
 function listNestSkills() {
     var nest = getNestDir();
     try {
@@ -91,7 +81,6 @@ function setNestSkillMeta(skillName, meta) {
     Object.assign(existing, meta, { updatedAt: new Date().toISOString() });
     fs.writeFileSync(metaPath, JSON.stringify(existing, null, 2), "utf8");
 }
-// --- Deploy Registry ---
 function getDeployRegistry() {
     try {
         return utools.dbStorage.getItem("ccswitch_nest_registry") || {};
@@ -106,7 +95,6 @@ function setDeployRegistry(reg) {
 function listDeployments() {
     return getDeployRegistry();
 }
-// --- Create Link (Win junction / Unix symlink) ---
 function createLink(src, dest) {
     _assertInside(path.dirname(dest), dest);
     ensureDir(dest);
@@ -129,7 +117,6 @@ function createLink(src, dest) {
         return "symlink";
     }
 }
-// --- Deploy Skill (nest to target) ---
 function deploySkill(skillName, target) {
     var nest = getNestDir();
     if (!_safeSkillName(skillName)) {
@@ -182,7 +169,6 @@ function deploySkill(skillName, target) {
         return { success: false, error: e.message };
     }
 }
-// --- Undeploy Skill ---
 function undeploySkill(skillName, target) {
     if (!_safeSkillName(skillName)) {
         return { success: false, error: "invalid skill name: " + skillName };
@@ -223,7 +209,6 @@ function undeploySkill(skillName, target) {
         return { success: false, error: e.message };
     }
 }
-// --- Toggle (deploy/undeploy) ---
 function toggleSkillToAgent(skillName, sourceApp, targetApp) {
     var reg = getDeployRegistry();
     var deployed = reg[skillName] && reg[skillName].find(function (d) { return d.target === targetApp; });
@@ -234,7 +219,6 @@ function toggleSkillToAgent(skillName, sourceApp, targetApp) {
         return deploySkill(skillName, targetApp);
     }
 }
-// --- Project Targets ---
 var _projectTargets = null;
 function listProjectTargets() {
     if (_projectTargets)
@@ -264,7 +248,6 @@ function removeProjectTarget(id) {
     utools.dbStorage.setItem("ccswitch_project_targets", targets);
     return { success: true };
 }
-// --- Skills Registry & Search ---
 function getDefaultSkillDirs() {
     var home = getHomeDir();
     return {
@@ -276,7 +259,6 @@ function getDefaultSkillDirs() {
     };
 }
 function getSkillStoragePaths() {
-    // 优先从 agent 配置路径派生
     var configPaths = {};
     try {
         configPaths = utools.dbStorage.getItem("ccswitch_config_paths") || {};
@@ -284,7 +266,6 @@ function getSkillStoragePaths() {
     catch (e) {
         configPaths = {};
     }
-    // 如果有配置，从配置路径派生 skill 目录
     if (Object.keys(configPaths).length > 0) {
         var result = {};
         Object.keys(configPaths).forEach(function (app) {
@@ -292,7 +273,6 @@ function getSkillStoragePaths() {
                 result[app] = path.join(expandHome(configPaths[app]), "skills");
             }
         });
-        // 补充未配置的 agent 使用默认路径
         var defaults = getDefaultSkillDirs();
         Object.keys(defaults).forEach(function (app) {
             if (!result[app]) {
@@ -301,26 +281,20 @@ function getSkillStoragePaths() {
         });
         return result;
     }
-    // 兼容旧的独立存储路径配置（向后兼容）
     var saved = utools.dbStorage.getItem('ccswitch_skill_paths');
     if (saved) {
-        // 如果旧数据存在，尝试迁移
-        // 将旧数据转换为新的 config_paths 格式
         var defaultSkillDirs = getDefaultSkillDirs();
         var migratedConfigPaths = {};
         Object.keys(saved).forEach(function (app) {
             if (saved[app] && saved[app] !== defaultSkillDirs[app]) {
-                // 从 skill 路径推导出 agent 路径
                 var agentPath = saved[app].replace(/[\/\\]skills$/, "");
                 if (agentPath !== saved[app]) {
                     migratedConfigPaths[app] = agentPath;
                 }
             }
         });
-        // 如果有需要迁移的数据，保存到新格式
         if (Object.keys(migratedConfigPaths).length > 0) {
             utools.dbStorage.setItem("ccswitch_config_paths", migratedConfigPaths);
-            // 重新计算结果
             var result2 = {};
             Object.keys(migratedConfigPaths).forEach(function (app) {
                 if (migratedConfigPaths[app]) {
@@ -337,7 +311,6 @@ function getSkillStoragePaths() {
         }
         return saved;
     }
-    // 首次使用，返回默认值
     var defaults3 = getDefaultSkillDirs();
     return defaults3;
 }
@@ -366,7 +339,6 @@ function getSyncMode() {
 function setSyncMode(mode) {
     utools.dbStorage.setItem('ccswitch_sync_mode', mode);
 }
-// --- Skills Search ---
 function mapSkill(s) {
     return {
         name: s.name || s.skillId,
@@ -405,7 +377,6 @@ function searchSkills(query) {
         }
     });
 }
-// --- Install / List / Sync (nest-first) ---
 function listSkillsInDir(dir) {
     try {
         dir = expandHome(dir);
@@ -413,8 +384,6 @@ function listSkillsInDir(dir) {
             return [];
         var out = [];
         function isDirLike(full, dirent) {
-            // Dirent.isDirectory() returns false for junctions/symlinks on Windows.
-            // Fall back to stat (which follows the link) so deployed skills are counted.
             if (dirent && dirent.isDirectory())
                 return true;
             try {
@@ -443,7 +412,6 @@ function listSkillsInDir(dir) {
                         out.push({ name: r, path: full, hasSkillMd: true });
                     }
                     else {
-                        // Only recurse into real directories to avoid symlink loops.
                         if (e.isDirectory())
                             walk(full, r);
                     }
@@ -476,8 +444,6 @@ function installSkill(name, repo, subPath, branch) {
             return { success: false, error: "already installed" };
         }
         ensureDir(target);
-        // Best-effort placeholder: write meta + minimal SKILL.md so UI can see it.
-        // Actual git clone would require child_process; keep synchronous no-op here.
         setNestSkillMeta(name, { repo: repo || "", subPath: subPath || "", branch: branch || "main", installedAt: new Date().toISOString() });
         var skillMd = path.join(target, "SKILL.md");
         if (!fs.existsSync(skillMd)) {
@@ -496,18 +462,15 @@ function removeNestSkill(skillName) {
     var target = path.join(nest, skillName);
     _assertInside(nest, target);
     try {
-        // Undeploy from all targets first
         var reg = getDeployRegistry();
         if (reg[skillName]) {
             reg[skillName].slice().forEach(function (d) {
                 undeploySkill(skillName, d.target);
             });
         }
-        // Remove the skill directory
         if (fs.existsSync(target)) {
             fs.rmSync(target, { recursive: true, force: true });
         }
-        // Clean up meta.json
         var metaPath = path.join(getNestDir(), skillName, "meta.json");
         if (fs.existsSync(metaPath)) {
             fs.rmSync(metaPath, { recursive: true, force: true });
@@ -519,7 +482,6 @@ function removeNestSkill(skillName) {
     }
 }
 function syncSkills(sourceApp, targetApps) {
-    // Legacy shim: for each nest skill, deploy to each target
     try {
         var nestList = listNestSkills();
         var results = [];
@@ -534,7 +496,6 @@ function syncSkills(sourceApp, targetApps) {
         return { success: false, error: e.message };
     }
 }
-// 设置安装目录
 function setNestDir(dir) {
     if (dir) {
         utools.dbStorage.setItem('ccswitch_nest_dir', dir);

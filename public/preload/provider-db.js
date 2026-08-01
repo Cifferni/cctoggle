@@ -1,6 +1,3 @@
-// @ts-nocheck TODO: 逐步添加类型注解后移除
-// uTools ccToggle - provider-db.js
-// 供应商 CRUD、切换、导入导出
 var utils = require("./utils");
 var configRw = require("./config-rw");
 var DB_PREFIX = "cctoggle_provider_";
@@ -11,7 +8,6 @@ function listProviders(appType) {
     try {
         const docs = utools.db.allDocs(DB_PREFIX + appType + "_") || [];
         return docs.map(function (doc) {
-            // 空白占位 apiKey（列表不含明文，通过 getProvider 单独读取）
             const provider = { id: doc._id.replace(DB_PREFIX + appType + "_", ""), name: doc.name, baseUrl: doc.baseUrl, model: doc.model, models: doc.models || [], websiteUrl: doc.websiteUrl, remark: doc.remark || "", icon: doc.icon, iconColor: doc.iconColor, category: doc.category, configType: doc.configType, isCurrent: doc.isCurrent, sortOrder: doc.sortOrder, createdAt: doc.createdAt, apiFormat: doc.apiFormat || "", wireApi: doc.wireApi || "" };
             return provider;
         });
@@ -70,7 +66,6 @@ function saveProvider(appType, providerData) {
     const key = getProviderKey(appType, id);
     const apiKey = providerData.apiKey || "";
     delete providerData.apiKey;
-    // 更新已有文档必须带上 _rev，否则 uTools(PouchDB) 会以 conflict 静默失败，编辑不生效
     const existing = utools.db.get(key);
     const doc = {
         _id: key,
@@ -107,7 +102,6 @@ function saveProvider(appType, providerData) {
         createdAt: providerData.createdAt || (existing ? existing.createdAt : new Date().toISOString())
     };
     utools.db.put(doc);
-    // 读取 API Key
     if (apiKey) {
         utools.dbCryptoStorage.setItem("apikey_" + appType + "_" + id, apiKey);
     }
@@ -117,7 +111,6 @@ function deleteProvider(appType, providerId) {
     utools.db.remove(getProviderKey(appType, providerId));
     utools.dbCryptoStorage.removeItem("apikey_" + appType + "_" + providerId);
     try {
-        // 懒加载 proxy 模块，打破循环依赖
         var proxy = require("./proxy");
         var groups = proxy.listRouteGroups(appType);
         groups.forEach(function (g) {
@@ -127,7 +120,6 @@ function deleteProvider(appType, providerId) {
                 g.appType = appType;
                 if (g.members.length === 0) {
                     proxy.deleteRouteGroup(appType, g.id);
-                    // 路由组清空 + 代理正在运行 → 自动停掉代理
                     if (proxy.proxyRuntime._active === appType) {
                         proxy.stopProxy(appType);
                         proxy.restoreApp(appType);
@@ -173,7 +165,6 @@ function switchProvider(appType, providerId) {
         return { success: false, error: e.message };
     }
 }
-// 标记当前供应商（isCurrent 键纯内存标记）
 function markCurrent(appType, providerId) {
     const all = listProviders(appType);
     all.forEach(function (p) {
@@ -185,15 +176,11 @@ function markCurrent(appType, providerId) {
         }
     });
 }
-// 读取当前供应商
 function getCurrentProviderId(appType) {
     const all = listProviders(appType);
     const current = all.find(function (p) { return p.isCurrent; });
     return current ? current.id : null;
 }
-// 进入插件时重新应用已激活的供应商：将真实配置文件强制写回本软件的版本（覆盖外部工具的修改）
-// 仅处理数据库中确实标记了 isCurrent 的 app；代理正在运行时跳过该 app，避免破坏代理接管状态
-// 记录/读取用户上次使用的 agent（下次进入插件只需重新激活这一个）
 function setLastActiveApp(appType) {
     try {
         utools.dbStorage.setItem("cctoggle_last_active_app", appType);

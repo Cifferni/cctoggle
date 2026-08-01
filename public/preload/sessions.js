@@ -1,26 +1,18 @@
-// @ts-nocheck TODO: 逐步添加类型注解后移除
-// uTools ccToggle - sessions.js
-// 会话管理：读取各 AI 应用的本地会话数据
 var utils = require("./utils");
 var fs = utils.fs;
 var path = utils.path;
 var getHomeDir = utils.getHomeDir;
-// --- 扫描缓存 ---
 var _scanCache = {
-    data: null, // { sessions, files, canEarlyStop }
+    data: null,
     timestamp: 0,
     TTL: 30000,
 };
-var _sessionCache = {}; // filePath -> full messages (on-demand)
+var _sessionCache = {};
 function _clearScanCache() {
     _scanCache.data = null;
     _scanCache.timestamp = 0;
 }
-// ============================================================
-// 大文件优化：只读头尾，提取元数据
-// ============================================================
 var CHUNK_SIZE = 4096;
-// 一次打开文件，读取头部和尾部（只 open/stat/close 一次）
 async function _readHeadAndTail(filePath) {
     var fd;
     try {
@@ -31,12 +23,10 @@ async function _readHeadAndTail(filePath) {
     }
     try {
         var size = (await fd.stat()).size;
-        // 读头部
         var headLen = Math.min(CHUNK_SIZE, size);
         var headBuf = Buffer.alloc(headLen);
         await fd.read(headBuf, 0, headLen, 0);
         var head = headBuf.toString("utf8").split(/\r?\n/);
-        // 读尾部（文件够大时）
         var tail = [];
         if (size > CHUNK_SIZE) {
             var tailPos = size - CHUNK_SIZE;
@@ -53,7 +43,6 @@ async function _readHeadAndTail(filePath) {
         await fd.close();
     }
 }
-// 统计 JSONL 中的消息行数（user/assistant/human 类型）
 function _countMessageLines(lines) {
     var count = 0;
     for (var i = 0; i < lines.length; i++) {
@@ -67,21 +56,15 @@ function _countMessageLines(lines) {
                 || (d.type === "message" && d.message && (d.message.role === "user" || d.message.role === "assistant"))))
                 count++;
         }
-        catch (e) { /* skip */ }
+        catch (e) { }
     }
     return count;
 }
-// 快速统计消息数：直接数头尾的消息行
 function _estimateMessageCount(headLines, tailLines, size) {
-    // 小文件：头尾重叠，直接数头部
     if (size <= CHUNK_SIZE * 2)
         return _countMessageLines(headLines);
-    // 大文件：头尾各数一遍（中间的数不到，但比瞎猜准）
     return _countMessageLines(headLines) + _countMessageLines(tailLines);
 }
-// ============================================================
-// Claude / Claude Desktop 元数据解析
-// ============================================================
 async function _parseClaudeMeta(filePath, projectName) {
     var r = await _readHeadAndTail(filePath);
     var headLines = r.head;
@@ -93,7 +76,6 @@ async function _parseClaudeMeta(filePath, projectName) {
     var tokenUsage = 0;
     var lastModel = "";
     var projectPath = "";
-    // 解析头部行
     for (var i = 0; i < headLines.length; i++) {
         var line = headLines[i];
         if (!line || line[0] !== "{")
@@ -132,7 +114,6 @@ async function _parseClaudeMeta(filePath, projectName) {
             }
         }
     }
-    // 解析尾部行（补充 lastTs、tokenUsage）
     for (var j = 0; j < tailLines.length; j++) {
         var line2 = tailLines[j];
         if (!line2 || line2[0] !== "{")
@@ -157,7 +138,6 @@ async function _parseClaudeMeta(filePath, projectName) {
             }
         }
     }
-    // 用文件大小估算消息数
     var messageCount = _estimateMessageCount(headLines, tailLines, r.size);
     if (!title)
         title = sessionId.substring(0, 12) + "...";
@@ -177,9 +157,6 @@ async function _parseClaudeMeta(filePath, projectName) {
         filePath: filePath,
     };
 }
-// ============================================================
-// Codex 元数据解析
-// ============================================================
 async function _parseCodexMeta(filePath) {
     var r = await _readHeadAndTail(filePath);
     var headLines = r.head;
@@ -273,9 +250,6 @@ async function _parseCodexMeta(filePath) {
         filePath: filePath,
     };
 }
-// ============================================================
-// OpenClaw 元数据解析
-// ============================================================
 async function _parseOpenClawMeta(filePath, agentId) {
     var r = await _readHeadAndTail(filePath);
     var headLines = r.head;
@@ -374,9 +348,6 @@ async function _parseOpenClawMeta(filePath, agentId) {
         filePath: filePath,
     };
 }
-// ============================================================
-// 收集文件路径 + mtime（按 mtime 倒序）
-// ============================================================
 async function _collectFilesWithMtime(dirPath, recursive) {
     var results = [];
     var entries;
@@ -406,9 +377,6 @@ async function _collectFilesWithMtime(dirPath, recursive) {
     }
     return results;
 }
-// ============================================================
-// Claude / Claude Desktop 扫描（带分页）
-// ============================================================
 async function _scanClaudeSessions(home, opts) {
     opts = opts || {};
     var offset = opts.offset || 0;
@@ -422,7 +390,6 @@ async function _scanClaudeSessions(home, opts) {
     catch (e) {
         return { sessions: sessions, totalFiles: 0 };
     }
-    // 收集所有文件路径 + mtime
     var allFiles = [];
     for (var i = 0; i < entries.length; i++) {
         var ent = entries[i];
@@ -451,9 +418,7 @@ async function _scanClaudeSessions(home, opts) {
             allFiles.push({ path: filePath, mtime: st.mtimeMs, project: ent.name });
         }
     }
-    // 按 mtime 倒序排序
     allFiles.sort(function (a, b) { return b.mtime - a.mtime; });
-    // 扫描：跳过 offset 个，取 limit 个
     var skipped = 0;
     for (var k = 0; k < allFiles.length; k++) {
         var f = allFiles[k];
@@ -480,14 +445,12 @@ async function _scanClaudeDesktopSessions(home, opts) {
         entries = await fs.promises.readdir(projectsDir, { withFileTypes: true });
     }
     catch (e) {
-        // 如果配置的路径不存在，尝试默认路径
         if (utils.getAgentSessionPath("claude-desktop")) {
             projectsDir = path.join(home, ".claude-desktop", "projects");
             try {
                 entries = await fs.promises.readdir(projectsDir, { withFileTypes: true });
             }
             catch (e2) {
-                // 继续尝试 APPDATA
             }
         }
         if (!entries) {
@@ -561,9 +524,6 @@ async function _scanClaudeDesktopSessions(home, opts) {
     }
     return { sessions: sessions, totalFiles: allFiles.length };
 }
-// ============================================================
-// Codex 扫描（带分页，目录结构天然按时间排序）
-// ============================================================
 async function _scanCodexSessions(home, opts) {
     opts = opts || {};
     var offset = opts.offset || 0;
@@ -571,7 +531,7 @@ async function _scanCodexSessions(home, opts) {
     var sessionsDir = utils.getAgentSessionPath("codex") || path.join(home, ".codex", "sessions");
     var sessions = [];
     var totalFiles = 0;
-    var scanned = 0; // 已处理（跳过或解析）的文件数
+    var scanned = 0;
     var years;
     try {
         years = await fs.promises.readdir(sessionsDir, { withFileTypes: true });
@@ -579,7 +539,6 @@ async function _scanCodexSessions(home, opts) {
     catch (e) {
         return { sessions: sessions, totalFiles: 0 };
     }
-    // 从最新日期反向遍历，目录结构天然有序
     var yearNames = years.filter(function (e) { return e.isDirectory(); }).map(function (e) { return e.name; }).sort().reverse();
     for (var yi = 0; yi < yearNames.length; yi++) {
         var yearDir = path.join(sessionsDir, yearNames[yi]);
@@ -612,13 +571,13 @@ async function _scanCodexSessions(home, opts) {
                 }
                 var jsonlFiles = files.filter(function (f) { return /\.jsonl$/i.test(f); }).sort().reverse();
                 for (var fi = 0; fi < jsonlFiles.length; fi++) {
-                    totalFiles++; // 始终统计总数
+                    totalFiles++;
                     if (scanned < offset) {
                         scanned++;
                         continue;
-                    } // 跳过 offset 之前的
+                    }
                     if (sessions.length >= limit)
-                        continue; // 够了只计数不解析
+                        continue;
                     var session = await _parseCodexMeta(path.join(dayDir, jsonlFiles[fi]));
                     if (session)
                         sessions.push(session);
@@ -629,9 +588,6 @@ async function _scanCodexSessions(home, opts) {
     }
     return { sessions: sessions, totalFiles: totalFiles };
 }
-// ============================================================
-// OpenClaw 扫描（带分页）
-// ============================================================
 async function _scanOpenClawSessions(home, opts) {
     opts = opts || {};
     var offset = opts.offset || 0;
@@ -690,10 +646,6 @@ async function _scanOpenClawSessions(home, opts) {
     }
     return { sessions: sessions, totalFiles: allFiles.length };
 }
-// ============================================================
-// 加载会话详情（含完整消息历史）
-// ============================================================
-// 从文件路径推断应用类型
 function _detectApp(filePath) {
     if (filePath.indexOf(".codex") >= 0)
         return "codex";
@@ -703,7 +655,6 @@ function _detectApp(filePath) {
         return "claude-desktop";
     return "claude";
 }
-// 从 content 字段提取文本
 function _extractContent(content) {
     if (!content)
         return "";
@@ -724,7 +675,6 @@ function _extractContent(content) {
     }
     return JSON.stringify(content);
 }
-// 解析 OpenClaw 消息
 function _parseOpenClawMessages(lines) {
     var messages = [];
     for (var i = 0; i < lines.length; i++) {
@@ -749,7 +699,6 @@ function _parseOpenClawMessages(lines) {
     }
     return messages;
 }
-// 解析 Codex 消息
 function _parseCodexMessages(lines) {
     var messages = [];
     for (var i = 0; i < lines.length; i++) {
@@ -774,7 +723,6 @@ function _parseCodexMessages(lines) {
     }
     return messages;
 }
-// 解析 Claude / Claude Desktop 消息
 function _parseClaudeMessages(lines) {
     var messages = [];
     for (var i = 0; i < lines.length; i++) {
@@ -803,7 +751,6 @@ function _parseClaudeMessages(lines) {
     }
     return messages;
 }
-// 按应用类型分发解析
 var _MESSAGE_PARSERS = {
     openclaw: _parseOpenClawMessages,
     codex: _parseCodexMessages,
@@ -823,7 +770,6 @@ async function loadSessionDetail(filePath) {
         return null;
     }
     var app = _detectApp(filePath);
-    // Claude 路径可能是 OpenClaw 格式
     if (app === "claude") {
         var firstLine = text.split(/\r?\n/)[0] || "";
         if (firstLine.indexOf('"type":"session"') >= 0 && firstLine.indexOf('"version":3') >= 0)
@@ -835,9 +781,6 @@ async function loadSessionDetail(filePath) {
     _sessionCache[filePath] = messages;
     return messages;
 }
-// ============================================================
-// 删除会话
-// ============================================================
 function deleteSession(filePath) {
     try {
         if (fs.existsSync(filePath)) {
@@ -852,9 +795,6 @@ function deleteSession(filePath) {
         return { success: false, error: String(e && e.message ? e.message : e) };
     }
 }
-// ============================================================
-// 排序函数
-// ============================================================
 function _sortSessions(sessions, sort) {
     var sorted = sessions.slice();
     switch (sort) {
@@ -880,9 +820,6 @@ function _sortSessions(sessions, sort) {
     }
     return sorted;
 }
-// ============================================================
-// 主入口：扫描会话
-// ============================================================
 var SCAN_MAP = {
     claude: _scanClaudeSessions,
     codex: _scanCodexSessions,
@@ -899,7 +836,6 @@ async function scanSessions(app, opts) {
         var home = getHomeDir();
         var now = Date.now();
         var cacheKey = app || "all";
-        // 无搜索时可用缓存
         var cached = _scanCache.data && _scanCache.data[cacheKey];
         var useCache = !search && cached && (now - _scanCache.timestamp < _scanCache.TTL);
         if (useCache) {
@@ -908,7 +844,6 @@ async function scanSessions(app, opts) {
             var page = sorted.slice(offset, offset + limit);
             return { sessions: page, total: total };
         }
-        // 扫描所有文件头部元数据（只读 4KB，很快）
         var all = [];
         if (app && SCAN_MAP[app]) {
             var r = await SCAN_MAP[app](home, { offset: 0, limit: Infinity });
@@ -925,14 +860,12 @@ async function scanSessions(app, opts) {
                 all = all.concat(results[i].sessions);
             }
         }
-        // 缓存（无搜索 + 有数据时）
         if (!search && limit > 0) {
             if (!_scanCache.data)
                 _scanCache.data = {};
             _scanCache.data[cacheKey] = { sessions: all };
             _scanCache.timestamp = now;
         }
-        // 搜索过滤
         if (search) {
             all = all.filter(function (s) {
                 return (s.title || "").toLowerCase().indexOf(search) >= 0
@@ -940,7 +873,6 @@ async function scanSessions(app, opts) {
                     || (s.model || "").toLowerCase().indexOf(search) >= 0;
             });
         }
-        // 排序 + 分页
         all = _sortSessions(all, sort);
         var total2 = all.length;
         var page2 = all.slice(offset, offset + limit);
@@ -950,9 +882,6 @@ async function scanSessions(app, opts) {
         return { sessions: [], total: 0, error: String(e && e.message ? e.message : e) };
     }
 }
-// ============================================================
-// 批量删除 / 清空缓存
-// ============================================================
 function clearAllSessions(filePaths) {
     if (!Array.isArray(filePaths))
         return { success: false, error: "invalid input" };

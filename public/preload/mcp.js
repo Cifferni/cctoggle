@@ -1,6 +1,3 @@
-// @ts-nocheck TODO: 逐步添加类型注解后移除
-// uTools ccToggle - mcp.js
-// MCP Server 配置管理：配置文件为源 + db 仅存 apps 映射
 var utils = require("./utils");
 var cleanup = require("./cleanup");
 var fs = utils.fs;
@@ -9,7 +6,6 @@ var getHomeDir = utils.getHomeDir;
 var ensureDir = utils.ensureDir;
 var APPS_KEY = "cctoggle_mcp_apps";
 var ALL_APPS = ["claude", "claude-desktop", "codex", "openclaw"];
-// ─────────── 配置文件路径 ───────────
 var CONFIG_PATHS = {
     claude: function () {
         var configured = utils.getAgentConfigPath("claude");
@@ -31,7 +27,6 @@ var CONFIG_PATHS = {
         return path.join(getHomeDir(), ".openclaw", "openclaw.json");
     },
 };
-// ─────────── db apps 映射读写 ───────────
 function _emptyMapping() {
     var m = { disabled: [] };
     ALL_APPS.forEach(function (a) { m[a] = []; });
@@ -64,7 +59,6 @@ function _putMapping(mapping) {
         doc._rev = existing._rev;
     utools.db.put(doc);
 }
-// ─────────── 配置文件读取 ───────────
 function _readJsonConfig(filePath) {
     try {
         if (fs.existsSync(filePath)) {
@@ -92,7 +86,6 @@ function _readCodexMcpServers() {
         var m = line.match(/^\s*\[\s*mcp_servers\.([^\]]+?)\s*\]\s*$/);
         if (m) {
             var slug = m[1].trim();
-            // 跳过子节（如 mcp_servers.xxx.env）和非 MCP 的沙箱配置
             if (slug.indexOf(".") !== -1 || slug === "node_repl") {
                 currentSlug = null;
                 currentEntry = {};
@@ -138,7 +131,6 @@ function _readAllConfigs() {
         openclaw: _readJsonConfig(CONFIG_PATHS.openclaw()),
     };
 }
-// ─────────── 配置文件写入 ───────────
 function _writeJsonMcpServer(filePath, name, entryOrNull) {
     var config = {};
     try {
@@ -204,7 +196,6 @@ function _writeCodexMcpServer(slug, entryOrNull) {
         fs.writeFileSync(configPath, cleaned, "utf8");
     }
 }
-// ─────────── 配置文件条目读写 ───────────
 function _writeToApp(appType, name, entry) {
     switch (appType) {
         case "claude":
@@ -225,7 +216,6 @@ function _writeToApp(appType, name, entry) {
 function _removeFromApp(appType, name) {
     _writeToApp(appType, name, null);
 }
-// ─────────── 构建配置文件条目 ───────────
 function _buildConfigEntry(server) {
     if (server.stdio) {
         var entry = { command: server.stdio.command || "", args: server.stdio.args || [] };
@@ -247,11 +237,9 @@ function _buildConfigEntry(server) {
     }
     return null;
 }
-// 从配置条目推断类型
 function _inferType(def) {
     return (def && def.url) ? "streamable-http" : "stdio";
 }
-// 从配置条目构建 server 传输字段
 function _buildTransport(type, def) {
     if (!def)
         return {};
@@ -261,7 +249,6 @@ function _buildTransport(type, def) {
     var transport = { url: def.url || "", headers: def.headers || {}, authType: def.authType || "none", apiKey: def.apiKey || "" };
     return type === "sse" ? { sse: transport } : { http: transport };
 }
-// 收集所有配置文件 + 映射中出现的 server name
 function _collectAllNames(configs, mapping) {
     var nameSet = {};
     ALL_APPS.forEach(function (app) {
@@ -270,7 +257,6 @@ function _collectAllNames(configs, mapping) {
     });
     return Object.keys(nameSet);
 }
-// 计算 server 关联的 apps
 function _resolveApps(name, mapping, configs) {
     var apps = [];
     ALL_APPS.forEach(function (app) {
@@ -285,7 +271,6 @@ function _resolveApps(name, mapping, configs) {
     }
     return apps;
 }
-// 从配置文件中查找 server 定义
 function _findDef(name, configs) {
     for (var i = 0; i < ALL_APPS.length; i++) {
         var cfg = configs[ALL_APPS[i]];
@@ -294,7 +279,6 @@ function _findDef(name, configs) {
     }
     return null;
 }
-// ─────────── CRUD ───────────
 function _buildServer(name, def, apps, disabledSet) {
     var type = _inferType(def);
     var server = {
@@ -347,13 +331,11 @@ function saveMcpServer(data) {
         return "";
     var mapping = _getMapping();
     var newApps = data.apps || [];
-    // 获取旧的 apps
     var oldApps = [];
     ALL_APPS.forEach(function (app) {
         if (mapping[app].indexOf(name) !== -1)
             oldApps.push(app);
     });
-    // 更新映射
     ALL_APPS.forEach(function (app) {
         var idx = mapping[app].indexOf(name);
         if (newApps.indexOf(app) !== -1) {
@@ -366,12 +348,10 @@ function saveMcpServer(data) {
         }
     });
     _putMapping(mapping);
-    // 从旧 apps 中移除
     oldApps.forEach(function (app) {
         if (newApps.indexOf(app) === -1)
             _removeFromApp(app, name);
     });
-    // 写入新 apps
     var entry = _buildConfigEntry(data);
     if (entry) {
         newApps.forEach(function (app) { _writeToApp(app, name, entry); });
@@ -380,20 +360,17 @@ function saveMcpServer(data) {
 }
 function deleteMcpServer(name) {
     var mapping = _getMapping();
-    // 从所有关联 app 配置文件中移除
     ALL_APPS.forEach(function (app) {
         if (mapping[app].indexOf(name) !== -1) {
             _removeFromApp(app, name);
             mapping[app] = mapping[app].filter(function (n) { return n !== name; });
         }
     });
-    // 也从配置文件中移除（处理不在映射中但存在于配置文件的情况）
     var configs = _readAllConfigs();
     ALL_APPS.forEach(function (app) {
         if ((configs[app] || {})[name])
             _removeFromApp(app, name);
     });
-    // 从 disabled 列表中移除
     mapping.disabled = (mapping.disabled || []).filter(function (n) { return n !== name; });
     _putMapping(mapping);
 }
@@ -401,7 +378,6 @@ function toggleMcpServer(name) {
     var mapping = _getMapping();
     if (!mapping.disabled)
         mapping.disabled = [];
-    // 确保 apps 映射存在
     var apps = _resolveApps(name, mapping, _readAllConfigs());
     if (apps.length > 0) {
         apps.forEach(function (app) {
@@ -411,7 +387,6 @@ function toggleMcpServer(name) {
     }
     var isDisabled = mapping.disabled.indexOf(name) !== -1;
     if (isDisabled) {
-        // 启用：从 disabled 移除 + 写入配置文件
         mapping.disabled = mapping.disabled.filter(function (n) { return n !== name; });
         _putMapping(mapping);
         var configs = _readAllConfigs();
@@ -421,18 +396,15 @@ function toggleMcpServer(name) {
         return true;
     }
     else {
-        // 禁用：加入 disabled + 从配置文件移除
         mapping.disabled.push(name);
         _putMapping(mapping);
         apps.forEach(function (app) { _removeFromApp(app, name); });
         return false;
     }
 }
-// ─────────── 同步：从配置文件导入到 mapping ───────────
 function syncFromConfigFiles() {
     var configs = _readAllConfigs();
     var mapping = _getMapping();
-    // 配置文件里有但 mapping 里没有 → 添加
     ALL_APPS.forEach(function (app) {
         var configServers = configs[app] || {};
         Object.keys(configServers).forEach(function (name) {
@@ -441,11 +413,9 @@ function syncFromConfigFiles() {
             }
         });
     });
-    // 清理残留条目（如旧版 node_repl）
     cleanup.cleanMcpMapping(mapping, configs, ALL_APPS);
     _putMapping(mapping);
 }
-// ─────────── 工具函数 ───────────
 function _slugify(name) {
     return (name || "mcp").toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/^_+|_+$/g, "") || "mcp";
 }
@@ -473,7 +443,6 @@ function _removeTomlSection(text, tableNameRegex) {
     }
     return result.join("\n");
 }
-// ─────────── 导出 ───────────
 module.exports = {
     listMcpServers: listMcpServers,
     getMcpServer: getMcpServer,

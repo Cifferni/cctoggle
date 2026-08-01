@@ -1,23 +1,16 @@
-// @ts-nocheck TODO: 逐步添加类型注解后移除
-// uTools ccToggle - proxy.js
-// 路由组、代理启停、接管/还原、端口管理
 var utils = require("./utils");
 var configRw = require("./config-rw");
 var providerDb = require("./provider-db");
 var generateId = utils.generateId;
 var getHomeDir = utils.getHomeDir;
-// ============ 路由（代理网关） ============
 var ROUTE_PREFIX = "cctoggle_route_";
-var BACKUP_KEY = "cctoggle_route_backup"; // 接管前的原始配置备份
-// 后台 daemon 窗口引用（每个 appType 一个）
-var daemonWins = {}; // { codex: BrowserWindow, claude: ..., gemini: ... }
-var proxyRuntime = {}; // { [appType]: { running, port, groupId, members, logs } }
+var BACKUP_KEY = "cctoggle_route_backup";
+var daemonWins = {};
+var proxyRuntime = {};
 function _routeKey(appType, id) { return ROUTE_PREFIX + appType + "_" + id; }
-// 生成本地代理访问令牌（仅本机持有者可用代理转发）
 function _genProxyToken() {
     return "utct-" + generateId() + generateId() + Math.random().toString(36).slice(2, 10);
 }
-// 确保路由组有 authToken，没有则生成并持久化，返回 token
 function _ensureRouteToken(appType, group) {
     if (group.authToken)
         return group.authToken;
@@ -74,7 +67,7 @@ function saveRouteGroup(group) {
 }
 function deleteRouteGroup(appType, id) {
     try {
-        stopProxy(appType); // 若在跑先停
+        stopProxy(appType);
         utools.db.remove(_routeKey(appType, id));
         return true;
     }
@@ -82,7 +75,6 @@ function deleteRouteGroup(appType, id) {
         return false;
     }
 }
-// 组装 daemon 需要的完整成员信息（含 apiKey 明文）
 function _resolveMembers(appType, group) {
     return (group.members || []).map(function (m) {
         const p = providerDb.getProvider(appType, m.providerId);
@@ -125,7 +117,6 @@ function startProxy(appType, groupId) {
         daemonWins[appType] = win;
         proxyRuntime[appType] = {
             running: true, port: group.listenPort, groupId: groupId,
-            // 先用配置成员占位，不依赖首次 proxy-stat 事件，面板随开随显
             members: members.map(function (m) {
                 return { id: m.providerId, name: m.name, state: "closed", fails: 0, openUntil: 0, latency: 0, up: true };
             }),
@@ -154,14 +145,12 @@ function stopProxy(appType) {
         proxyRuntime[appType].running = false;
     if (proxyRuntime._active === appType)
         delete proxyRuntime._active;
-    // 通知可能的孤儿 daemon（无句柄）通过控制文档自停，释放端口
     try {
         const _ctl = "cctoggle_proxy_ctl_" + appType;
         const prevCtl = utools.db.get(_ctl);
         utools.db.put({ _id: _ctl, _rev: prevCtl ? prevCtl._rev : undefined, stop: true, ts: Date.now() });
     }
     catch (e) { }
-    // 标记 db 实时状态为已停止，避免面板误显运行中
     try {
         const _id = "cctoggle_proxy_live_" + appType;
         const prev = utools.db.get(_id);
@@ -171,7 +160,6 @@ function stopProxy(appType) {
     catch (e) { }
     return { success: true };
 }
-// 进入插件时对账：领养仍在服务的孤儿 daemon，清理已死/过期的残留状态
 function reconcileProxies() {
     const apps = ["codex", "claude", "gemini", "openclaw"];
     apps.forEach(function (appType) {
@@ -185,7 +173,6 @@ function reconcileProxies() {
         const fresh = live.running && (Date.now() - (live.updatedAt || 0) < 5000);
         const hasHandle = !!daemonWins[appType];
         if (fresh && !hasHandle) {
-            // 孤儿 daemon 仍在转发：不杀，领养到内存状态，面板/指标继续从 db 读
             proxyRuntime[appType] = {
                 running: true, port: live.port || 0, groupId: live.groupId || null,
                 members: [], logs: (proxyRuntime[appType] && proxyRuntime[appType].logs) || [],
@@ -194,7 +181,6 @@ function reconcileProxies() {
             proxyRuntime._active = appType;
         }
         else if (!fresh && live.running) {
-            // db 说运行但已不新鲜（daemon 已死）：清掉残留，避免面板误显运行中
             try {
                 utools.db.remove(live);
             }
@@ -221,7 +207,6 @@ function _fallbackMembers(appType, groupId) {
 }
 function getProxyStatus(appType) {
     const rt = proxyRuntime[appType] || {};
-    // 优先从 utools.db 读 daemon 写入的实时状态（跨窗口/重载也能拿到）
     let live = null;
     try {
         live = utools.db.get("cctoggle_proxy_live_" + appType);
@@ -246,7 +231,6 @@ function getProxyStatus(appType) {
     if (!proxyRuntime[appType])
         return { running: false };
     let members = rt.members || [];
-    // 傅底：运行中但尚未拿到实时状态时，直接用配置成员展示
     if (rt.running && members.length === 0 && rt.groupId) {
         members = _fallbackMembers(appType, rt.groupId);
     }
@@ -264,7 +248,6 @@ function getProxyStatus(appType) {
         logs: (rt.logs || []).slice(-200),
     };
 }
-// 主窗调用一次即可注册全局回调；daemon → 主窗事件透传到 window
 function onProxyEvent(cb) {
     if (typeof cb !== "function")
         return;
@@ -272,11 +255,9 @@ function onProxyEvent(cb) {
         const { ipcRenderer } = require("electron");
         ipcRenderer.removeAllListeners("parent-message");
         ipcRenderer.on("parent-message", function (_event, ...args) {
-            // uTools 独立窗口 sendToParent 落地为 parent-message 事件
             const [channel, data] = args;
             try {
                 if (channel === "proxy-stat" && data) {
-                    // 无法反查 appType，简单方案：同端口匹配
                     Object.keys(proxyRuntime).forEach(function (app) {
                         const rt = proxyRuntime[app];
                         if (rt && rt.port === data.port) {
@@ -302,7 +283,6 @@ function onProxyEvent(cb) {
                     });
                 }
                 else if (channel === "proxy-usage" && data) {
-                    // 统计改为扫描本地 CLI 日志（见 scanUsageLogs），代理事件不再写库，避免双写与关面板丢数据
                 }
             }
             catch (e) { }
@@ -314,7 +294,6 @@ function onProxyEvent(cb) {
     }
     catch (e) { }
 }
-// —— 接管 / 还原 ——
 function _backupCurrent(appType) {
     const cur = providerDb.getCurrentProviderId(appType);
     const doc = utools.db.get(BACKUP_KEY) || { _id: BACKUP_KEY };
@@ -329,7 +308,6 @@ function takeoverApp(appType, listenPort) {
     try {
         _backupCurrent(appType);
         const baseUrl = "http://127.0.0.1:" + (listenPort || 8788);
-        // 客户端配置里写入代理令牌作为 key；daemon 校验后再换成真实上游 key 转发
         let proxyToken = "sk-utoolscctoggle-proxy";
         try {
             const rt0 = proxyRuntime[appType];
@@ -337,7 +315,7 @@ function takeoverApp(appType, listenPort) {
             if (g0)
                 proxyToken = _ensureRouteToken(appType, g0);
         }
-        catch (e) { /* 回退到占位符 */ }
+        catch (e) { }
         let proxyModel = "";
         const proxyCatalog = [];
         const proxyCatalogSeen = {};
@@ -363,16 +341,15 @@ function takeoverApp(appType, listenPort) {
                 }
             });
         }
-        catch (e) { /* ignore */ }
-        // 用一个虚拟 provider 走原版 switch 逻辑写入配置
+        catch (e) { }
         const fake = {
             id: "__proxy__",
             appType: appType,
             name: "utoolscctoggle-proxy",
             baseUrl: appType === "codex" ? baseUrl + "/v1" : baseUrl,
-            apiKey: proxyToken, // 代理令牌；daemon 校验后再用真实成员 key 转发
+            apiKey: proxyToken,
             model: proxyModel || "gpt-4o",
-            modelCatalog: proxyCatalog, // 用户可自行 override
+            modelCatalog: proxyCatalog,
             configType: appType === "claude" ? "anthropic" : (appType === "gemini" ? "gemini" : (appType === "openclaw" ? "openclaw" : "openai")),
             extraConfig: "",
         };
@@ -397,8 +374,6 @@ function restoreApp(appType) {
     const r = providerDb.switchProvider(appType, bk.previousProviderId);
     return r;
 }
-// 快捷开关：启动 appType 的 默认路由组（第一个）
-// 默认端口（每 App 一套，可在设置里修改）
 var DEFAULT_PROXY_PORT = 8788;
 var PORT_KEY = "cctoggle_route_port";
 function getProxyPort(appType) {
@@ -415,13 +390,11 @@ function setProxyPort(appType, port) {
     const p = Number(port);
     if (!p || p < 1024 || p > 65535)
         return { success: false, error: "port must be 1024-65535" };
-    // 运行中不允许改
     if (proxyRuntime._active === appType) {
         return { success: false, error: "proxy is running" };
     }
     const doc = utools.db.get(PORT_KEY) || { _id: PORT_KEY };
     doc[appType] = p;
-    // 同步更新该 App 的首个路由组
     const groups = listRouteGroups(appType);
     if (groups[0]) {
         const g = getRouteGroup(appType, groups[0].id);
@@ -432,7 +405,6 @@ function setProxyPort(appType, port) {
     }
     return { success: true, port: p };
 }
-// 保证存在一个可用路由组：没有则用当前 App 下全部供应商自动生成
 function ensureDefaultGroup(appType) {
     const groups = listRouteGroups(appType);
     const all = providerDb.listProviders(appType);
@@ -474,13 +446,11 @@ function ensureDefaultGroup(appType) {
     return getRouteGroup(appType, id);
 }
 function toggleProxyQuick(appType) {
-    // 点击当前已开启的 App = 关闭
     if (proxyRuntime._active === appType) {
         stopProxy(appType);
         restoreApp(appType);
         return { success: true, running: false };
     }
-    // 全局只允许一个 daemon：切换到别的 App 前先关旧的
     if (proxyRuntime._active) {
         stopProxy(proxyRuntime._active);
         restoreApp(proxyRuntime._active);

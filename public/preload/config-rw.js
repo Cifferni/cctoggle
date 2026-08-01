@@ -1,6 +1,3 @@
-// @ts-nocheck TODO: 逐步添加类型注解后移除
-// uTools ccToggle - config-rw.js
-// 各 AI 工具配置文件读写
 var utils = require("./utils");
 var fs = utils.fs;
 var path = utils.path;
@@ -15,7 +12,6 @@ var getClaudeDesktopConfigPath = utils.getClaudeDesktopConfigPath;
 var ensureDir = utils.ensureDir;
 var getCodexInstructions = utils.getCodexInstructions;
 var getAgentConfigPath = utils.getAgentConfigPath;
-// ——————————— Codex 配置读写 ———————————
 function readCodexConfig() {
     try {
         const configDir = getAgentConfigPath("codex");
@@ -54,12 +50,9 @@ function writeCodexConfig(auth, configToml) {
     fs.writeFileSync(configPath, merged, "utf8");
     return true;
 }
-// 将插件生成的 provider 配置合并进现有 config.toml
-// 只替换顶层 provider 相关键与本次写入声明的 [表] 段，其余内容原样保留
 function mergeCodexConfig(existing, incoming) {
     if (!existing || !existing.trim())
         return incoming;
-    // header 为 null 的块表示文件开头的顶层键区。
     function parseBlocks(text) {
         const blocks = [];
         let cur = { header: null, tableName: null, lines: [] };
@@ -76,7 +69,6 @@ function mergeCodexConfig(existing, incoming) {
         blocks.push(cur);
         return blocks;
     }
-    // 顶层键名（形如 `key = ...`），用于识别本次写入声明的顶层键
     function topLevelKeys(topBlock) {
         const keys = {};
         (topBlock ? topBlock.lines : []).forEach(function (line) {
@@ -95,11 +87,9 @@ function mergeCodexConfig(existing, incoming) {
         if (b.header !== null && b.tableName)
             incomingTables[b.tableName] = true;
     });
-    // 本次是否声明了 model_providers.* 表；若声明则清除旧的所有 provider 表，避免残留废弃项
     const incomingHasProvider = Object.keys(incomingTables).some(function (t) {
         return t.indexOf("model_providers.") === 0;
     });
-    // 1) 合并顶层键区：保留旧文件里本次未声明的顶层键，覆盖本次声明的键
     const oldTop = oldBlocks.find(function (b) { return b.header === null; }) || { lines: [] };
     const mergedTopLines = [];
     oldTop.lines.forEach(function (line) {
@@ -111,7 +101,6 @@ function mergeCodexConfig(existing, incoming) {
     while (mergedTopLines.length && mergedTopLines[mergedTopLines.length - 1].trim() === "")
         mergedTopLines.pop();
     newTop.lines.forEach(function (line) { mergedTopLines.push(line); });
-    // 2) 表段：本次声明的表用新内容替换；旧文件里其余表原样保留
     const outParts = [];
     const topText = mergedTopLines.join("\n").replace(/\n+$/, "");
     if (topText.trim())
@@ -132,7 +121,6 @@ function mergeCodexConfig(existing, incoming) {
     });
     return outParts.join("\n\n") + "\n";
 }
-// ——————————— Claude 配置读写 ———————————
 function readClaudeSettings() {
     try {
         const configDir = getAgentConfigPath("claude");
@@ -153,14 +141,13 @@ function writeClaudeSettings(settings) {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");
     return true;
 }
-// ——————————— Claude Desktop 配置读写 ———————————
 function readClaudeDesktopConfig() {
     try {
         var p = getClaudeDesktopConfigPath();
         if (fs.existsSync(p))
             return JSON.parse(fs.readFileSync(p, "utf8"));
     }
-    catch (e) { /* JSON 损坏时回退默认 */ }
+    catch (e) { }
     return {};
 }
 function writeClaudeDesktopConfig(config) {
@@ -172,16 +159,13 @@ function writeClaudeDesktopConfig(config) {
 function switchProviderClaudeDesktop(provider) {
     if (!provider)
         return { success: false, error: "provider not found" };
-    // 读取现有配置，保留 mcpServers 等字段
     var config = readClaudeDesktopConfig();
     var env = {};
-    // 优先使用预设 settingsConfig.env
     if (provider.settingsConfig && provider.settingsConfig.env) {
         Object.keys(provider.settingsConfig.env).forEach(function (k) {
             env[k] = provider.settingsConfig.env[k];
         });
     }
-    // 兼容旧字段
     if (provider.model)
         env.ANTHROPIC_MODEL = provider.model;
     if (provider.apiKey) {
@@ -189,7 +173,6 @@ function switchProviderClaudeDesktop(provider) {
         env[field] = provider.apiKey;
     }
     config.env = env;
-    // 合并 extraConfig（JSON）
     try {
         var extra = JSON.parse(provider.extraConfig);
         Object.keys(extra).forEach(function (k) {
@@ -197,11 +180,10 @@ function switchProviderClaudeDesktop(provider) {
                 config[k] = extra[k];
         });
     }
-    catch (e) { /* ignore */ }
+    catch (e) { }
     writeClaudeDesktopConfig(config);
     return true;
 }
-// ——————————— Claude Onboarding 跳过 ———————————
 function readClaudeOnboarding() {
     try {
         var p = getClaudeJsonPath();
@@ -233,7 +215,6 @@ function setClaudeOnboarding(skip) {
     fs.writeFileSync(p, JSON.stringify(config, null, 2), "utf8");
     return true;
 }
-// ——————————— Gemini 配置读写 ———————————
 function readGeminiEnv() {
     try {
         const configDir = getAgentConfigPath("gemini");
@@ -254,7 +235,6 @@ function writeGeminiEnv(envContent) {
     fs.writeFileSync(envPath, envContent, "utf8");
     return true;
 }
-// ——————————— OpenClaw 配置读写 ———————————
 function readOpenClawConfig() {
     try {
         const configDir = getAgentConfigPath("openclaw");
@@ -262,7 +242,7 @@ function readOpenClawConfig() {
         if (fs.existsSync(p))
             return JSON.parse(fs.readFileSync(p, "utf8"));
     }
-    catch (e) { /* JSON5/损坏时回退默认 */ }
+    catch (e) { }
     return { models: { mode: "merge", providers: {} } };
 }
 function writeOpenClawConfig(config) {
@@ -272,7 +252,6 @@ function writeOpenClawConfig(config) {
     fs.writeFileSync(p, JSON.stringify(config, null, 2), "utf8");
     return true;
 }
-// ——————————— 综合读取 ———————————
 function getCurrentConfigs() {
     return {
         codex: readCodexConfig(),
@@ -281,9 +260,7 @@ function getCurrentConfigs() {
         gemini: readGeminiEnv()
     };
 }
-// ——————————— 供应商切换逻辑 ———————————
 function switchProviderCodex(provider) {
-    // 构建 auth.json
     const auth = Object.assign({}, provider.authData || {});
     if (provider.apiKey) {
         if (Object.keys(auth).length === 0) {
@@ -299,7 +276,6 @@ function switchProviderCodex(provider) {
     }
     const hasCatalog = Array.isArray(provider.modelCatalog) && provider.modelCatalog.length;
     const catalogFileName = "utoolscctoggle-model-catalog.json";
-    // 构建 config.toml
     let configToml = provider.extraConfig || "";
     if (!configToml) {
         const cleanName = (provider.name || "custom")
@@ -315,7 +291,6 @@ function switchProviderCodex(provider) {
             'model_reasoning_effort = "' + effort + '"',
             'disable_response_storage = true',
         ];
-        // 有多模型目录时写入引用，Codex 的 /model 菜单据此展示可选模型
         if (hasCatalog)
             lines.push('model_catalog_json = "' + catalogFileName + '"');
         lines.push('', '[model_providers.' + cleanName + ']', 'name = "' + cleanName + '"', 'base_url = "' + baseUrl + '"', 'wire_api = "' + wireApi + '"', 'requires_openai_auth = ' + (/^https?:\/\/(127\.0\.0\.1|localhost)/.test(baseUrl) ? 'false' : 'true'));
@@ -323,8 +298,6 @@ function switchProviderCodex(provider) {
     }
     if (hasCatalog) {
         try {
-            // 将前端精简字段(model/displayName/contextWindow)映射为 Codex 模型目录真实格式(下划线命名)，
-            // 并补齐 Codex 期望的字段默认值；前端若已填同名字段则以其为准。
             const catalogModels = provider.modelCatalog.map(function (m) {
                 const slug = m.slug || m.model || "";
                 const displayName = m.display_name || m.displayName || slug;
@@ -353,10 +326,8 @@ function switchProviderCodex(provider) {
                     supported_in_api: true,
                     priority: 1000,
                     visibility: "list",
-                    // 补齐 Codex 期望的其余字段默认值（此版本几乎全部必填）
                     additional_speed_tiers: [],
                     availability_nux: null,
-                    // 以下三项为用户偏好：优先用 provider 上的设置，未设置时回退默认
                     default_reasoning_summary: provider.reasoningSummary || "none",
                     default_verbosity: provider.verbosity || "low",
                     effective_context_window_percent: 95,
@@ -375,12 +346,11 @@ function switchProviderCodex(provider) {
             ensureDir(catalogPath);
             fs.writeFileSync(catalogPath, catalogJson, "utf8");
         }
-        catch (e) { /* ignore */ }
+        catch (e) { }
     }
     writeCodexConfig(auth, configToml);
     return true;
 }
-// 优先使用预设 settingsConfig，其次回退旧字段
 function switchProviderClaude(provider) {
     if (!provider)
         return { success: false, error: "provider not found" };
@@ -389,25 +359,21 @@ function switchProviderClaude(provider) {
         settings = JSON.parse(JSON.stringify(provider.settingsConfig));
     }
     settings.env = settings.env || {};
-    // 兼容旧字段
     if (provider.model)
         settings.env.ANTHROPIC_MODEL = provider.model;
-    // 写入 apiKey 到指定认证字段（默认 ANTHROPIC_AUTH_TOKEN）；未提供 apiKey 时不写，避免污染为 undefined
     if (provider.apiKey) {
         const field = provider.authField || (settings.env.ANTHROPIC_API_KEY !== undefined ? "ANTHROPIC_API_KEY" : "ANTHROPIC_AUTH_TOKEN");
         settings.env[field] = provider.apiKey;
     }
-    // 合并 extraConfig（JSON）
     try {
         const extra = JSON.parse(provider.extraConfig);
         Object.assign(settings, extra);
     }
-    catch (e) { /* ignore */ }
+    catch (e) { }
     writeClaudeSettings(settings);
     return true;
 }
 function switchProviderGemini(provider) {
-    // 收集 env
     const env = Object.assign({}, (provider.settingsConfig && provider.settingsConfig.env) || {});
     if (provider.baseUrl)
         env.GOOGLE_GEMINI_BASE_URL = provider.baseUrl;
@@ -415,7 +381,6 @@ function switchProviderGemini(provider) {
         env.GEMINI_MODEL = provider.model;
     if (provider.apiKey)
         env.GEMINI_API_KEY = provider.apiKey;
-    // 序列化 KEY=VALUE
     const lines = Object.keys(env).map(function (k) { return k + "=" + (env[k] == null ? "" : env[k]); });
     writeGeminiEnv(lines.join("\n") + "\n");
     return true;
@@ -428,7 +393,6 @@ function _ocRebaseRef(ref, key) {
     return i === -1 ? key + "/" + ref : key + ref.slice(i);
 }
 function switchProviderOpenclaw(provider) {
-    // OpenClaw 纯叠加式：所有供应商共存于 models.providers；切换时写入该供应商并设为默认
     const config = readOpenClawConfig();
     config.models = config.models || { mode: "merge", providers: {} };
     config.models.providers = config.models.providers || {};

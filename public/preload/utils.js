@@ -1,6 +1,3 @@
-// @ts-nocheck TODO: 逐步添加类型注解后移除
-// uTools ccToggle - utils.js
-// 工具函数与路径常量
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -37,7 +34,6 @@ function getClaudeDesktopConfigPath() {
         appData = "";
     }
     if (!appData || !appData.trim()) {
-        // fallback: macOS ~/Library/Application Support, Windows %APPDATA%
         if (process.platform === "darwin") {
             appData = path.join(getHomeDir(), "Library", "Application Support");
         }
@@ -47,7 +43,6 @@ function getClaudeDesktopConfigPath() {
     }
     return path.join(appData, "Claude", "claude_desktop_config.json");
 }
-// ─────────── 提示词文件路径 ───────────
 function getClaudeMdPath() {
     var configDir = getAgentConfigPath("claude");
     if (configDir)
@@ -73,7 +68,6 @@ function getOpenClawWorkspaceDir() {
         if (!fs.existsSync(openclawDir))
             return null;
         var entries = fs.readdirSync(openclawDir);
-        // 查找 workspace-* 目录
         for (var i = 0; i < entries.length; i++) {
             if (entries[i].indexOf("workspace-") === 0) {
                 var fullPath = path.join(openclawDir, entries[i]);
@@ -83,7 +77,7 @@ function getOpenClawWorkspaceDir() {
             }
         }
     }
-    catch (e) { /* ignore */ }
+    catch (e) { }
     return null;
 }
 function getOpenClawAgentsMdPath() {
@@ -92,7 +86,6 @@ function getOpenClawAgentsMdPath() {
         return null;
     return path.join(workspace, "AGENTS.md");
 }
-// 纯路径展开（~ → homeDir）
 function expandHome(p) {
     if (!p)
         return p;
@@ -102,8 +95,6 @@ function expandHome(p) {
         return path.join(getHomeDir(), p.slice(2));
     return p;
 }
-// ─────────── Agent 配置路径管理 ───────────
-// 获取默认的 agent 配置目录
 function getDefaultConfigDirs() {
     var home = getHomeDir();
     return {
@@ -113,7 +104,6 @@ function getDefaultConfigDirs() {
         openclaw: path.join(home, ".openclaw"),
     };
 }
-// 获取 agent 配置路径（基础路径，所有其他路径从此派生）
 function getAgentConfigPath(appType) {
     var configPaths = {};
     try {
@@ -127,12 +117,10 @@ function getAgentConfigPath(appType) {
     var defaults = getDefaultConfigDirs();
     return defaults[appType] || null;
 }
-// 获取 agent 会话路径（从配置路径派生）
 function getAgentSessionPath(appType) {
     var configDir = getAgentConfigPath(appType);
     if (!configDir)
         return null;
-    // 各 agent 的会话子目录
     var sessionSubDirs = {
         claude: "projects",
         codex: "sessions",
@@ -152,8 +140,6 @@ function ensureDir(filePath) {
 function generateId() {
     return Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
 }
-// Codex model_catalog_json requires base_instructions on each model (or parsing fails).
-// Hardcoded minimal instructions, always written on switch/proxy; no external file dependency.
 const CODEX_BASE_INSTRUCTIONS = [
     "You are Codex, a coding agent that collaborates with the user in a shared workspace until the task is genuinely handled.",
     "",
@@ -203,13 +189,11 @@ module.exports = {
     CODEX_BASE_INSTRUCTIONS: CODEX_BASE_INSTRUCTIONS,
     getCodexInstructions: getCodexInstructions,
     copyDirSync: copyDirSync,
-    // 提示词文件路径
     getClaudeMdPath: getClaudeMdPath,
     getCodexAgentsMdPath: getCodexAgentsMdPath,
     getGeminiMdPath: getGeminiMdPath,
     getOpenClawWorkspaceDir: getOpenClawWorkspaceDir,
     getOpenClawAgentsMdPath: getOpenClawAgentsMdPath,
-    // Agent 路径管理
     getDefaultConfigDirs: getDefaultConfigDirs,
     getAgentConfigPath: getAgentConfigPath,
     getAgentSessionPath: getAgentSessionPath,
