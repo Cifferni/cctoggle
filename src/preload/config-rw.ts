@@ -172,25 +172,23 @@ function switchProviderClaudeDesktop(provider) {
   if (!provider) return { success: false, error: "provider not found" };
   // 读取现有配置，保留 mcpServers 等字段
   var config = readClaudeDesktopConfig();
+  var env = {};
 
-  // 使用 apiProviders 格式（Claude Desktop 1.x+ 要求）
-  var apiProvider = {};
-
-  // 从 settingsConfig.env 提取 baseUrl
-  var envSrc = (provider.settingsConfig && provider.settingsConfig.env) || {};
-  var baseUrl = envSrc.ANTHROPIC_BASE_URL || provider.baseUrl || "";
-  if (baseUrl) apiProvider.apiBase = baseUrl;
-
-  // API Key
-  if (provider.apiKey) {
-    apiProvider.apiKey = provider.apiKey;
+  // 优先使用预设 settingsConfig.env
+  if (provider.settingsConfig && provider.settingsConfig.env) {
+    Object.keys(provider.settingsConfig.env).forEach(function (k) {
+      env[k] = provider.settingsConfig.env[k];
+    });
   }
 
-  // 写入 apiProviders（单一自定义供应商）
-  config.apiProviders = { "custom-provider": apiProvider };
+  // 兼容旧字段
+  if (provider.model) env.ANTHROPIC_MODEL = provider.model;
+  if (provider.apiKey) {
+    var field = provider.authField || (env.ANTHROPIC_API_KEY !== undefined ? "ANTHROPIC_API_KEY" : "ANTHROPIC_AUTH_TOKEN");
+    env[field] = provider.apiKey;
+  }
 
-  // 清除旧的 env 配置（仅当存在旧格式时）
-  if (config.env) delete config.env;
+  config.env = env;
 
   // 合并 extraConfig（JSON）
   try {
@@ -201,7 +199,39 @@ function switchProviderClaudeDesktop(provider) {
   } catch (e) { /* ignore */ }
 
   writeClaudeDesktopConfig(config);
+
+  // 同步写入系统环境变量（Claude Desktop 某些版本只读系统环境变量）
+  _syncClaudeDesktopEnv(env);
+
   return true;
+}
+
+// 设置系统用户级环境变量（Windows setx，macOS launchctl）
+function _syncClaudeDesktopEnv(env) {
+  try {
+    var keys = ["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL"];
+    if (process.platform === "win32") {
+      keys.forEach(function (k) {
+        var val = env[k] || "";
+        try {
+          if (val) {
+            require("child_process").execSync('setx "' + k + '" "' + val + '"', { stdio: "ignore" });
+          } else {
+            // 空值时删除环境变量
+            require("child_process").execSync('reg delete "HKCU\\Environment" /v "' + k + '" /f 2>nul', { stdio: "ignore" });
+          }
+        } catch (e) { /* ignore */ }
+      });
+    } else if (process.platform === "darwin") {
+      keys.forEach(function (k) {
+        var val = env[k] || "";
+        try {
+          require("child_process").execSync('launchctl setenv "' + k + '" "' + val + '"', { stdio: "ignore" });
+        } catch (e) { /* ignore */ }
+      });
+    }
+  } catch (e) { /* ignore */ }
 }
 
 // ——————————— Claude Onboarding 跳过 ———————————
