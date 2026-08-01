@@ -5,7 +5,7 @@ import {
   NDrawer, NDrawerContent, NInput, NButton, NSpace, NText, NTabs, NTabPane,
 } from "naive-ui";
 import { usePrompts } from "../composables/usePrompts";
-import { renderMarkdown } from "../utils/markdown.js";
+import { renderMarkdown } from "../utils/markdown";
 
 const props = defineProps({
   show: { type: Boolean, default: false },

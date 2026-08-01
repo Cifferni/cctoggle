@@ -1,7 +1,7 @@
 ﻿<script setup lang="ts">
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { useProviders } from "../composables/useProviders";
-import { openUrl } from "../utils/openUrl.js";
+import { openUrl } from "../utils/openUrl";
 const { paths } = useProviders();
 </script>
 

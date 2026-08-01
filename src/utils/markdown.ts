@@ -6,10 +6,10 @@ marked.setOptions({
   breaks: true,     // Convert line breaks to <br>
 });
 
-export function renderMarkdown(content) {
+export function renderMarkdown(content: string): string {
   if (!content) return "";
   try {
-    return marked(content);
+    return marked(content) as string;
   } catch (e) {
     console.error("Markdown parse error:", e);
     return content;

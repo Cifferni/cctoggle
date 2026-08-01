@@ -1,3 +1,4 @@
+// @ts-nocheck utools API 类型需逐步适配
 import { refreshOnEnter } from "./composables/useProviders";
 
 export function setupDynamicCommands() {

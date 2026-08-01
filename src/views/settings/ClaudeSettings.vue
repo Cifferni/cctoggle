@@ -2,9 +2,9 @@
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { ref, onMounted } from "vue";
 import { useMessage } from "naive-ui";
-import { getSkillNest, APP_ICONS, APP_LABELS } from "../../composables/shared.js";
-import { useSkills } from "../../composables/useSkills.js";
-import { useTheme } from "../../composables/useTheme.js";
+import { getSkillNest, APP_ICONS, APP_LABELS } from "../../composables/shared";
+import { useSkills } from "../../composables/useSkills";
+import { useTheme } from "../../composables/useTheme";
 
 const message = useMessage();
 const { currentThemeName, themes, setTheme } = useTheme();
