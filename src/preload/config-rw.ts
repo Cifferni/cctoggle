@@ -174,7 +174,7 @@ function writeClaudeDesktopConfig(config) {
 function switchProviderClaudeDesktop(provider) {
   if (!provider) return { success: false, error: "provider not found" };
 
-  // 检查代理是否在运行
+  // 检查代理是否在运行（多种检测方式）
   var proxyPort = 0;
   var proxyToken = "";
   try {
@@ -182,19 +182,30 @@ function switchProviderClaudeDesktop(provider) {
     var rt = proxy.getProxyStatus("claude-desktop");
     if (rt && rt.running) {
       proxyPort = rt.port || 8788;
-      // 通过 groupId 获取当前路由组的 authToken
       var groupId = rt.groupId;
       if (groupId) {
         var g = proxy.getRouteGroup("claude-desktop", groupId);
         if (g) proxyToken = g.authToken || "";
       }
-      // fallback：遍历所有路由组
-      if (!proxyToken) {
-        var groups = proxy.listRouteGroups("claude-desktop");
-        for (var i = 0; i < groups.length; i++) {
-          var gg = proxy.getRouteGroup("claude-desktop", groups[i].id);
-          if (gg && gg.authToken) { proxyToken = gg.authToken; break; }
+    }
+    // fallback：从 proxyRuntime 获取
+    if (!proxyPort && proxy.proxyRuntime && proxy.proxyRuntime["claude-desktop"]) {
+      var prt = proxy.proxyRuntime["claude-desktop"];
+      if (prt.running) {
+        proxyPort = prt.port || 8788;
+        var gid = prt.groupId;
+        if (gid) {
+          var pg = proxy.getRouteGroup("claude-desktop", gid);
+          if (pg) proxyToken = pg.authToken || "";
         }
+      }
+    }
+    // fallback：遍历所有路由组获取 token
+    if (proxyPort && !proxyToken) {
+      var groups = proxy.listRouteGroups("claude-desktop");
+      for (var i = 0; i < groups.length; i++) {
+        var gg = proxy.getRouteGroup("claude-desktop", groups[i].id);
+        if (gg && gg.authToken) { proxyToken = gg.authToken; break; }
       }
     }
   } catch (e) { /* ignore */ }
