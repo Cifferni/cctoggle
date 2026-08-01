@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { appMessage } from './useAppMessage'
-import { PRESETS as BUILT_IN_PRESETS } from '../data/presets.js'
+import { PRESETS as BUILT_IN_PRESETS } from '../data/presets'
 import { useRoutes } from './useRoutes'
 import { APP_TYPES, APP_LABELS, APP_ICONS, getSkillNest, toPlain } from './shared'
 import type { AppType, Provider } from '../types/utools-cctoggle'

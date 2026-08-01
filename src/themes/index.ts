@@ -1,3 +1,4 @@
+// @ts-nocheck TODO: 添加类型注解后移除
 export { amberTheme } from './amber.js'
 export { midnightTheme } from './midnight.js'
 export { deepnightTheme } from './deepnight.js'

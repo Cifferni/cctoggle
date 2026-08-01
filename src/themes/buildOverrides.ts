@@ -1,3 +1,4 @@
+// @ts-nocheck TODO: 添加类型注解后移除
 /**
  * 从主题定义生成 Naive UI themeOverrides
  * @param {object} theme - 主题对象（来自 themes/*.js）
