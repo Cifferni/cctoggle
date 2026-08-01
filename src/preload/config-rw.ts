@@ -176,17 +176,26 @@ function switchProviderClaudeDesktop(provider) {
 
   // 检查代理是否在运行
   var proxyPort = 0;
+  var proxyToken = "";
   try {
     var proxy = require("./proxy");
     var rt = proxy.getProxyStatus("claude-desktop");
-    if (rt && rt.running) proxyPort = rt.port || 8788;
+    if (rt && rt.running) {
+      proxyPort = rt.port || 8788;
+      // 获取代理的 authToken
+      var groups = proxy.listRouteGroups("claude-desktop");
+      if (groups && groups.length > 0) {
+        var g = proxy.getRouteGroup("claude-desktop", groups[0].id);
+        if (g) proxyToken = g.authToken || "";
+      }
+    }
   } catch (e) { /* ignore */ }
 
   var baseUrl, apiKey;
-  if (proxyPort) {
+  if (proxyPort && proxyToken) {
     // 代理模式：profile 指向本地代理
     baseUrl = "http://127.0.0.1:" + proxyPort;
-    apiKey = "sk-utoolscctoggle-proxy";
+    apiKey = proxyToken;
   } else {
     // 直连模式：profile 指向 API
     var envSrc = (provider.settingsConfig && provider.settingsConfig.env) || {};
