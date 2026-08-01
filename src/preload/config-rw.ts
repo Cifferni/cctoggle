@@ -174,13 +174,27 @@ function writeClaudeDesktopConfig(config) {
 function switchProviderClaudeDesktop(provider) {
   if (!provider) return { success: false, error: "provider not found" };
 
-  // 提取 baseUrl 和 apiKey
-  var envSrc = (provider.settingsConfig && provider.settingsConfig.env) || {};
-  var baseUrl = envSrc.ANTHROPIC_BASE_URL || provider.baseUrl || "";
-  var apiKey = provider.apiKey || envSrc.ANTHROPIC_AUTH_TOKEN || envSrc.ANTHROPIC_API_KEY || "";
+  // 检查代理是否在运行
+  var proxyPort = 0;
+  try {
+    var proxy = require("./proxy");
+    var rt = proxy.getProxyStatus("claude-desktop");
+    if (rt && rt.running) proxyPort = rt.port || 8788;
+  } catch (e) { /* ignore */ }
 
-  if (!baseUrl) return { success: false, error: "missing ANTHROPIC_BASE_URL" };
-  if (!apiKey) return { success: false, error: "missing API key" };
+  var baseUrl, apiKey;
+  if (proxyPort) {
+    // 代理模式：profile 指向本地代理
+    baseUrl = "http://127.0.0.1:" + proxyPort;
+    apiKey = "sk-utoolscctoggle-proxy";
+  } else {
+    // 直连模式：profile 指向 API
+    var envSrc = (provider.settingsConfig && provider.settingsConfig.env) || {};
+    baseUrl = envSrc.ANTHROPIC_BASE_URL || provider.baseUrl || "";
+    apiKey = provider.apiKey || envSrc.ANTHROPIC_AUTH_TOKEN || envSrc.ANTHROPIC_API_KEY || "";
+    if (!baseUrl) return { success: false, error: "missing ANTHROPIC_BASE_URL" };
+    if (!apiKey) return { success: false, error: "missing API key" };
+  }
 
   // 1. 设置 deploymentMode: "3p" 到两个配置文件
   _writeDeploymentMode(getClaudeDesktopConfigPath(), "3p");
@@ -223,7 +237,7 @@ function switchProviderClaudeDesktop(provider) {
   ensureDir(metaPath);
   fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf8");
 
-  return true;
+  return { success: true, mode: proxyPort ? "proxy" : "direct", port: proxyPort };
 }
 
 // 写入 deploymentMode 到指定配置文件
