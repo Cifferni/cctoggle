@@ -172,23 +172,25 @@ function switchProviderClaudeDesktop(provider) {
   if (!provider) return { success: false, error: "provider not found" };
   // 读取现有配置，保留 mcpServers 等字段
   var config = readClaudeDesktopConfig();
-  var env = {};
 
-  // 优先使用预设 settingsConfig.env
-  if (provider.settingsConfig && provider.settingsConfig.env) {
-    Object.keys(provider.settingsConfig.env).forEach(function (k) {
-      env[k] = provider.settingsConfig.env[k];
-    });
-  }
+  // 使用 apiProviders 格式（Claude Desktop 1.x+ 要求）
+  var apiProvider = {};
 
-  // 兼容旧字段
-  if (provider.model) env.ANTHROPIC_MODEL = provider.model;
+  // 从 settingsConfig.env 提取 baseUrl
+  var envSrc = (provider.settingsConfig && provider.settingsConfig.env) || {};
+  var baseUrl = envSrc.ANTHROPIC_BASE_URL || provider.baseUrl || "";
+  if (baseUrl) apiProvider.apiBase = baseUrl;
+
+  // API Key
   if (provider.apiKey) {
-    var field = provider.authField || (env.ANTHROPIC_API_KEY !== undefined ? "ANTHROPIC_API_KEY" : "ANTHROPIC_AUTH_TOKEN");
-    env[field] = provider.apiKey;
+    apiProvider.apiKey = provider.apiKey;
   }
 
-  config.env = env;
+  // 写入 apiProviders（单一自定义供应商）
+  config.apiProviders = { "custom-provider": apiProvider };
+
+  // 清除旧的 env 配置（仅当存在旧格式时）
+  if (config.env) delete config.env;
 
   // 合并 extraConfig（JSON）
   try {

@@ -160,19 +160,17 @@ function switchProviderClaudeDesktop(provider) {
     if (!provider)
         return { success: false, error: "provider not found" };
     var config = readClaudeDesktopConfig();
-    var env = {};
-    if (provider.settingsConfig && provider.settingsConfig.env) {
-        Object.keys(provider.settingsConfig.env).forEach(function (k) {
-            env[k] = provider.settingsConfig.env[k];
-        });
-    }
-    if (provider.model)
-        env.ANTHROPIC_MODEL = provider.model;
+    var apiProvider = {};
+    var envSrc = (provider.settingsConfig && provider.settingsConfig.env) || {};
+    var baseUrl = envSrc.ANTHROPIC_BASE_URL || provider.baseUrl || "";
+    if (baseUrl)
+        apiProvider.apiBase = baseUrl;
     if (provider.apiKey) {
-        var field = provider.authField || (env.ANTHROPIC_API_KEY !== undefined ? "ANTHROPIC_API_KEY" : "ANTHROPIC_AUTH_TOKEN");
-        env[field] = provider.apiKey;
+        apiProvider.apiKey = provider.apiKey;
     }
-    config.env = env;
+    config.apiProviders = { "custom-provider": apiProvider };
+    if (config.env)
+        delete config.env;
     try {
         var extra = JSON.parse(provider.extraConfig);
         Object.keys(extra).forEach(function (k) {
