@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "pnpm build:preload && vue-tsc --noEmit && vite build",
-    "build:preload": "tsc -p tsconfig.preload.json && cp src/preload/package.json src/preload/proxy-daemon.html public/preload/",
+    "build:preload": "tsc -p tsconfig.preload.json && node -e \"require('fs').copyFileSync('src/preload/package.json','public/preload/package.json');require('fs').copyFileSync('src/preload/proxy-daemon.html','public/preload/proxy-daemon.html')\"",
     "preview": "vite preview",
     "type-check": "vue-tsc --noEmit"
   },
