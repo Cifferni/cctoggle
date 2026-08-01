@@ -5,3 +5,8 @@ dist/
 .DS_Store
 .idea/
 .codex/
+
+# TypeScript auto-generated
+auto-imports.d.ts
+components.d.ts
+*.tsbuildinfo
