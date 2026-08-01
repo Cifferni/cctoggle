@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
+    "build": "pnpm build:preload && vue-tsc --noEmit && vite build",
+    "build:preload": "tsc -p tsconfig.preload.json && cp src/preload/package.json src/preload/proxy-daemon.html public/preload/",
     "preview": "vite preview",
     "type-check": "vue-tsc --noEmit"
   },
