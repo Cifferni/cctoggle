@@ -182,11 +182,19 @@ function switchProviderClaudeDesktop(provider) {
     var rt = proxy.getProxyStatus("claude-desktop");
     if (rt && rt.running) {
       proxyPort = rt.port || 8788;
-      // 获取代理的 authToken
-      var groups = proxy.listRouteGroups("claude-desktop");
-      if (groups && groups.length > 0) {
-        var g = proxy.getRouteGroup("claude-desktop", groups[0].id);
+      // 通过 groupId 获取当前路由组的 authToken
+      var groupId = rt.groupId;
+      if (groupId) {
+        var g = proxy.getRouteGroup("claude-desktop", groupId);
         if (g) proxyToken = g.authToken || "";
+      }
+      // fallback：遍历所有路由组
+      if (!proxyToken) {
+        var groups = proxy.listRouteGroups("claude-desktop");
+        for (var i = 0; i < groups.length; i++) {
+          var gg = proxy.getRouteGroup("claude-desktop", groups[i].id);
+          if (gg && gg.authToken) { proxyToken = gg.authToken; break; }
+        }
       }
     }
   } catch (e) { /* ignore */ }
