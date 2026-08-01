@@ -26,6 +26,8 @@ function _emptyRt(): ProxyRuntime {
 const runtime = reactive<Record<string, ProxyRuntime>>({
   codex: _emptyRt(),
   claude: _emptyRt(),
+  'claude-desktop': _emptyRt(),
+  openclaw: _emptyRt(),
   gemini: _emptyRt(),
 })
 
@@ -107,7 +109,7 @@ function stopProxy(appType: string) {
 }
 
 function refreshAll(): void {
-  ['codex', 'claude', 'gemini'].forEach(a => refreshStatus(a))
+  Object.keys(runtime).forEach(a => refreshStatus(a))
 }
 
 function toggleQuick(appType: string): ProxyToggleResult {
