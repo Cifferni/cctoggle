@@ -3,45 +3,58 @@
 ## 整体架构
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      uTools 插件容器                         │
-├─────────────────────────────────────────────────────────────┤
-│  前端 (浏览器环境)              │  后端 (Node.js 环境)        │
-│  ┌───────────────────────┐     │  ┌───────────────────────┐ │
-│  │      Vue 3 App        │     │  │   preload/ (7 模块)   │ │
-│  │  ┌─────────────────┐  │     │  │  ┌─────────────────┐  │ │
-│  │  │    Router        │  │     │  │  │  services.js    │  │ │
-│  │  │  /               │  │     │  │  │  (入口, 组装 API)│  │ │
-│  │  │  /skills         │  │     │  │  │  ├─ provider-db │  │ │
-│  │  │  /stats          │  │     │  │  │  ├─ config-rw   │  │ │
-│  │  │  /settings       │  │     │  │  │  ├─ proxy       │  │ │
-│  │  └─────────────────┘  │     │  │  │  ├─ skills      │  │ │
-│  │  ┌─────────────────┐  │     │  │                       │ │
-│  │  │   Composables   │  │◀───▶│  │  window.utoolsCctoggle│ │
-│  │  │  useProviders   │  │ IPC │  └───────────────────────┘ │
-│  │  │  useRoutes      │  │     │            │               │
-│  │  │  useSkills      │  │     │            ▼               │
-│  │  │  useStats       │  │     │  ┌───────────────────────┐ │
-│  │  └─────────────────┘  │     │  │     uTools API        │ │
-│  │  ┌─────────────────┐  │     │  │  utools.db (PouchDB)  │ │
-│  │  │   Components    │  │     │  │  utools.dbCryptoStorage│ │
-│  │  │  ProviderCard   │  │     │  │  utools.dbStorage     │ │
-│  │  │  ProviderForm   │  │     │  │  utools.getPath()     │ │
-│  │  │  TabBar         │  │     │  │  utools.createBrowserWindow │ │
-│  │  └─────────────────┘  │     │  └───────────────────────┘ │
-│  └───────────────────────┘     │                            │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                       uTools 插件容器                            │
+├─────────────────────────────────────────────────────────────────┤
+│  前端 (浏览器环境)                │  后端 (Node.js 环境)          │
+│  ┌─────────────────────────┐     │  ┌─────────────────────────┐ │
+│  │      Vue 3 App          │     │  │   preload/ (13 模块)    │ │
+│  │  ┌───────────────────┐  │     │  │  ┌─────────────────┐   │ │
+│  │  │    Router          │  │     │  │  │  services.js    │   │ │
+│  │  │  /                 │  │     │  │  │  (入口, 组装 API)│   │ │
+│  │  │  /skills           │  │     │  │  │  ├─ provider-db │   │ │
+│  │  │  /prompts          │  │     │  │  │  ├─ config-rw   │   │ │
+│  │  │  /stats            │  │     │  │  │  ├─ proxy       │   │ │
+│  │  │  /mcp              │  │     │  │  │  ├─ skills      │   │ │
+│  │  │  /sessions         │  │     │  │  │  ├─ stats       │   │ │
+│  │  │  /settings         │  │     │  │  │  ├─ mcp         │   │ │
+│  │  └───────────────────┘  │     │  │  │  ├─ sessions     │   │ │
+│  │  ┌───────────────────┐  │     │  │  │  ├─ prompts      │   │ │
+│  │  │   Composables     │  │◀───▶│  │  │  └─ cleanup      │   │ │
+│  │  │  useProviders     │  │ IPC │  │  │                    │   │ │
+│  │  │  useRoutes        │  │     │  │  │ window.utoolsCctoggle│  │ │
+│  │  │  useSkills        │  │     │  │  └─────────────────┘   │ │
+│  │  │  useStats         │  │     │  │                         │ │
+│  │  │  useSession       │  │     │  └─────────────────────────┘ │
+│  │  │  useMcp           │  │     │              │               │
+│  │  │  usePrompts       │  │     │              ▼               │
+│  │  │  useTheme         │  │     │  ┌─────────────────────────┐ │
+│  │  └───────────────────┘  │     │  │     uTools API          │ │
+│  │  ┌───────────────────┐  │     │  │  utools.db (PouchDB)    │ │
+│  │  │   Components      │  │     │  │  utools.dbCryptoStorage │ │
+│  │  │  ProviderCard     │  │     │  │  utools.dbStorage       │ │
+│  │  │  ProviderForm     │  │     │  │  utools.getPath()       │ │
+│  │  │  TabBar           │  │     │  │  utools.createBrowserWindow│ │
+│  │  │  SessionCard      │  │     │  └─────────────────────────┘ │
+│  │  │  PromptCard       │  │     │                               │
+│  │  │  McpCard          │  │     │                               │
+│  │  └───────────────────┘  │     │                               │
+│  └─────────────────────────┘     │                               │
+└─────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
                           ┌───────────────────────┐
                           │    文件系统            │
                           │  ~/.codex/             │
                           │  ~/.claude/            │
+                          │  ~/.claude-desktop/    │
                           │  ~/.openclaw/          │
                           │  ~/.gemini/            │
                           │  ~/.skillnest/         │
                           └───────────────────────┘
 ```
+
+---
 
 ## 数据存储
 
@@ -49,16 +62,16 @@
 
 | API | 用途 | 特点 |
 |-----|------|------|
-| `utools.db` | 供应商、路由组、统计 | PouchDB，支持 allDocs 前缀查询 |
-| `utools.dbCryptoStorage` | API Key | 加密存储， getItem/setItem |
-| `utools.dbStorage` | 配置、设置 | 普通存储，JSON 序列化 |
+| `utools.db` | 供应商、路由组、统计清除时间戳 | PouchDB，支持 allDocs 前缀查询 |
+| `utools.dbCryptoStorage` | API Key | 加密存储，getItem/setItem |
+| `utools.dbStorage` | 配置、设置、MCP、提示词、会话 | 普通存储，JSON 序列化 |
 
 ### 数据库键命名
 
 ```
 cctoggle_provider_<appType>_<providerId>  # 供应商
 cctoggle_route_<appType>_<routeId>        # 路由组
-cctoggle_stat_clearedAt                   # 统计清除时间戳 { claude: ms, codex: ms }（统计本身无缓存，直扫日志）
+cctoggle_stat_clearedAt                   # 统计清除时间戳 { claude: ms, codex: ms }
 cctoggle_route_port                       # 端口配置
 cctoggle_route_backup                     # 切换前备份
 cctoggle_last_active_app                  # 上次活跃 Agent
@@ -67,9 +80,12 @@ ccswitch_skill_repos                      # Skill 仓库
 ccswitch_sync_mode                        # 同步模式
 ccswitch_nest_registry                    # 部署注册表
 ccswitch_project_targets                  # 项目目标
+ccswitch_config_paths                     # Agent 配置路径
 ```
 
-## 核心模块
+---
+
+## 核心模块概览
 
 ### 1. Provider 管理
 
@@ -97,17 +113,12 @@ provider-db.js / config-rw.js (preload)
 文件系统
     ├─ ~/.codex/auth.json + config.toml
     ├─ ~/.claude/settings.json
+    ├─ ~/.claude-desktop/config.json
     ├─ ~/.openclaw/openclaw.json
     └─ ~/.gemini/.env
 ```
 
 ### 2. 代理路由
-
-**组件：**
-- `RoutesSection.vue` - 路由组 UI
-- `useRoutes.js` - 路由状态管理
-- `proxy-daemon.js` - 后台代理进程
-- `proxy-converter.js` - 协议转换
 
 **代理模式：**
 ```
@@ -125,31 +136,6 @@ utoolsCctoggle-proxy (127.0.0.1:8788)
     ├─ 转发请求到上游供应商
     └─ 返回响应（发 proxy-usage 事件，仅供面板实时提示；统计不依赖它，见「用量统计」）
 ```
-
-**Codex 协议模型（apiFormat / wireApi）：**
-
-Codex 客户端只会发 Responses API 请求。供应商能否接收，取决于其真实协议：
-
-| apiFormat | 代理行为 | wireApi | 典型上游 |
-|---|---|---|---|
-| `""` / `openai_responses` | 透传（不转换） | `responses` | OpenAI 官方、火山 `/api/plan/v3`、豆包、grok、minimax |
-| `openai_chat` | Responses → Chat Completions | `chat` | DeepSeek、通义、Kimi、智谱、硅基流动 |
-| `anthropic` | Responses → Anthropic Messages | `responses` | Anthropic 协议网关 |
-
-- 表单层已合并为单一「上游协议」下拉（`ProviderForm.vue` 的 `codexProtocol` + `PROTOCOL_FIELDS`），
-  底层仍存 `apiFormat` + `wireApi` 双字段：`apiFormat` 供代理转换用，`wireApi` 写入 config.toml。
-- **两字段从不同时生效**：直连只看 `wireApi`；走代理接管时 takeover 用虚拟 provider 强制
-  `wire_api=responses`（proxy.js `takeoverApp`），忽略成员的 `wireApi`，只有 `apiFormat` 决定是否转换。
-- 选错协议是协议错配报错的根源，选择标准是**看供应商文档声明的 API 协议**，不能靠域名一刀切
-  （同一域名可能多端点多协议，如火山 `/api/plan/v3`=Responses、`/api/coding/v3`=Chat）。
-
-**透传兼容处理（`proxy-daemon.js` forward）：**
-
-代理写入 Codex config 时给 base_url 注入伪前缀 `/v1`，透传到自带路径段的上游需特殊处理：
-- **剥 `/v1`**：仅当上游 baseUrl 带路径段时剥（如火山 `/api/plan/v3` → `/api/plan/v3/responses`，
-  否则拼成 `/api/plan/v3/v1/responses` 而 404）。纯域名上游保留标准 `/v1/responses`。
-- **reasoning 自适应重试**：部分 Responses 上游（火山 `ark-code-latest`）不支持 `reasoning` 参数
-  返回 400；捕获后剥离 `reasoning` 重试一次。官方支持 reasoning 的端点不触发，功能不退化。
 
 ### 3. Skill 管理
 
@@ -173,8 +159,6 @@ Codex 客户端只会发 Responses API 请求。供应商能否接收，取决�
 
 ### 4. 用量统计
 
-**组件：** `StatsPage.vue` / `useStats.js` / `scanUsageLogs`(stats.js)
-
 **数据源为本地 CLI 会话日志，且无缓存**（每次直接扫描；旧的代理事件采集在关面板后会丢数据，已废弃）：
 
 ```
@@ -186,72 +170,39 @@ Codex 客户端只会发 Responses API 请求。供应商能否接收，取决�
 每次全量扫描 → 聚合 → 返回 { daily: [{ appType, day, ...6字段, models }] }（不写 db）
     │
     ▼ useStats.js 存内存 rawDaily；切换 agent/天数在内存 applyFilter() 过滤
-StatsPage 渲染 totals / daily / models
+StatsPage 渲染 totals / daily / models / 热力图
 ```
 
 - **不缓存**：db 不存聚合数据，避免游标/幂等/单文档膨胀等复杂度。代价是每次扫描 ~1.4s（异步不卡）。
 - **「清除」= 记录时间戳**：`clearStats(appType)` 把当前时间写入 `cctoggle_stat_clearedAt` 的对应 agent 字段
   （`all` 则写两个）。扫描时 `timestamp <= clearedMs` 的条目跳过，隐藏历史。日志不动，不可撤销。
-- Codex 的 `input_tokens` 含缓存命中，拆分为「新增输入(input) / 缓存命中(cacheRead)」。
 
-## 路由配置
+### 5. 会话管理
 
-```javascript
-// src/router/index.js
-const routes = [
-  { path: "/", component: ProviderListPage },           // 主页
-  { path: "/skills", component: SkillsPage },           // Skill 管理
-  { path: "/stats", component: StatsPage },             // 用量统计
-  {
-    path: "/settings",
-    component: SettingsPage,
-    children: [
-      { path: "routes", component: RoutesSettings },    // 代理路由设置
-      { path: "storage", component: StorageSettings },  // 存储路径设置
-    ]
-  }
-];
-```
+**功能：**
+- 分页加载 + 无限滚动（每页 20 条）
+- 搜索和排序（按时间、名称、今日活跃）
+- 导出会话为 Markdown 或 JSON
+- 删除单个会话或批量清空
 
-使用 `createMemoryHistory()`，因为 uTools 插件不支持 URL hash。
+### 6. 提示词管理
 
-## 状态管理
+**功能：**
+- 创建/编辑/复制/删除提示词模板
+- 将提示词关联到指定 Agent（Codex、Claude、Gemini、OpenClaw）
+- 一键应用提示词到 Agent 配置文件
+- 备份和恢复 Agent 的原始提示词
+- JSON 格式导入/导出
+- Markdown 渲染预览
 
-### 全局状态
+### 7. MCP 服务器管理
 
-```javascript
-// composables/shared.js
-export const APP_TYPES = ["codex", "claude", "openclaw", "gemini"];
+**功能：**
+- 列表展示、添加、编辑、删除 MCP 服务器
+- 开关启用/禁用
+- 从 Agent 配置文件同步 MCP 配置
 
-export const APP_LABELS = {
-  codex: "Codex",
-  claude: "Claude",
-  openclaw: "OpenClaw",
-  gemini: "Gemini",
-};
-
-export const APP_ICONS = {
-  codex: "⚡",
-  claude: "🧠",
-  openclaw: "🐾",
-  gemini: "💎",
-};
-```
-
-### 响应式状态
-
-```javascript
-// composables/useProviders.js
-const providers = ref([]);
-const _activeTab = ref("codex");
-
-// composables/useRoutes.js
-const runtime = reactive({
-  codex: _emptyRt(),
-  claude: _emptyRt(),
-  gemini: _emptyRt(),
-});
-```
+---
 
 ## 配置文件格式
 
@@ -290,3 +241,64 @@ GOOGLE_GEMINI_BASE_URL=https://api.example.com
 GEMINI_MODEL=gemini-2.5-pro
 GEMINI_API_KEY=xxx
 ```
+
+---
+
+## Agent 路径配置
+
+### 配置存储
+```javascript
+// public/preload/services.js
+getConfigPaths: function() {
+  return utools.dbStorage.getItem("ccswitch_config_paths") || {};
+},
+setConfigPaths: function(paths) {
+  utools.dbStorage.setItem("ccswitch_config_paths", paths);
+},
+```
+
+### 默认路径
+```javascript
+// public/preload/utils.js
+getDefaultConfigDirs() {
+  return {
+    codex: { auth: "~/.codex/auth.json", config: "~/.codex/config.toml" },
+    claude: { settings: "~/.claude/settings.json" },
+    "claude-desktop": { config: "~/.claude-desktop/config.json" },
+    openclaw: { config: "~/.openclaw/openclaw.json" },
+    gemini: { env: "~/.gemini/.env" },
+  };
+}
+```
+
+### 数据迁移
+```javascript
+// public/preload/cleanup.js
+MIGRATION_VERSION = 2
+MIGRATION_KEY = "ccswitch_migration_version"
+
+// V2 迁移：将旧的 skill_paths 合并到 config_paths
+function migrateAgentPaths() {
+  // 1. 检查迁移版本
+  // 2. 读取旧的 ccswitch_skill_paths
+  // 3. 从 skill 路径推导出 agent 路径
+  // 4. 合并到 ccswitch_config_paths
+  // 5. 更新迁移版本
+}
+```
+
+**迁移逻辑：**
+- 启动时自动执行（`services.js`）
+- 从旧的 `ccswitch_skill_paths` 推导出 agent 配置路径
+- 合并独立的 `ccswitch_session_paths` 配置
+- 幂等执行，已迁移则跳过
+
+---
+
+## 详细文档
+
+- **前端详解** → `references/frontend.md`（组件、Composables、页面、消息提示）
+- **后端详解** → `references/backend.md`（模块、API、数据存储、通信机制）
+- **数据系统** → `references/data-system.md`（主题、预设、提示词模板、供应商元数据）
+- **代码风格** → `references/code-style.md`（编码规范、最佳实践）
+- **常见问题** → `references/faq.md`（调试、扩展、数据存储）

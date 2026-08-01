@@ -446,3 +446,197 @@ export default {
 /* ✗ 禁止内联样式 */
 <div style="color: red;">
 ```
+
+---
+
+## Naive UI 使用规范
+
+### 组件导入
+
+```javascript
+// ✓ 按需导入（推荐）
+import { NButton, NCard, NInput } from "naive-ui";
+
+// ✓ 使用 unplugin-auto-import（自动导入）
+// 无需手动导入，直接使用 <n-button> 等组件
+```
+
+### 主题使用
+
+```javascript
+// ✓ 使用 useTheme() 获取主题配置
+import { useTheme } from "../composables/useTheme.js";
+const { theme, themeOverrides, isDark } = useTheme();
+
+// ✓ 在 App.vue 中配置 n-config-provider
+<n-config-provider :theme="theme" :theme-overrides="themeOverrides">
+  <!-- 应用内容 -->
+</n-config-provider>
+```
+
+### 消息提示
+
+```javascript
+// ✓ 使用 appMessage（composable 中）
+import { appMessage } from "../composables/useAppMessage.js";
+appMessage.success("操作成功");
+
+// ✓ 使用 useMessage（组件中）
+import { useMessage } from "naive-ui";
+const message = useMessage();
+message.success("操作成功");
+```
+
+### 对话框
+
+```javascript
+// ✓ 使用 appDialog（composable 中）
+import { appDialog } from "../composables/useAppMessage.js";
+appDialog.warning({
+  title: "确认删除",
+  content: "确定要删除吗？",
+  positiveText: "确定",
+  negativeText: "取消",
+  onPositiveClick: () => { /* 执行删除 */ },
+});
+
+// ✓ 使用 useDialog（组件中）
+import { useDialog } from "naive-ui";
+const dialog = useDialog();
+dialog.warning({ /* 配置 */ });
+```
+
+---
+
+## Vue 3 最佳实践
+
+### 响应式数据
+
+```javascript
+// ✓ 使用 ref（基本类型）
+const count = ref(0);
+const name = ref("");
+
+// ✓ 使用 reactive（对象类型）
+const form = reactive({
+  name: "",
+  baseUrl: "",
+  model: "",
+});
+
+// ✓ 使用 computed（计算属性）
+const fullName = computed(() => firstName.value + " " + lastName.value);
+```
+
+### 生命周期
+
+```javascript
+// ✓ 使用 onMounted
+onMounted(() => {
+  loadProviders();
+});
+
+// ✓ 使用 onUnmounted
+onUnmounted(() => {
+  if (timer) clearInterval(timer);
+});
+```
+
+### 监听器
+
+```javascript
+// ✓ watch（单个源）
+watch(searchQuery, (newVal) => {
+  runSearch(newVal);
+});
+
+// ✓ watch（多个源）
+watch([() => form.baseUrl, () => form.model], ([url, model]) => {
+  // 处理变化
+});
+
+// ✓ watchEffect（自动追踪依赖）
+watchEffect(() => {
+  console.log(count.value);
+});
+```
+
+---
+
+## 异步处理
+
+### async/await
+
+```javascript
+// ✓ 使用 async/await
+async function loadProviders() {
+  loading.value = true;
+  try {
+    const result = await getSkillNest().listProviders();
+    providers.value = result;
+  } catch (e) {
+    console.error("Failed to load providers:", e);
+    appMessage.error("加载失败");
+  } finally {
+    loading.value = false;
+  }
+}
+```
+
+### Promise
+
+```javascript
+// ✓ 使用 Promise.all（并行请求）
+async function loadStats() {
+  const results = await Promise.all(
+    apps.map(app => getSkillNest().scanSessions(app.key))
+  );
+  // 处理结果
+}
+```
+
+### 防抖处理
+
+```javascript
+// ✓ 搜索防抖
+let debounceTimer = null;
+watch(searchQuery, (q) => {
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => runSearch(q), 250);
+});
+```
+
+---
+
+## 错误处理
+
+### try-catch
+
+```javascript
+// ✓ 统一错误处理
+function safeApiCall(fn) {
+  try {
+    return fn();
+  } catch (e) {
+    console.error("API call failed:", e);
+    appMessage.error("操作失败：" + (e.message || "未知错误"));
+    return null;
+  }
+}
+```
+
+### 用户提示
+
+```javascript
+// ✓ 成功提示
+appMessage.success("操作成功");
+
+// ✓ 警告提示
+appMessage.warning("请注意");
+
+// ✓ 错误提示
+appMessage.error("操作失败");
+
+// ✓ 信息提示
+appMessage.info("提示信息");
+```
