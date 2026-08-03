@@ -12,6 +12,11 @@ var mcpDb = require("./mcp");
 var sessions = require("./sessions");
 var promptsDb = require("./prompts");
 var cleanup = require("./cleanup");
+var testConnectionModule = require("./test-connection");
+
+// 测试连接和获取模型函数（从模块导入）
+var testConnection = testConnectionModule.testConnection;
+var fetchAvailableModels = testConnectionModule.fetchAvailableModels;
 
 window.utoolsCctoggle = {
   // Paths
@@ -108,7 +113,6 @@ window.utoolsCctoggle = {
   startProxy: proxy.startProxy,
   stopProxy: proxy.stopProxy,
   getProxyStatus: proxy.getProxyStatus,
-  reconcileProxies: proxy.reconcileProxies,
   onProxyEvent: proxy.onProxyEvent,
   takeoverApp: proxy.takeoverApp,
   restoreApp: proxy.restoreApp,
@@ -148,6 +152,10 @@ window.utoolsCctoggle = {
   restoreAllOriginalPrompts: promptsDb.restoreAllOriginalPrompts,
   applyPromptToAgent: promptsDb.applyPromptToAgent,
   togglePromptAgent: promptsDb.togglePromptAgent,
+
+  // Test connection
+  testConnection: testConnection,
+  fetchAvailableModels: fetchAvailableModels,
 };
 
 

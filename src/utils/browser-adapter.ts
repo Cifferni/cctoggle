@@ -143,7 +143,6 @@ export function createBrowserApi() {
     startProxy: () => ({ success: false, error: 'Not available in browser mode' }),
     stopProxy: () => ({ success: false, error: 'Not available in browser mode' }),
     getProxyStatus: () => ({ running: false }),
-    reconcileProxies: () => {},
     onProxyEvent: () => {},
     takeoverApp: () => ({ success: false, error: 'Not available in browser mode' }),
     restoreApp: () => ({ success: false, error: 'Not available in browser mode' }),

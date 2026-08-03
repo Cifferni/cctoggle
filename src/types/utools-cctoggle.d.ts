@@ -480,7 +480,6 @@ export interface UtoolsCctoggle {
   startProxy(appType: string, groupId: string): SuccessResult
   stopProxy(appType: string): SuccessResult
   getProxyStatus(appType: string): ProxyStatus
-  reconcileProxies(): void
   onProxyEvent(cb: (channel: string, data: any) => void): void
   takeoverApp(appType: string, listenPort?: number): ProxyToggleResult
   restoreApp(appType: string): SuccessResult
