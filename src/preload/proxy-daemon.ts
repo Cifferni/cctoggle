@@ -268,6 +268,21 @@ function forward(member, req, res, attemptsLeft, reqBody, reasoningStripped) {
           }
         } catch (e) { /* 非 JSON body，跳过 */ }
       }
+      // 过滤不支持的 tool 类型，仅保留 "function" 类型（MiMo 等 API 不支持 custom/web_search 等）
+      if (req.method === "POST" && reqBody && reqBody.length) {
+        try {
+          var bodyForTools = JSON.parse(reqBody.toString("utf8"));
+          if (Array.isArray(bodyForTools.tools)) {
+            var filtered = bodyForTools.tools.filter(function(t) { return t.type === "function" || !t.type; });
+            if (filtered.length !== bodyForTools.tools.length) {
+              bodyForTools.tools = filtered.length > 0 ? filtered : undefined;
+              reqBody = Buffer.from(JSON.stringify(bodyForTools), "utf8");
+              outBody = reqBody;
+              log("info", "filtered unsupported tools", { id: member.providerId });
+            }
+          }
+        } catch (e) { /* 非 JSON body，跳过 */ }
+      }
       if (doConvert) {
         var parsed = JSON.parse(reqBody.toString("utf8"));
         var conv = converter.convertRequest(member, parsed, reqPath);
@@ -394,9 +409,9 @@ function forward(member, req, res, attemptsLeft, reqBody, reasoningStripped) {
         // 先发 response.created
         try {
           res.write("event: response.created\n");
-          res.write("data: " + JSON.stringify({ type: "response.created", response: { id: "resp_" + Date.now(), object: "response", status: "in_progress", model: member.model || "", output: [] } }) + "\n\n");
+          res.write("data: " + JSON.stringify({ type: "response.created", response: { id: "resp_" + Date.now(), object: "response", created_at: Math.floor(Date.now() / 1000), status: "in_progress", model: member.model || "", output: [] } }) + "\n\n");
         } catch (e) {}
-        var state = { text: "", toolCalls: {}, responseJson: {} };
+        var state = { text: "", toolCalls: {}, responseJson: {}, reasoningAdded: false, reasoningText: "", reasoningItemId: "", reasoningOutputIndex: 0, nextOutputIndex: 0, textAdded: false, msgOutputIndex: 0 };
         var leftover = "";
         upRes.setEncoding("utf8");
         upRes.on("data", function (chunk) {
@@ -413,6 +428,31 @@ function forward(member, req, res, attemptsLeft, reqBody, reasoningStripped) {
         upRes.on("end", function () {
           if (leftover.trim()) {
             try { var c2 = converter.convertSse(member, leftover + "\n", state); if (c2) res.write(c2); } catch (e) {}
+          }
+          // 如果没有收到 [DONE] 标记，强制发送 response.completed
+          if (state.msgId && !state.doneSent) {
+            try {
+              var content = [];
+              if (state.text) content.push({ type: 'output_text', text: state.text, annotations: [] });
+              Object.keys(state.toolCalls || {})
+                .sort(function (a, b) { return Number(a) - Number(b); })
+                .forEach(function (k) {
+                  var tc = state.toolCalls[k];
+                  if (!tc) return;
+                  content.push({ type: 'function_call', id: tc.id, call_id: tc.id, name: tc.name || '', arguments: tc.arguments || '', status: 'completed' });
+                });
+              res.write('event: response.output_item.done\n');
+              res.write('data: ' + JSON.stringify({
+                type: 'response.output_item.done',
+                output_index: state.msgOutputIndex || 0,
+                item: { type: 'message', id: state.msgId, status: 'completed', role: 'assistant', content: content }
+              }) + '\n\n');
+              state.responseJson.output = state.responseJson.output || [];
+              state.responseJson.output.push({ type: 'message', id: state.msgId, status: 'completed', role: 'assistant', content: content });
+              res.write('event: response.completed\n');
+              res.write('data: ' + JSON.stringify({ type: 'response.completed', response: state.responseJson }) + '\n\n');
+              state.doneSent = true;
+            } catch (e) {}
           }
           try { reportUsage(member, state.responseJson && state.responseJson.usage); } catch (e) {}
           res.end();
@@ -595,7 +635,8 @@ function startHealth() {
 // —— IPC 指令 ——
 ipcRenderer.on("cfg", function (_e, payload) {
   group = payload.group;
-  authToken = (payload.authToken || (group && group.authToken) || "") + "";
+  // 直接使用payload中的authToken，不回退到group.authToken（codex代理模式需要禁用auth）
+  authToken = payload.authToken !== undefined ? payload.authToken : ((group && group.authToken) || "");
   members = (payload.members || []).map(function (m) {
     return {
       providerId: m.providerId, name: m.name,

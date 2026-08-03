@@ -19,9 +19,11 @@ function extractContent(item) {
 
 function extractContentFromChat(choice) {
   var msg = choice.message || choice.delta || {};
-  var text = msg.content || '';
+  // 保留 null/undefined 以区分"没有 content"和"content 为空字符串"
+  var text = msg.content !== undefined && msg.content !== null ? msg.content : undefined;
+  var reasoningContent = msg.reasoning_content !== undefined && msg.reasoning_content !== null ? msg.reasoning_content : undefined;
   var toolCalls = msg.tool_calls;
-  return { text: text, toolCalls: toolCalls, finishReason: choice.finish_reason };
+  return { text: text, reasoningContent: reasoningContent, toolCalls: toolCalls, finishReason: choice.finish_reason };
 }
 
 // 角色映射：Codex Responses 可能出现 developer 角色，OpenAI Chat / Anthropic 不支持
@@ -103,16 +105,81 @@ function responsesToChat(body, model) {
 
 // ── Chat Completions SSE → Responses SSE（流式转换） ──
 function sseChatToResponses(raw, respId, state) {
-  // state: { outputId, msgId, text, toolCalls, responseJson }
+  // state: { outputId, msgId, text, toolCalls, responseJson, reasoningAdded, reasoningText, reasoningItemId, nextOutputIndex }
   var lines = [];
+
+  // 辅助函数：finalize reasoning item
+  function finalizeReasoning() {
+    if (!state.reasoningAdded || state.reasoningDone) return;
+    var outputIndex = state.reasoningOutputIndex || 0;
+    var itemId = state.reasoningItemId;
+    var text = state.reasoningText || '';
+
+    // reasoning_summary_text.done
+    lines.push('event: response.reasoning_summary_text.done');
+    lines.push('data: ' + JSON.stringify({
+      type: 'response.reasoning_summary_text.done',
+      item_id: itemId,
+      output_index: outputIndex,
+      summary_index: 0,
+      text: text
+    }));
+
+    // reasoning_summary_part.done
+    lines.push('event: response.reasoning_summary_part.done');
+    lines.push('data: ' + JSON.stringify({
+      type: 'response.reasoning_summary_part.done',
+      item_id: itemId,
+      output_index: outputIndex,
+      summary_index: 0,
+      part: { type: 'summary_text', text: text }
+    }));
+
+    // output_item.done (reasoning)
+    lines.push('event: response.output_item.done');
+    lines.push('data: ' + JSON.stringify({
+      type: 'response.output_item.done',
+      output_index: outputIndex,
+      item: {
+        id: itemId,
+        type: 'reasoning',
+        summary: [{ type: 'summary_text', text: text }]
+      }
+    }));
+
+    state.reasoningDone = true;
+    // 添加到 output 列表
+    if (!state.responseJson.output) state.responseJson.output = [];
+    state.responseJson.output.push({
+      id: itemId,
+      type: 'reasoning',
+      summary: [{ type: 'summary_text', text: text }]
+    });
+  }
+
   raw.split('\n').forEach(function (line) {
     if (line.indexOf('data: ') !== 0) return;
     var payload = line.slice(6);
     if (payload === '[DONE]') {
-      // 发送 final output_text.done + output_item.done + response.done
+      // finalize reasoning
+      finalizeReasoning();
+
+      // 发送 final output_text.done + output_item.done + response.completed
       if (state.text) {
         lines.push('event: response.output_text.done');
-        lines.push('data: ' + JSON.stringify({ type: 'output_text.done', text: state.text, id: state.msgId }));
+        lines.push('data: ' + JSON.stringify({
+          type: 'response.output_text.done',
+          output_index: state.msgOutputIndex || 0,
+          content_index: 0,
+          text: state.text
+        }));
+        lines.push('event: response.content_part.done');
+        lines.push('data: ' + JSON.stringify({
+          type: 'response.content_part.done',
+          output_index: state.msgOutputIndex || 0,
+          content_index: 0,
+          part: { type: 'output_text', text: state.text, annotations: [] }
+        }));
       }
       if (state.msgId) {
         var content = [];
@@ -123,21 +190,34 @@ function sseChatToResponses(raw, respId, state) {
           .forEach(function (k) {
             var tc = state.toolCalls[k];
             if (!tc) return;
-            var doneEvt = { type: 'function_call', id: tc.id, call_id: tc.id, name: tc.name || '', arguments: tc.arguments || '', status: 'completed' };
             lines.push('event: response.function_call_arguments.done');
-            lines.push('data: ' + JSON.stringify({ type: 'function_call_arguments.done', id: tc.id, arguments: tc.arguments || '' }));
+            lines.push('data: ' + JSON.stringify({
+              type: 'response.function_call_arguments.done',
+              output_index: tc._outputIndex || 0,
+              item_id: tc.id,
+              arguments: tc.arguments || ''
+            }));
+            var doneEvt = { type: 'function_call', id: tc.id, call_id: tc.id, name: tc.name || '', arguments: tc.arguments || '', status: 'completed' };
             lines.push('event: response.output_item.done');
-            lines.push('data: ' + JSON.stringify(doneEvt));
+            lines.push('data: ' + JSON.stringify({
+              type: 'response.output_item.done',
+              output_index: tc._outputIndex || 0,
+              item: doneEvt
+            }));
             content.push(doneEvt);
           });
-        var msg = { type: 'message', id: state.msgId, status: 'completed', role: 'assistant', content: content };
         lines.push('event: response.output_item.done');
-        lines.push('data: ' + JSON.stringify(msg));
-        // response.done
+        lines.push('data: ' + JSON.stringify({
+          type: 'response.output_item.done',
+          output_index: state.msgOutputIndex || 0,
+          item: { type: 'message', id: state.msgId, status: 'completed', role: 'assistant', content: content }
+        }));
+        // response.completed
         state.responseJson.output = state.responseJson.output || [];
-        state.responseJson.output.push(msg);
-        lines.push('event: response.done');
-        lines.push('data: ' + JSON.stringify({ type: 'response.done', response: state.responseJson }));
+        state.responseJson.output.push({ type: 'message', id: state.msgId, status: 'completed', role: 'assistant', content: content });
+        lines.push('event: response.completed');
+        lines.push('data: ' + JSON.stringify({ type: 'response.completed', response: state.responseJson }));
+        state.doneSent = true;
       }
       return;
     }
@@ -154,22 +234,98 @@ function sseChatToResponses(raw, respId, state) {
         state.responseJson = state.responseJson || {};
         state.responseJson.id = 'resp_' + (d.id || 'chat');
         state.responseJson.object = 'response';
-        state.responseJson.created = Math.floor(Date.now() / 1000);
+        state.responseJson.created_at = Math.floor(Date.now() / 1000);
+        state.responseJson.status = 'completed';
         state.responseJson.model = d.model || '';
         state.responseJson.output = [];
-        // 发送 output_item.added（message）
-        lines.push('event: response.output_item.added');
-        var msgAdded = { type: 'message', id: state.msgId, status: 'in_progress', role: 'assistant', content: [] };
-        lines.push('data: ' + JSON.stringify(msgAdded));
-        // 发送 content_part.added（output_text）
-        if (info.text !== undefined || info.text !== null) {
-          lines.push('event: response.content_part.added');
-          lines.push('data: ' + JSON.stringify({ type: 'content_part.added', part: { type: 'output_text', text: '' } }));
+        state.nextOutputIndex = 0;
+      }
+
+      // reasoning_content 处理（作为独立的 reasoning item）
+      if (info.reasoningContent) {
+        if (!state.reasoningAdded) {
+          var outputIndex = state.nextOutputIndex++;
+          var itemId = 'rs_' + (state.responseJson.id || 'resp');
+          state.reasoningAdded = true;
+          state.reasoningText = '';
+          state.reasoningItemId = itemId;
+          state.reasoningOutputIndex = outputIndex;
+
+          // output_item.added (reasoning)
+          lines.push('event: response.output_item.added');
+          lines.push('data: ' + JSON.stringify({
+            type: 'response.output_item.added',
+            output_index: outputIndex,
+            item: { id: itemId, type: 'reasoning', status: 'in_progress', summary: [] }
+          }));
+
+          // reasoning_summary_part.added
+          lines.push('event: response.reasoning_summary_part.added');
+          lines.push('data: ' + JSON.stringify({
+            type: 'response.reasoning_summary_part.added',
+            item_id: itemId,
+            output_index: outputIndex,
+            summary_index: 0,
+            part: { type: 'summary_text', text: '' }
+          }));
         }
+
+        state.reasoningText += info.reasoningContent;
+        // reasoning_summary_text.delta
+        lines.push('event: response.reasoning_summary_text.delta');
+        lines.push('data: ' + JSON.stringify({
+          type: 'response.reasoning_summary_text.delta',
+          item_id: state.reasoningItemId,
+          output_index: state.reasoningOutputIndex,
+          summary_index: 0,
+          delta: info.reasoningContent
+        }));
+      }
+
+      // content 处理（如果收到 content，先 finalize reasoning）
+      if (info.text) {
+        // 如果 reasoning 还没结束，先结束它
+        finalizeReasoning();
+
+        // 如果 message item 还没创建，创建它
+        if (!state.textAdded) {
+          state.textAdded = true;
+          state.msgOutputIndex = state.nextOutputIndex++;
+
+          // output_item.added (message)
+          lines.push('event: response.output_item.added');
+          lines.push('data: ' + JSON.stringify({
+            type: 'response.output_item.added',
+            output_index: state.msgOutputIndex,
+            item: { type: 'message', id: state.msgId, status: 'in_progress', role: 'assistant', content: [] }
+          }));
+
+          // content_part.added
+          lines.push('event: response.content_part.added');
+          lines.push('data: ' + JSON.stringify({
+            type: 'response.content_part.added',
+            output_index: state.msgOutputIndex,
+            content_index: 0,
+            part: { type: 'output_text', text: '' }
+          }));
+        }
+
+        // output_text.delta
+        lines.push('event: response.output_text.delta');
+        lines.push('data: ' + JSON.stringify({
+          type: 'response.output_text.delta',
+          output_index: state.msgOutputIndex,
+          content_index: 0,
+          delta: info.text
+        }));
+        state.text = (state.text || '') + info.text;
       }
 
       // tool_calls handling
       if (info.toolCalls && info.toolCalls.length) {
+        // 先结束 reasoning
+        finalizeReasoning();
+
         info.toolCalls.forEach(function (tc) {
           if (!state.toolCalls) state.toolCalls = {};
           // 标准 OpenAI Chat 流式仅首帧带 id/name，后续帧只有 index + 参数增量，
@@ -184,23 +340,26 @@ function sseChatToResponses(raw, respId, state) {
           if (tc.function && tc.function.name) slot.name = tc.function.name;
           if (!slot._added && slot.name) {
             slot._added = true;
+            slot._outputIndex = state.nextOutputIndex++;
             lines.push('event: response.output_item.added');
-            lines.push('data: ' + JSON.stringify({ type: 'function_call', id: slot.id, call_id: slot.id, name: slot.name, arguments: '', status: 'in_progress' }));
+            lines.push('data: ' + JSON.stringify({
+              type: 'response.output_item.added',
+              output_index: slot._outputIndex,
+              item: { type: 'function_call', id: slot.id, call_id: slot.id, name: slot.name, arguments: '', status: 'in_progress' }
+            }));
           }
           var delta = tc.function && tc.function.arguments || '';
           if (delta) {
             slot.arguments += delta;
             lines.push('event: response.function_call_arguments.delta');
-            lines.push('data: ' + JSON.stringify({ type: 'function_call_arguments.delta', delta: delta, id: slot.id }));
+            lines.push('data: ' + JSON.stringify({
+              type: 'response.function_call_arguments.delta',
+              output_index: slot._outputIndex || 0,
+              item_id: slot.id,
+              delta: delta
+            }));
           }
         });
-      }
-
-      // text delta
-      if (info.text) {
-        lines.push('event: response.output_text.delta');
-        lines.push('data: ' + JSON.stringify({ type: 'output_text.delta', delta: info.text, id: state.msgId }));
-        state.text = (state.text || '') + info.text;
       }
 
       if (d.usage) {
@@ -216,7 +375,8 @@ function chatToResponses(chatResp, model) {
   var resp = {
     id: 'resp_' + (chatResp.id || 'chat'),
     object: 'response',
-    created: Math.floor(Date.now() / 1000),
+    created_at: Math.floor(Date.now() / 1000),
+    status: 'completed',
     model: model || chatResp.model || '',
     usage: chatResp.usage || {},
     output: [],
@@ -319,22 +479,42 @@ function sseAnthropicToResponses(raw, respId, state) {
         state.responseJson.output = [];
         state.text = '';
         state.toolCalls = {};
+        state.nextOutputIndex = 0;
+        state.msgOutputIndex = state.nextOutputIndex++;
         lines.push('event: response.output_item.added');
-        lines.push('data: ' + JSON.stringify({ type: 'message', id: state.msgId, status: 'in_progress', role: 'assistant', content: [] }));
+        lines.push('data: ' + JSON.stringify({
+          type: 'response.output_item.added',
+          output_index: state.msgOutputIndex,
+          item: { type: 'message', id: state.msgId, status: 'in_progress', role: 'assistant', content: [] }
+        }));
         lines.push('event: response.content_part.added');
-        lines.push('data: ' + JSON.stringify({ type: 'content_part.added', part: { type: 'output_text', text: '' } }));
+        lines.push('data: ' + JSON.stringify({
+          type: 'response.content_part.added',
+          output_index: state.msgOutputIndex,
+          content_index: 0,
+          part: { type: 'output_text', text: '' }
+        }));
       } else if (d.type === 'content_block_start') {
         if (d.content_block && d.content_block.type === 'tool_use') {
           var tc = d.content_block;
 // 用 Anthropic 的内容块序号 d.index 作累积键；后续 input_json_delta 只带 in
-          state.toolCalls[d.index] = { id: tc.id, name: tc.name, arguments: '' };
+          state.toolCalls[d.index] = { id: tc.id, name: tc.name, arguments: '', _outputIndex: state.nextOutputIndex++ };
           lines.push('event: response.output_item.added');
-          lines.push('data: ' + JSON.stringify({ type: 'function_call', id: tc.id, call_id: tc.id, name: tc.name, arguments: '', status: 'in_progress' }));
+          lines.push('data: ' + JSON.stringify({
+            type: 'response.output_item.added',
+            output_index: state.toolCalls[d.index]._outputIndex,
+            item: { type: 'function_call', id: tc.id, call_id: tc.id, name: tc.name, arguments: '', status: 'in_progress' }
+          }));
         }
       } else if (d.type === 'content_block_delta') {
         if (d.delta && d.delta.type === 'text_delta') {
           lines.push('event: response.output_text.delta');
-          lines.push('data: ' + JSON.stringify({ type: 'output_text.delta', delta: d.delta.text, id: state.msgId }));
+          lines.push('data: ' + JSON.stringify({
+            type: 'response.output_text.delta',
+            output_index: state.msgOutputIndex,
+            content_index: 0,
+            delta: d.delta.text
+          }));
           state.text = (state.text || '') + d.delta.text;
         } else if (d.delta && d.delta.type === 'input_json_delta') {
           var slot = d.index !== undefined && state.toolCalls[d.index];
@@ -343,7 +523,12 @@ function sseAnthropicToResponses(raw, respId, state) {
             slot.arguments += pj;
             if (pj) {
               lines.push('event: response.function_call_arguments.delta');
-              lines.push('data: ' + JSON.stringify({ type: 'function_call_arguments.delta', delta: pj, id: slot.id }));
+              lines.push('data: ' + JSON.stringify({
+                type: 'response.function_call_arguments.delta',
+                output_index: slot._outputIndex || 0,
+                item_id: slot.id,
+                delta: pj
+              }));
             }
           }
         }
@@ -352,21 +537,43 @@ function sseAnthropicToResponses(raw, respId, state) {
       } else if (d.type === 'message_stop') {
         if (state.text) {
           lines.push('event: response.output_text.done');
-          lines.push('data: ' + JSON.stringify({ type: 'output_text.done', text: state.text, id: state.msgId }));
+          lines.push('data: ' + JSON.stringify({
+            type: 'response.output_text.done',
+            output_index: state.msgOutputIndex || 0,
+            content_index: 0,
+            text: state.text
+          }));
+          lines.push('event: response.content_part.done');
+          lines.push('data: ' + JSON.stringify({
+            type: 'response.content_part.done',
+            output_index: state.msgOutputIndex || 0,
+            content_index: 0,
+            part: { type: 'output_text', text: state.text, annotations: [] }
+          }));
         }
         if (state.msgId) {
           var content = [];
           if (state.text) content.push({ type: 'output_text', text: state.text, annotations: [] });
           Object.keys(state.toolCalls || {}).forEach(function (id) {
             var tc = state.toolCalls[id];
-            content.push({ type: 'function_call', id: tc.id, call_id: tc.id, name: tc.name, arguments: tc.arguments, status: 'completed' });
+            var doneEvt = { type: 'function_call', id: tc.id, call_id: tc.id, name: tc.name, arguments: tc.arguments, status: 'completed' };
+            lines.push('event: response.output_item.done');
+            lines.push('data: ' + JSON.stringify({
+              type: 'response.output_item.done',
+              output_index: tc._outputIndex || 0,
+              item: doneEvt
+            }));
+            content.push(doneEvt);
           });
-          var msg = { type: 'message', id: state.msgId, status: 'completed', role: 'assistant', content: content };
           lines.push('event: response.output_item.done');
-          lines.push('data: ' + JSON.stringify(msg));
-          state.responseJson.output.push(msg);
-          lines.push('event: response.done');
-          lines.push('data: ' + JSON.stringify({ type: 'response.done', response: state.responseJson }));
+          lines.push('data: ' + JSON.stringify({
+            type: 'response.output_item.done',
+            output_index: state.msgOutputIndex || 0,
+            item: { type: 'message', id: state.msgId, status: 'completed', role: 'assistant', content: content }
+          }));
+          state.responseJson.output.push({ type: 'message', id: state.msgId, status: 'completed', role: 'assistant', content: content });
+          lines.push('event: response.completed');
+          lines.push('data: ' + JSON.stringify({ type: 'response.completed', response: state.responseJson }));
         }
       }
     } catch (e) { /* ignore */ }
