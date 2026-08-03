@@ -77,7 +77,9 @@ function onToggleProxy() {
       :title="proxyOn ? APP_LABELS[activeTab()] + ' 代理运行中，点击关闭' : '打开以为 ' + APP_LABELS[activeTab()] + ' 开启代理'"
     >
       <span class="proxy-label">代理</span>
-      <n-switch :value="proxyOn" size="small" @checked="onToggleProxy" @unchecked="onToggleProxy" />
+      <div class="switch-wrapper" @mousedown.prevent @keydown.space.prevent>
+        <n-switch :value="proxyOn" size="small" @update:value="onToggleProxy" />
+      </div>
     </label>
 
     <button class="nav-btn" title="用量统计" @click="router.push('/stats')">
