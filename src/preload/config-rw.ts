@@ -426,8 +426,10 @@ function switchProviderCodex(provider) {
   // 构建 config.toml
   let configToml = provider.extraConfig || "";
   if (!configToml) {
-    const cleanName = (provider.name || "custom")
-      .toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/^_+|_+$/g, "") || "custom";
+    // 代理模式下使用 "custom" 作为 provider 名称（与 cc switch 保持一致）
+    const isProxyMode = provider.apiKey && /^https?:\/\/(127\.0\.0\.1|localhost)/.test(provider.baseUrl || "");
+    const cleanName = isProxyMode ? "custom" : ((provider.name || "custom")
+      .toLowerCase().replace(/[^a-z0-9_-]/g, "_").replace(/^_+|_+$/g, "") || "custom");
     const baseUrl = provider.baseUrl || "https://api.openai.com/v1";
     const model = provider.model || "gpt-4o";
     const apiFormat = provider.apiFormat || "";
@@ -441,14 +443,19 @@ function switchProviderCodex(provider) {
     ];
     // 有多模型目录时写入引用，Codex 的 /model 菜单据此展示可选模型
     if (hasCatalog) lines.push('model_catalog_json = "' + catalogFileName + '"');
+    var needsAuth = !!provider.apiKey || !/^https?:\/\/(127\.0\.0\.1|localhost)/.test(baseUrl);
     lines.push(
       '',
       '[model_providers.' + cleanName + ']',
       'name = "' + cleanName + '"',
       'base_url = "' + baseUrl + '"',
       'wire_api = "' + wireApi + '"',
-      'requires_openai_auth = ' + (/^https?:\/\/(127\.0\.0\.1|localhost)/.test(baseUrl) ? 'false' : 'true')
+      'requires_openai_auth = ' + (needsAuth ? 'true' : 'false')
     );
+    // 代理模式下添加 experimental_bearer_token 配置
+    if (provider.apiKey && /^https?:\/\/(127\.0\.0\.1|localhost)/.test(baseUrl)) {
+      lines.push('experimental_bearer_token = "PROXY_MANAGED"');
+    }
     configToml = lines.join("\n");
   }
 
@@ -492,7 +499,7 @@ function switchProviderCodex(provider) {
           default_verbosity: provider.verbosity || "low",
           effective_context_window_percent: 95,
           experimental_supported_tools: [],
-          model_messages: { instructions_template: instr.base_instructions, instructions_variables: instr.instructions_variables },
+          model_messages: { instructions_template: instr.instructions_template || instr.base_instructions, instructions_variables: instr.instructions_variables },
           service_tiers: [],
           support_verbosity: true,
           supports_image_detail_original: true,

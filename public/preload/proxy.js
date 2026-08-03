@@ -118,10 +118,11 @@ function startProxy(appType, groupId) {
     if (members.length === 0)
         return { success: false, error: "no members" };
     const token = _ensureRouteToken(appType, group);
+    const authToken = appType === "codex" ? "" : token;
     try {
         const win = utools.createBrowserWindow("preload/proxy-daemon.html", { show: false, webPreferences: { preload: "preload/proxy-daemon.js" } }, function () {
             try {
-                win.webContents.send("cfg", { group: group, members: members, authToken: token });
+                win.webContents.send("cfg", { group: group, members: members, authToken: authToken });
             }
             catch (e) { }
         });
@@ -156,50 +157,7 @@ function stopProxy(appType) {
         proxyRuntime[appType].running = false;
     if (proxyRuntime._active === appType)
         delete proxyRuntime._active;
-    try {
-        const _ctl = "cctoggle_proxy_ctl_" + appType;
-        const prevCtl = utools.db.get(_ctl);
-        utools.db.put({ _id: _ctl, _rev: prevCtl ? prevCtl._rev : undefined, stop: true, ts: Date.now() });
-    }
-    catch (e) { }
-    try {
-        const _id = "cctoggle_proxy_live_" + appType;
-        const prev = utools.db.get(_id);
-        if (prev)
-            utools.db.put(Object.assign({}, prev, { running: false, updatedAt: Date.now() }));
-    }
-    catch (e) { }
     return { success: true };
-}
-function reconcileProxies() {
-    const apps = ["codex", "claude", "gemini", "openclaw"];
-    apps.forEach(function (appType) {
-        let live = null;
-        try {
-            live = utools.db.get("cctoggle_proxy_live_" + appType);
-        }
-        catch (e) { }
-        if (!live)
-            return;
-        const fresh = live.running && (Date.now() - (live.updatedAt || 0) < 5000);
-        const hasHandle = !!daemonWins[appType];
-        if (fresh && !hasHandle) {
-            proxyRuntime[appType] = {
-                running: true, port: live.port || 0, groupId: live.groupId || null,
-                members: [], logs: (proxyRuntime[appType] && proxyRuntime[appType].logs) || [],
-                adopted: true,
-            };
-            proxyRuntime._active = appType;
-        }
-        else if (!fresh && live.running) {
-            try {
-                utools.db.remove(live);
-            }
-            catch (e) { }
-            if (proxyRuntime[appType])
-                proxyRuntime[appType].running = false;
-        }
-    });
 }
 function _fallbackMembers(appType, groupId) {
     if (!groupId)
@@ -218,27 +176,6 @@ function _fallbackMembers(appType, groupId) {
 }
 function getProxyStatus(appType) {
     const rt = proxyRuntime[appType] || {};
-    let live = null;
-    try {
-        live = utools.db.get("cctoggle_proxy_live_" + appType);
-    }
-    catch (e) { }
-    const liveFresh = live && live.running && (Date.now() - (live.updatedAt || 0) < 5000);
-    if (liveFresh) {
-        return {
-            running: true,
-            port: live.port || rt.port || 0,
-            groupId: live.groupId || rt.groupId,
-            startedAt: live.startedAt || 0,
-            activeConn: live.activeConn || 0,
-            reqTotal: live.reqTotal || 0,
-            reqSuccess: live.reqSuccess || 0,
-            reqFail: live.reqFail || 0,
-            lastMemberId: live.lastMemberId || null,
-            members: (live.members && live.members.length) ? live.members : _fallbackMembers(appType, live.groupId || rt.groupId),
-            logs: (rt.logs || []).slice(-200),
-        };
-    }
     if (!proxyRuntime[appType])
         return { running: false };
     let members = rt.members || [];
@@ -353,10 +290,11 @@ function takeoverApp(appType, listenPort) {
             });
         }
         catch (e) { }
+        const providerName = proxyModel || "utoolscctoggle-proxy";
         const fake = {
             id: "__proxy__",
             appType: appType,
-            name: "utoolscctoggle-proxy",
+            name: providerName,
             baseUrl: appType === "codex" ? baseUrl + "/v1" : baseUrl,
             apiKey: proxyToken,
             model: proxyModel || "gpt-4o",
@@ -488,7 +426,6 @@ module.exports = {
     deleteRouteGroup: deleteRouteGroup,
     startProxy: startProxy,
     stopProxy: stopProxy,
-    reconcileProxies: reconcileProxies,
     getProxyStatus: getProxyStatus,
     onProxyEvent: onProxyEvent,
     takeoverApp: takeoverApp,

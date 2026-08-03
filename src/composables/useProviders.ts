@@ -65,18 +65,6 @@ function switchProvider(id: string) {
     try { getSkillNest().setLastActiveApp?.(tab) } catch (e) { /* ignore */ }
     loadProviders()
     appMessage.success('已切换到 ' + r.providerName)
-    // Codex direct connect
-    const fmt = target && target.apiFormat
-    if (tab === 'codex' && (fmt === 'openai_chat' || fmt === 'anthropic')) {
-      let proxyRunning = false
-      try { proxyRunning = !!useRoutes().runtime[tab]?.running } catch (e) { /* ignore */ }
-      if (!proxyRunning) {
-        const msg = fmt === 'anthropic'
-          ? '该供应商为 Anthropic 协议，Codex 无法直连，请开启代理后使用'
-          : '该供应商为 Chat 协议，直连需将连接协议选为 Chat，或开启代理获得自动转换'
-        appMessage.warning(msg, { duration: 5000 })
-      }
-    }
   }
   return r
 }

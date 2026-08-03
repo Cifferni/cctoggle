@@ -1,9 +1,10 @@
 <script setup lang="ts">
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { reactive, watch, ref, computed, h } from "vue";
-import { NInput, NButton, NFlex } from "naive-ui";
+import { NInput, NButton, NFlex, useMessage } from "naive-ui";
 const props = defineProps({ visible: Boolean, initialData: Object });
 const emit = defineEmits(["close", "save"]);
+const message = useMessage();
 
 import { useProviders } from "../../composables/useProviders";
 const { PRESETS, activeTab, presetToProviderData } = useProviders();
@@ -57,6 +58,10 @@ function removeOpenclawRow(i) { openclawRows.value.splice(i, 1); }
 function promoteOpenclawRow(i) { if (i <= 0) return; const rows = openclawRows.value; const [r] = rows.splice(i, 1); rows.unshift(r); }
 // 非表单直显字段：完整保留预设的差异化配置
 const hidden = reactive({ settingsConfig: {}, authData: {}, endpointCandidates: [] });
+
+// 测试连接状态
+const testing = ref(false);
+const fetchingModels = ref(false);
 
 // config.toml 实时预览：镜像后端 switchProviderCodex 的拼装逻辑（services.js），仅用于只读展示
 function slugifyName(name) {
@@ -236,21 +241,6 @@ function copyConfigToml() {
   setTimeout(() => { copied.value = false; }, 1500);
 }
 
-const codexProxyHint = computed(() => {
-  if (tab.value !== "codex") return null;
-  const af = form.apiFormat || "";
-  if (af === "anthropic") {
-    return { level: "required", text: "该供应商为 Anthropic 协议，Codex 无法直连，必须开启代理路由接管才能使用。" };
-  }
-  if (af === "openai_chat") {
-    return { level: "optional", text: "该供应商为 Chat Completions 协议。走代理接管可自动转换协议并支持多供应商切换。" };
-  }
-  if (af === "openai_responses" || af === "") {
-    return { level: "ok", text: "该供应商原生支持 Responses，直连即可，无需代理。" };
-  }
-  return null;
-});
-
 function save() {
   const t = activeTab();
   const modelCatalog = catalogRows.value
@@ -319,6 +309,108 @@ function save() {
 
 function openOAuthUrl(url) {
   try { window.utools?.shellOpenExternal?.(url); } catch (e) { window.open(url, "_blank"); }
+}
+
+// 测试连接（仅 Codex/OpenClaw）
+async function handleTestConnection() {
+  if (!form.baseUrl) {
+    message.warning("请输入 Base URL");
+    return;
+  }
+  testing.value = true;
+  try {
+    const result = await window.utoolsCctoggle.testConnection(form.baseUrl, form.apiKey, tab.value);
+    if (result.success) {
+      // 如果检测成功，自动填充 apiFormat
+      if (result.apiFormat) {
+        form.apiFormat = result.apiFormat;
+        form.wireApi = result.wireApi || (result.apiFormat === "openai_chat" ? "chat" : "responses");
+        protocolTouched.value = true;
+      }
+      // 显示检测到的协议
+      const protocolNames = {
+        'openai_chat': 'Chat Completions',
+        'openai_responses': 'Responses',
+        'anthropic': 'Anthropic',
+      };
+      const protocolName = protocolNames[result.apiFormat] || result.apiFormat || '未知';
+      message.success(`连接成功，检测到协议：${protocolName}`);
+    } else {
+      message.error(result.error || "连接失败");
+    }
+  } catch (err) {
+    message.error("测试失败：" + (err.message || err));
+  } finally {
+    testing.value = false;
+  }
+}
+
+// 自动添加模型
+function autoAddModels(modelIds) {
+  if (tab.value === 'codex') {
+    // Codex: 添加到 modelCatalog
+    const existingModels = catalogRows.value.map(r => r.model);
+    const newModels = modelIds.filter(m => !existingModels.includes(m));
+    if (newModels.length > 0) {
+      newModels.forEach(m => {
+        catalogRows.value.push({
+          model: m,
+          displayName: m,
+          contextWindow: "",
+        });
+      });
+      message.success(`已自动添加 ${newModels.length} 个模型到目录`);
+    } else {
+      message.info("模型已存在，无需添加");
+    }
+  } else if (tab.value === 'openclaw') {
+    // OpenClaw: 添加到 openclawRows
+    const existingModels = openclawRows.value.map(r => r.id);
+    const newModels = modelIds.filter(m => !existingModels.includes(m));
+    if (newModels.length > 0) {
+      newModels.forEach(m => {
+        openclawRows.value.push({
+          id: m,
+          name: m,
+          contextWindow: "",
+        });
+      });
+      message.success(`已自动添加 ${newModels.length} 个模型`);
+    } else {
+      message.info("模型已存在，无需添加");
+    }
+  } else {
+    // Claude/Gemini: 设置默认模型
+    if (modelIds.length > 0 && !form.model) {
+      form.model = modelIds[0];
+      message.success(`已自动设置默认模型：${modelIds[0]}`);
+    }
+  }
+}
+
+// 获取模型列表
+async function handleFetchModels() {
+  if (!form.baseUrl) {
+    message.warning("请输入 Base URL");
+    return;
+  }
+  fetchingModels.value = true;
+  try {
+    const result = await window.utoolsCctoggle.fetchAvailableModels(form.baseUrl, form.apiKey, tab.value);
+    if (result.success) {
+      if (result.models && result.models.length > 0) {
+        autoAddModels(result.models);
+      } else {
+        message.info("未获取到可用模型");
+      }
+    } else {
+      message.error(result.error || "获取模型失败");
+    }
+  } catch (err) {
+    message.error("获取失败：" + (err.message || err));
+  } finally {
+    fetchingModels.value = false;
+  }
 }
 
 function fillPreset(preset) {
@@ -490,7 +582,7 @@ const openclawColumns = [
           </n-collapse-item>
         </n-collapse>
 
-        <!-- 连接配置 -->
+        <!-- 连接配置与认证（合并） -->
         <n-card title="连接配置" size="small" :bordered="true" class="section-card">
           <n-flex vertical :size="10">
             <n-form-item label="API 类型" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
@@ -502,15 +594,7 @@ const openclawColumns = [
                 :placeholder="tab==='claude' ? 'https://api.anthropic.com' : tab==='gemini' ? 'https://your-endpoint.com/' : 'https://api.openai.com/v1'"
               />
             </n-form-item>
-            <n-alert v-if="tab==='gemini' && form.category==='official'" type="info" size="small">
-              Google 官方使用 OAuth 个人认证，无需填写 API Key，首次使用会自动打开浏览器登录。
-            </n-alert>
-          </n-flex>
-        </n-card>
-
-        <!-- 认证 -->
-        <n-card title="认证" size="small" :bordered="true" class="section-card">
-          <n-flex vertical :size="2">
+            <!-- 认证方式（仅 Codex/Claude） -->
             <n-form-item v-if="tab==='codex' || tab==='claude'" label="认证方式" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
               <n-select v-model:value="form.authMethod" :options="authMethodOptions" />
             </n-form-item>
@@ -535,12 +619,14 @@ const openclawColumns = [
                 show-password-on="click"
               />
             </n-form-item>
+            <!-- Claude 认证字段 -->
             <n-form-item v-if="tab==='claude'" label="认证字段" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
               <template #label>
                 <n-text style="font-size: 11px; font-weight: 600;">认证字段 <n-text depth="3" style="font-size: 11px; font-weight: 400;">(写入哪个环境变量)</n-text></n-text>
               </template>
               <n-select v-model:value="form.authField" :options="authFieldOptions" />
             </n-form-item>
+            <!-- Codex Header 配置 -->
             <n-grid v-if="tab==='codex'" :cols="2" :x-gap="10">
               <n-gi>
                 <n-form-item label="Header 名" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
@@ -551,6 +637,37 @@ const openclawColumns = [
                 <n-form-item label="前缀" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
                   <n-input v-model:value="form.apiKeyPrefix" placeholder="Bearer " />
                 </n-form-item>
+              </n-gi>
+            </n-grid>
+            <n-alert v-if="tab==='gemini' && form.category==='official'" type="info" size="small">
+              Google 官方使用 OAuth 个人认证，无需填写 API Key，首次使用会自动打开浏览器登录。
+            </n-alert>
+            <n-grid :cols="2" :x-gap="8">
+              <n-gi>
+                <n-button
+                  v-if="tab !== 'claude'"
+                  :loading="testing"
+                  type="primary"
+                  secondary
+                  size="small"
+                  @click="handleTestConnection"
+                  style="width: 100%;"
+                >
+                  {{ testing ? '测试中...' : '测试连接' }}
+                </n-button>
+              </n-gi>
+              <n-gi>
+                <n-button
+                  v-if="tab !== 'claude'"
+                  :loading="fetchingModels"
+                  type="default"
+                  secondary
+                  size="small"
+                  @click="handleFetchModels"
+                  style="width: 100%;"
+                >
+                  {{ fetchingModels ? '获取中...' : '获取模型' }}
+                </n-button>
               </n-gi>
             </n-grid>
           </n-flex>
@@ -573,15 +690,8 @@ const openclawColumns = [
                   </n-form-item>
                 </n-gi>
               </n-grid>
-              <n-form-item label="上游协议" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
-                <template #label>
-                  <n-text style="font-size: 11px; font-weight: 600;">上游协议 <n-text depth="3" style="font-size: 11px; font-weight: 400;">(供应商 API 格式)</n-text></n-text>
-                </template>
-                <n-select v-model:value="codexProtocol" :options="codexProtocolOptions" />
-              </n-form-item>
-              <n-text depth="3" style="font-size: 11px;">按供应商真实 API 协议选择。Chat / Anthropic 需开启代理路由接管才能转换；Responses 与 Responses 兼容端点可直连。</n-text>
-              <n-alert v-if="codexProxyHint" :type="codexProxyHint.level === 'required' ? 'error' : codexProxyHint.level === 'optional' ? 'info' : 'success'" size="small">
-                {{ codexProxyHint.text }}
+              <n-alert v-if="testResult?.success" type="info" size="small">
+                已自动检测到协议格式，如需手动调整请在高级选项中修改。
               </n-alert>
               <template v-if="form.apiFormat==='anthropic'">
                 <n-form-item label="认证字段" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
@@ -712,6 +822,13 @@ const openclawColumns = [
               <n-input v-model:value="form.extraHeaders" type="textarea" :rows="3" placeholder="X-Custom: value" />
             </n-form-item>
             <template v-if="tab==='codex'">
+              <n-form-item label="上游协议" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                <template #label>
+                  <n-text style="font-size: 11px; font-weight: 600;">上游协议 <n-text depth="3" style="font-size: 11px; font-weight: 400;">(供应商 API 格式，通常自动检测)</n-text></n-text>
+                </template>
+                <n-select v-model:value="codexProtocol" :options="codexProtocolOptions" />
+              </n-form-item>
+              <n-text depth="3" style="font-size: 11px;">按供应商真实 API 协议选择。Chat / Anthropic 需开启代理路由接管才能转换；Responses 与 Responses 兼容端点可直连。</n-text>
               <n-form-item label="最大输出 tokens" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
                 <template #label>
                   <n-text style="font-size: 11px; font-weight: 600;">最大输出 tokens <n-text depth="3" style="font-weight: 400;">(max_tokens, 留空=默认8192)</n-text></n-text>

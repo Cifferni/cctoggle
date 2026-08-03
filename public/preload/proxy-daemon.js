@@ -33,39 +33,6 @@ function log(level, msg, meta) {
     }
     catch (e) { }
 }
-function _liveDocId() {
-    var app = (group && group.appType) || (members[0] && members[0].appType) || "";
-    return app ? ("cctoggle_proxy_live_" + app) : "";
-}
-function persistLive(runningFlag) {
-    try {
-        if (typeof utools === "undefined" || !utools.db)
-            return;
-        var id = _liveDocId();
-        if (!id)
-            return;
-        var prev = utools.db.get(id);
-        utools.db.put({
-            _id: id,
-            _rev: prev ? prev._rev : undefined,
-            appType: (group && group.appType) || (members[0] && members[0].appType) || "",
-            running: !!runningFlag,
-            port: group ? group.listenPort : 0,
-            groupId: group ? group.id : null,
-            startedAt: startedAt,
-            activeConn: activeConn,
-            reqTotal: reqTotal,
-            reqSuccess: reqSuccess,
-            reqFail: reqFail,
-            lastMemberId: lastMemberId,
-            members: members.map(function (m) {
-                return { id: m.providerId, name: m.name, state: m.state, fails: m.fails, openUntil: m.openUntil, latency: m.latency, up: m.up };
-            }),
-            updatedAt: Date.now(),
-        });
-    }
-    catch (e) { }
-}
 function stat() {
     try {
         utools.sendToParent("proxy-stat", {
@@ -83,7 +50,6 @@ function stat() {
         });
     }
     catch (e) { }
-    persistLive(!!server);
 }
 function maskKey(k) {
     if (!k)
@@ -706,48 +672,6 @@ ipcRenderer.on("stop", function () {
     log("info", "stopped");
     stat();
 });
-var _bootTs = Date.now();
-function _ctlDocId() {
-    var app = (group && group.appType) || (members[0] && members[0].appType) || "";
-    return app ? ("cctoggle_proxy_ctl_" + app) : "";
-}
-function selfStop(reason) {
-    try {
-        if (server)
-            server.close();
-        server = null;
-    }
-    catch (e) { }
-    if (healthTimer) {
-        clearInterval(healthTimer);
-        healthTimer = null;
-    }
-    startedAt = 0;
-    log("info", "self-stopped", { reason: reason || "" });
-    persistLive(false);
-    try {
-        window.close();
-    }
-    catch (e) { }
-}
-setInterval(function () {
-    try {
-        if (typeof utools === "undefined" || !utools.db)
-            return;
-        var id = _ctlDocId();
-        if (!id)
-            return;
-        var ctl = utools.db.get(id);
-        if (ctl && ctl.stop && (ctl.ts || 0) > _bootTs) {
-            selfStop("ctl");
-            try {
-                utools.db.remove(ctl);
-            }
-            catch (e) { }
-        }
-    }
-    catch (e) { }
-}, 1500);
 setInterval(function () { if (server)
     stat(); }, 1000);
 ipcRenderer.on("stat", function () { stat(); });

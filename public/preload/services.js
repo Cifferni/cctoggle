@@ -8,6 +8,9 @@ var mcpDb = require("./mcp");
 var sessions = require("./sessions");
 var promptsDb = require("./prompts");
 var cleanup = require("./cleanup");
+var testConnectionModule = require("./test-connection");
+var testConnection = testConnectionModule.testConnection;
+var fetchAvailableModels = testConnectionModule.fetchAvailableModels;
 window.utoolsCctoggle = {
     paths: {
         home: utils.getHomeDir(),
@@ -80,7 +83,6 @@ window.utoolsCctoggle = {
     startProxy: proxy.startProxy,
     stopProxy: proxy.stopProxy,
     getProxyStatus: proxy.getProxyStatus,
-    reconcileProxies: proxy.reconcileProxies,
     onProxyEvent: proxy.onProxyEvent,
     takeoverApp: proxy.takeoverApp,
     restoreApp: proxy.restoreApp,
@@ -114,6 +116,8 @@ window.utoolsCctoggle = {
     restoreAllOriginalPrompts: promptsDb.restoreAllOriginalPrompts,
     applyPromptToAgent: promptsDb.applyPromptToAgent,
     togglePromptAgent: promptsDb.togglePromptAgent,
+    testConnection: testConnection,
+    fetchAvailableModels: fetchAvailableModels,
 };
 try {
     cleanup.migrateAgentPaths();

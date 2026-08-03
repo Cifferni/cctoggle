@@ -18,7 +18,7 @@ function cleanMcpMapping(mapping, configs, allApps) {
     });
     return changed;
 }
-var MIGRATION_VERSION = 2;
+var MIGRATION_VERSION = 6;
 var MIGRATION_KEY = "ccswitch_migration_version";
 function getMigrationVersion() {
     try {
@@ -51,7 +51,9 @@ function getDefaultSkillDirs() {
 }
 function migrateAgentPaths() {
     var currentVersion = getMigrationVersion();
+    console.log("[Cleanup] migrateAgentPaths: currentVersion=" + currentVersion + ", target=" + MIGRATION_VERSION);
     if (currentVersion >= MIGRATION_VERSION) {
+        console.log("[Cleanup] Already at latest version, skipping");
         return;
     }
     if (currentVersion < 2) {
@@ -95,6 +97,25 @@ function migrateAgentPaths() {
         catch (e) {
             console.error("[Cleanup] V2 migration failed:", e);
         }
+    }
+    if (currentVersion < 6) {
+        var apps = ["codex", "claude", "claude-desktop", "gemini", "openclaw"];
+        var removed = 0;
+        apps.forEach(function (app) {
+            ["cctoggle_proxy_live_", "cctoggle_proxy_ctl_"].forEach(function (prefix) {
+                var id = prefix + app;
+                try {
+                    var doc = utools.db.get(id);
+                    if (doc) {
+                        utools.db.remove(doc);
+                        removed++;
+                    }
+                }
+                catch (e) { }
+            });
+        });
+        if (removed)
+            console.log("[Cleanup] Removed " + removed + " stale proxy db docs");
     }
     setMigrationVersion(MIGRATION_VERSION);
 }
