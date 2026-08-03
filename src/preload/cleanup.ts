@@ -129,19 +129,28 @@ function migrateAgentPaths() {
 
   // V3 迁移：清理已废弃的 proxy 孤儿管理数据
   if (currentVersion < 3) {
-    var apps = ["codex", "claude", "gemini", "openclaw"];
-    apps.forEach(function (app) {
-      ["cctoggle_proxy_live_", "cctoggle_proxy_ctl_"].forEach(function (prefix) {
-        var id = prefix + app;
-        try {
-          var doc = utools.db.get(id);
-          if (doc) { utools.db.remove(doc); console.log("[Cleanup] V3: Removed stale proxy doc:", id); }
-        } catch (e) {}
-      });
-    });
+    cleanStaleProxyData();
   }
 
   setMigrationVersion(MIGRATION_VERSION);
+}
+
+// ─────────── 旧 proxy 孤儿管理数据清理 ───────────
+// 移除已废弃的 cctoggle_proxy_live_* 和 cctoggle_proxy_ctl_* db 文档
+
+function cleanStaleProxyData() {
+  var apps = ["codex", "claude", "gemini", "openclaw"];
+  var removed = 0;
+  apps.forEach(function (app) {
+    ["cctoggle_proxy_live_", "cctoggle_proxy_ctl_"].forEach(function (prefix) {
+      var id = prefix + app;
+      try {
+        var doc = utools.db.get(id);
+        if (doc) { utools.db.remove(doc); removed++; }
+      } catch (e) {}
+    });
+  });
+  if (removed) console.log("[Cleanup] Removed " + removed + " stale proxy db docs");
 }
 
 module.exports = {
