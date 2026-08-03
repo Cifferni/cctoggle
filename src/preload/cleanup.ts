@@ -30,7 +30,7 @@ function cleanMcpMapping(mapping, configs, allApps) {
 // ─────────── Agent 路径数据迁移 ───────────
 // 处理旧版本数据迁移到新的统一 Agent 路径配置
 
-var MIGRATION_VERSION = 5;
+var MIGRATION_VERSION = 6;
 var MIGRATION_KEY = "ccswitch_migration_version";
 
 function getMigrationVersion() {
@@ -129,9 +129,9 @@ function migrateAgentPaths() {
     }
   }
 
-  // V5 迁移：清理已废弃的 proxy 孤儿管理数据
-  if (currentVersion < 5) {
-    var apps = ["codex", "claude", "gemini", "openclaw"];
+  // V6 迁移：清理已废弃的 proxy 孤儿管理数据
+  if (currentVersion < 6) {
+    var apps = ["codex", "claude", "claude-desktop", "gemini", "openclaw"];
       var removed = 0;
       apps.forEach(function (app) {
         ["cctoggle_proxy_live_", "cctoggle_proxy_ctl_"].forEach(function (prefix) {
