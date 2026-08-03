@@ -30,7 +30,7 @@ function cleanMcpMapping(mapping, configs, allApps) {
 // ─────────── Agent 路径数据迁移 ───────────
 // 处理旧版本数据迁移到新的统一 Agent 路径配置
 
-var MIGRATION_VERSION = 3;
+var MIGRATION_VERSION = 5;
 var MIGRATION_KEY = "ccswitch_migration_version";
 
 function getMigrationVersion() {
@@ -65,10 +65,12 @@ function getDefaultSkillDirs() {
 }
 
 // 执行数据迁移
-function migrateAgentPaths() { 
+function migrateAgentPaths() {
   var currentVersion = getMigrationVersion();
+  console.log("[Cleanup] migrateAgentPaths: currentVersion=" + currentVersion + ", target=" + MIGRATION_VERSION);
 
   if (currentVersion >= MIGRATION_VERSION) {
+    console.log("[Cleanup] Already at latest version, skipping");
     return; // 已经是最新版本
   }
 
@@ -127,30 +129,23 @@ function migrateAgentPaths() {
     }
   }
 
-  // V3 迁移：清理已废弃的 proxy 孤儿管理数据
-  if (currentVersion < 3) {
-    cleanStaleProxyData();
+  // V5 迁移：清理已废弃的 proxy 孤儿管理数据
+  if (currentVersion < 5) {
+    var apps = ["codex", "claude", "gemini", "openclaw"];
+      var removed = 0;
+      apps.forEach(function (app) {
+        ["cctoggle_proxy_live_", "cctoggle_proxy_ctl_"].forEach(function (prefix) {
+          var id = prefix + app;
+          try {
+            var doc = utools.db.get(id);
+            if (doc) { utools.db.remove(doc); removed++; }
+          } catch (e) {}
+        });
+      });
+      if (removed) console.log("[Cleanup] Removed " + removed + " stale proxy db docs");
   }
 
   setMigrationVersion(MIGRATION_VERSION);
-}
-
-// ─────────── 旧 proxy 孤儿管理数据清理 ───────────
-// 移除已废弃的 cctoggle_proxy_live_* 和 cctoggle_proxy_ctl_* db 文档
-
-function cleanStaleProxyData() {
-  var apps = ["codex", "claude", "gemini", "openclaw"];
-  var removed = 0;
-  apps.forEach(function (app) {
-    ["cctoggle_proxy_live_", "cctoggle_proxy_ctl_"].forEach(function (prefix) {
-      var id = prefix + app;
-      try {
-        var doc = utools.db.get(id);
-        if (doc) { utools.db.remove(doc); removed++; }
-      } catch (e) {}
-    });
-  });
-  if (removed) console.log("[Cleanup] Removed " + removed + " stale proxy db docs");
 }
 
 module.exports = {
