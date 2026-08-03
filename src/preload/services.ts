@@ -169,6 +169,10 @@ try {
 }
 
 try {
+  cleanup.cleanStaleProxyData();
+} catch (e) {}
+
+try {
   ["codex", "claude", "claude-desktop", "gemini"].forEach(function (appType) {
     providerDb.markCurrent(appType, providerDb.getCurrentProviderId(appType));
   });

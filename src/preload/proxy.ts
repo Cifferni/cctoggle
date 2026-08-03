@@ -176,28 +176,8 @@ function _fallbackMembers(appType, groupId) {
 
 function getProxyStatus(appType) {
   const rt = proxyRuntime[appType] || {};
-  // 优先从 utools.db 读 daemon 写入的实时状态（跨窗口/重载也能拿到）
-  let live = null;
-  try { live = utools.db.get("cctoggle_proxy_live_" + appType); } catch (e) {}
-  const liveFresh = live && live.running && (Date.now() - (live.updatedAt || 0) < 5000);
-  if (liveFresh) {
-    return {
-      running: true,
-      port: live.port || rt.port || 0,
-      groupId: live.groupId || rt.groupId,
-      startedAt: live.startedAt || 0,
-      activeConn: live.activeConn || 0,
-      reqTotal: live.reqTotal || 0,
-      reqSuccess: live.reqSuccess || 0,
-      reqFail: live.reqFail || 0,
-      lastMemberId: live.lastMemberId || null,
-      members: (live.members && live.members.length) ? live.members : _fallbackMembers(appType, live.groupId || rt.groupId),
-      logs: (rt.logs || []).slice(-200),
-    };
-  }
   if (!proxyRuntime[appType]) return { running: false };
   let members = rt.members || [];
-  // 傅底：运行中但尚未拿到实时状态时，直接用配置成员展示
   if (rt.running && members.length === 0 && rt.groupId) {
     members = _fallbackMembers(appType, rt.groupId);
   }
