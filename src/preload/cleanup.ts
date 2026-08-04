@@ -30,7 +30,7 @@ function cleanMcpMapping(mapping, configs, allApps) {
 // ─────────── Agent 路径数据迁移 ───────────
 // 处理旧版本数据迁移到新的统一 Agent 路径配置
 
-var MIGRATION_VERSION = 6;
+var MIGRATION_VERSION = 4;
 var MIGRATION_KEY = "ccswitch_migration_version";
 
 function getMigrationVersion() {
@@ -145,7 +145,169 @@ function migrateAgentPaths() {
       if (removed) console.log("[Cleanup] Removed " + removed + " stale proxy db docs");
   }
 
+  // V7 迁移：skillnest → cctoggle 目录迁移
+  if (currentVersion < 3) {
+    migrateSkillnestDir();
+  }
+
   setMigrationVersion(MIGRATION_VERSION);
+}
+
+// ─────────── skillnest → cctoggle 目录迁移 ───────────
+
+function migrateSkillnestDir() {
+  var fs = require("fs");
+  var path = require("path");
+  var os = require("os");
+
+  var home;
+  try {
+    home = utools.getPath("home");
+  } catch (e) {
+    home = os.homedir();
+  }
+
+  var oldNest = path.join(home, ".skillnest", "skills");
+  var oldParent = path.join(home, ".skillnest");
+  var newNest = path.join(home, ".cctoggle", "skills");
+
+  // 如果旧目录存在，执行迁移
+  if (fs.existsSync(oldNest)) {
+    console.log("[Cleanup] Migrating ~/.skillnest/skills → ~/.cctoggle/skills");
+
+    try {
+      // 1. 创建新目录
+      var newDir = path.dirname(newNest);
+      if (!fs.existsSync(newDir)) {
+        fs.mkdirSync(newDir, { recursive: true });
+      }
+
+      // 2. 复制旧目录的所有 skill 到新目录
+      var entries = fs.readdirSync(oldNest, { withFileTypes: true });
+      var copied = 0;
+      entries.forEach(function(entry) {
+        if (!entry.isDirectory() || entry.name.startsWith(".")) return;
+        try {
+          copyDirSync(path.join(oldNest, entry.name), path.join(newNest, entry.name));
+          copied++;
+        } catch (e) {
+          console.error("[Cleanup] Failed to copy skill:", entry.name, e.message);
+        }
+      });
+      console.log("[Cleanup] Copied " + copied + " skills");
+
+      // 3. 重新部署软链接
+      redeploySymlinks(newNest);
+
+      // 4. 删除旧目录
+      fs.rmSync(oldNest, { recursive: true, force: true });
+      console.log("[Cleanup] Removed ~/.skillnest/skills");
+
+      // 5. 清理空的父目录
+      if (fs.existsSync(oldParent) && fs.readdirSync(oldParent).length === 0) {
+        fs.rmdirSync(oldParent);
+        console.log("[Cleanup] Removed empty ~/.skillnest");
+      }
+
+      console.log("[Cleanup] Migration completed successfully");
+    } catch (e) {
+      console.error("[Cleanup] Migration failed:", e.message);
+    }
+  }
+}
+
+// 复制目录（递归）
+function copyDirSync(src, dest) {
+  var fs = require("fs");
+  var path = require("path");
+
+  if (!fs.existsSync(dest)) {
+    fs.mkdirSync(dest, { recursive: true });
+  }
+
+  fs.readdirSync(src, { withFileTypes: true }).forEach(function(entry) {
+    var srcPath = path.join(src, entry.name);
+    var destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirSync(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  });
+}
+
+// 重新部署软链接
+function redeploySymlinks(newNestDir) {
+  var fs = require("fs");
+  var path = require("path");
+
+  try {
+    var reg = utools.dbStorage.getItem("ccswitch_nest_registry") || {};
+    var fixed = 0;
+
+    Object.keys(reg).forEach(function(skillName) {
+      var deployments = reg[skillName] || [];
+      deployments.forEach(function(dep) {
+        if (dep.mode !== "symlink") return;
+
+        var targetDir = resolveTargetDir(dep.target);
+        if (!targetDir) return;
+
+        var linkPath = path.join(targetDir, skillName);
+        var newSrc = path.join(newNestDir, skillName);
+
+        try {
+          if (!fs.existsSync(newSrc)) return;
+
+          if (fs.existsSync(linkPath)) {
+            var stat = fs.lstatSync(linkPath);
+            if (stat.isSymbolicLink()) {
+              fs.unlinkSync(linkPath);
+            }
+          }
+
+          // 创建新链接
+          var isWin = process.platform === "win32";
+          if (isWin) {
+            fs.symlinkSync(newSrc, linkPath, "junction");
+          } else {
+            fs.symlinkSync(newSrc, linkPath, "dir");
+          }
+          fixed++;
+        } catch (e) {
+          console.error("[Cleanup] Failed to redeploy symlink:", skillName, e.message);
+        }
+      });
+    });
+
+    if (fixed > 0) {
+      console.log("[Cleanup] Redeployed " + fixed + " symlinks");
+    }
+  } catch (e) {
+    console.error("[Cleanup] Redeploy failed:", e.message);
+  }
+}
+
+// 解析部署目标目录
+function resolveTargetDir(target) {
+  var path = require("path");
+  var os = require("os");
+
+  var home;
+  try {
+    home = utools.getPath("home");
+  } catch (e) {
+    home = os.homedir();
+  }
+
+  var defaultDirs = {
+    codex: path.join(home, ".codex", "skills"),
+    claude: path.join(home, ".claude", "skills"),
+    gemini: path.join(home, ".gemini", "skills"),
+    openclaw: path.join(home, ".openclaw", "skills"),
+  };
+
+  return defaultDirs[target] || null;
 }
 
 module.exports = {

@@ -50,7 +50,7 @@
                           │  ~/.claude-desktop/    │
                           │  ~/.openclaw/          │
                           │  ~/.gemini/            │
-                          │  ~/.skillnest/         │
+                          │  ~/.cctoggle/          │
                           └───────────────────────┘
 ```
 
@@ -141,7 +141,7 @@ utoolsCctoggle-proxy (127.0.0.1:8788)
 
 **存储结构：**
 ```
-~/.skillnest/skills/           # Nest 目录（中央仓库）
+~/.cctoggle/skills/            # Nest 目录（中央仓库）
 ├── skill-a/
 │   ├── SKILL.md
 │   └── meta.json

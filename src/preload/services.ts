@@ -85,7 +85,7 @@ window.utoolsCctoggle = {
   installSkill: skills.installSkill,
   removeNestSkill: skills.removeNestSkill,
 
-  // SkillNest
+  // CCToggle Skills
   getNestDir: skills.getNestDir,
   setNestDir: skills.setNestDir,
   listNestSkills: skills.listNestSkills,
@@ -162,7 +162,7 @@ window.utoolsCctoggle = {
 // --- Startup: mark current providers ---
 
 try {
-  // 执行数据迁移
+  // 执行数据迁移（包括 skillnest → cctoggle 目录迁移）
   cleanup.migrateAgentPaths();
 } catch (e) {
   console.error("[Services] Migration failed:", e);

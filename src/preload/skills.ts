@@ -1,6 +1,6 @@
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 // uTools ccToggle - skills.js
-// SkillNest 技能管理、部署、搜索
+// CCToggle 技能管理、部署、搜索
 
 var utils = require("./utils");
 var fs = utils.fs;
@@ -10,12 +10,12 @@ var expandHome = utils.expandHome;
 var ensureDir = utils.ensureDir;
 var copyDirSync = utils.copyDirSync;
 
-// ===== SkillNest: Central Skill Nest + Deploy Engine =====
+// ===== CCToggle: Central Skill Nest + Deploy Engine =====
 
 // --- Nest Directory ---
 
 function getNestDir() {
-  // 优先从配置读取
+  // 优先从配置读取（用户自定义路径）
   var configured = utools.dbStorage.getItem('ccswitch_nest_dir');
   if (configured) {
     var expanded = expandHome(configured);
@@ -23,11 +23,10 @@ function getNestDir() {
     return expanded;
   }
 
-  // 使用默认路径（SkillNest 是独立的中央存储，不从 agent 路径派生）
   var home = getHomeDir();
-  var nest = path.join(home, ".skillnest", "skills");
-  ensureDir(nest);
-  return nest;
+  var newNest = path.join(home, ".cctoggle", "skills");
+  ensureDir(newNest);
+  return newNest;
 }
 
 // 校验技能名合法：非空、无路径分隔符、无 ".."，避免目录穿越

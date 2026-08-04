@@ -17,7 +17,7 @@ onMounted(() => {
 
 const nestDir = computed(() => {
   const fn = window.utoolsCctoggle?.getNestDir;
-  return fn ? fn() : "~/.skillnest/skills";
+  return fn ? fn() : "~/.cctoggle/skills";
 });
 
 // Project targets
@@ -34,12 +34,12 @@ function addProject() {
 
 <template>
   <n-space vertical :size="12" class="storage-settings">
-    <!-- SkillNest 仓库 -->
+    <!-- CCToggle 仓库 -->
     <n-card size="small" :bordered="true">
       <n-space align="center" :size="10">
         <span style="font-size: 20px;">🏠</span>
         <div style="flex: 1; min-width: 0;">
-          <n-text strong style="font-size: 13px; display: block;">SkillNest</n-text>
+          <n-text strong style="font-size: 13px; display: block;">CCToggle</n-text>
           <n-text code style="font-size: 11px;">{{ nestDir }}</n-text>
         </div>
         <n-tag type="success" size="small" :bordered="false" round>

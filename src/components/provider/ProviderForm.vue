@@ -642,10 +642,9 @@ const openclawColumns = [
             <n-alert v-if="tab==='gemini' && form.category==='official'" type="info" size="small">
               Google 官方使用 OAuth 个人认证，无需填写 API Key，首次使用会自动打开浏览器登录。
             </n-alert>
-            <n-grid :cols="2" :x-gap="8">
+            <n-grid v-if="tab === 'codex'" :cols="2" :x-gap="8">
               <n-gi>
                 <n-button
-                  v-if="tab !== 'claude'"
                   :loading="testing"
                   type="primary"
                   secondary
@@ -658,7 +657,6 @@ const openclawColumns = [
               </n-gi>
               <n-gi>
                 <n-button
-                  v-if="tab !== 'claude'"
                   :loading="fetchingModels"
                   type="default"
                   secondary

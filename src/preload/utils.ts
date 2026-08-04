@@ -490,6 +490,144 @@ function copyDirSync(src, dest) {
   });
 }
 
+// ─────────── 日志工具 ───────────
+
+// 日志文件缓存
+var _logFileCache = {};
+
+/**
+ * 创建日志记录器
+ * @param {string} module - 模块名称（如 'migration', 'skills', 'proxy' 等）
+ * @param {object} options - 配置选项
+ * @returns {object} 日志记录器对象
+ */
+function createLogger(module, options) {
+  options = options || {};
+  var logDir = options.logDir || path.join(getHomeDir(), '.cctoggle', 'log');
+  var logFile = path.join(logDir, module + '.log');
+
+  // 确保日志目录存在
+  if (!fs.existsSync(logDir)) {
+    fs.mkdirSync(logDir, { recursive: true });
+  }
+
+  function getTimestamp() {
+    var now = new Date();
+    var year = now.getFullYear();
+    var month = String(now.getMonth() + 1).padStart(2, '0');
+    var day = String(now.getDate()).padStart(2, '0');
+    var hours = String(now.getHours()).padStart(2, '0');
+    var minutes = String(now.getMinutes()).padStart(2, '0');
+    var seconds = String(now.getSeconds()).padStart(2, '0');
+    var ms = String(now.getMilliseconds()).padStart(3, '0');
+    return year + '-' + month + '-' + day + ' ' + hours + ':' + minutes + ':' + seconds + '.' + ms;
+  }
+
+  function formatData(data) {
+    if (data === undefined) return '';
+    if (typeof data === 'object') {
+      try {
+        return ' | ' + JSON.stringify(data, null, 0);
+      } catch (e) {
+        return ' | [Object]';
+      }
+    }
+    return ' | ' + data;
+  }
+
+  function writeLog(level, message, data) {
+    try {
+      var line = '[' + getTimestamp() + '] [' + level.padEnd(5) + '] [' + module + '] ' + message + formatData(data) + '\n';
+      fs.appendFileSync(logFile, line, 'utf8');
+    } catch (e) {
+      // 日志写入失败不影响主逻辑
+      console.error('[Logger] Failed to write log:', e.message);
+    }
+  }
+
+  return {
+    // 基础日志方法
+    info: function(msg, data) {
+      writeLog('INFO', msg, data);
+      console.log('[' + module + '] ' + msg + formatData(data));
+    },
+    warn: function(msg, data) {
+      writeLog('WARN', msg, data);
+      console.warn('[' + module + '] ' + msg + formatData(data));
+    },
+    error: function(msg, data) {
+      writeLog('ERROR', msg, data);
+      console.error('[' + module + '] ' + msg + formatData(data));
+    },
+    debug: function(msg, data) {
+      writeLog('DEBUG', msg, data);
+    },
+
+    // 获取日志文件路径
+    getLogFile: function() { return logFile; },
+    getLogDir: function() { return logDir; },
+
+    // 读取日志内容
+    readLog: function(lines) {
+      try {
+        if (!fs.existsSync(logFile)) return '';
+        var content = fs.readFileSync(logFile, 'utf8');
+        if (lines) {
+          var allLines = content.split('\n');
+          return allLines.slice(-lines).join('\n');
+        }
+        return content;
+      } catch (e) {
+        return '读取日志失败: ' + e.message;
+      }
+    },
+
+    // 清空日志
+    clearLog: function() {
+      try {
+        if (fs.existsSync(logFile)) {
+          fs.writeFileSync(logFile, '', 'utf8');
+        }
+        return true;
+      } catch (e) {
+        return false;
+      }
+    },
+
+    // 获取日志文件大小（字节）
+    getLogSize: function() {
+      try {
+        if (fs.existsSync(logFile)) {
+          return fs.statSync(logFile).size;
+        }
+        return 0;
+      } catch (e) {
+        return -1;
+      }
+    },
+
+    // 分段标记（用于标记不同的阶段）
+    separator: function(title) {
+      var line = '\n' + '='.repeat(60) + '\n  ' + title + '\n' + '='.repeat(60) + '\n';
+      try {
+        fs.appendFileSync(logFile, line, 'utf8');
+      } catch (e) {}
+      console.log('\n' + '='.repeat(40) + '\n  ' + title + '\n' + '='.repeat(40));
+    },
+  };
+}
+
+// 默认日志记录器（通用）
+var logger = createLogger('cctoggle');
+
+// 创建特定模块的日志记录器
+function getLogger(module) {
+  if (!_logFileCache[module]) {
+    _logFileCache[module] = createLogger(module);
+  }
+  return _logFileCache[module];
+}
+
 module.exports = {
   fs: fs,
   path: path,
@@ -521,4 +659,8 @@ module.exports = {
   getDefaultConfigDirs: getDefaultConfigDirs,
   getAgentConfigPath: getAgentConfigPath,
   getAgentSessionPath: getAgentSessionPath,
+  // 日志工具
+  logger: logger,
+  createLogger: createLogger,
+  getLogger: getLogger,
 };
