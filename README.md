@@ -92,8 +92,11 @@ cd utools-cctoggle
 # 安装依赖
 pnpm install
 
-# 启动开发服务器
-pnpm dev
+# 启动开发服务器（uTools 模式）
+pnpm dev:all
+
+# 启动开发服务器（浏览器模式，不需要 uTools）
+pnpm dev:browser
 
 # 构建生产版本
 pnpm build
@@ -105,9 +108,8 @@ pnpm build
 
 - 项目架构与目录结构说明
 - Vue 3 / Composable 编码规范
-- 新增供应商、新增 Agent 的完整流程
-- Git 提交规范
-- 常见问题排查
+- Preload 类结构与模块职责
+- 调试技巧与常见问题排查
 
 技能文件位于 `.claude/skills/utools-cctoggle-dev/SKILL.md`。
 
@@ -139,27 +141,163 @@ pnpm build
 
 ## 🏗️ 项目结构
 
+### 📁 目录树
+
 ```
 utools-cctoggle/
-├── public/
-│   ├── logo.png           # 插件图标
-│   ├── plugin.json        # uTools 插件配置
-│   └── preload/
-│       ├── services.js    # 核心服务（代理、路由等）
-│       └── proxy-daemon.js # 代理守护进程
+├── public/                          # 静态资源
+│   ├── logo.png                     # 插件图标
+│   ├── plugin.json                  # uTools 插件配置
+│   └── preload/                     # 编译产物（自动生成）
+│
 ├── src/
-│   ├── components/        # Vue 组件
-│   ├── composables/       # 组合式函数
-│   ├── data/              # 数据（供应商、预设等）
-│   ├── views/             # 页面视图
-│   ├── router/            # 路由配置
-│   ├── App.vue            # 根组件
-│   ├── main.js            # 入口文件
-│   └── setup.js           # 初始化逻辑
+│   ├── preload/                     # 🔧 后端模块（uTools preload 环境）
+│   │   ├── preload.ts               # 主入口：UtoolsPreload 类
+│   │   ├── provider-db.ts           # ProviderStore - 供应商 CRUD
+│   │   ├── proxy.ts                 # ProxyManager - 代理服务器
+│   │   ├── proxy-daemon.ts          # 代理守护进程
+│   │   ├── proxy-converter.ts       # 配置格式转换
+│   │   ├── sessions.ts              # SessionManager - 会话扫描
+│   │   ├── prompts.ts               # PromptManager - 提示词管理
+│   │   ├── skills.ts                # SkillManager - 技能部署
+│   │   ├── mcp.ts                   # McpManager - MCP 配置
+│   │   ├── stats.ts                 # StatsCollector - 用量统计
+│   │   ├── test-connection.ts       # 连接测试
+│   │   ├── cleanup.ts               # 数据迁移
+│   │   ├── config-rw.ts             # 配置文件读写
+│   │   └── utils.ts                 # 工具函数
+│   │
+│   ├── components/                  # 🧩 Vue 组件
+│   │   ├── common/                  # 通用组件
+│   │   │   ├── AppDashboard.vue     # 仪表盘
+│   │   │   ├── AppFooter.vue        # 底部栏
+│   │   │   ├── TabBar.vue           # 标签栏
+│   │   │   └── EChart.vue           # 图表组件
+│   │   ├── provider/                # 供应商相关
+│   │   │   ├── ProviderCard.vue     # 供应商卡片
+│   │   │   ├── ProviderForm.vue     # 供应商表单
+│   │   │   └── PresetChips.vue      # 预设标签
+│   │   ├── session/                 # 会话相关
+│   │   ├── prompt/                  # 提示词相关
+│   │   ├── mcp/                     # MCP 相关
+│   │   ├── skills/                  # 技能相关
+│   │   └── routes/                  # 路由相关
+│   │
+│   ├── composables/                 # 🎣 组合式函数
+│   │   ├── shared.ts                # 共享常量和工具
+│   │   ├── useProviders.ts          # 供应商管理
+│   │   ├── useRoutes.ts             # 路由管理
+│   │   ├── useSession.ts            # 会话管理
+│   │   ├── usePrompts.ts            # 提示词管理
+│   │   ├── useSkills.ts             # 技能管理
+│   │   ├── useMcp.ts                # MCP 管理
+│   │   ├── useStats.ts              # 统计数据
+│   │   ├── useTheme.ts              # 主题切换
+│   │   └── useAppMessage.ts         # 消息提示
+│   │
+│   ├── views/                       # 📄 页面视图
+│   │   ├── ProviderListPage.vue     # 供应商列表页
+│   │   ├── SessionPage.vue          # 会话管理页
+│   │   ├── PromptsPage.vue          # 提示词管理页
+│   │   ├── McpPage.vue              # MCP 管理页
+│   │   └── settings/                # 设置页面
+│   │       ├── ClaudeSettings.vue   # Claude 设置
+│   │       └── RoutesSettings.vue   # 路由设置
+│   │
+│   ├── data/                        # 📊 数据定义
+│   │   ├── presets.ts               # 预设入口
+│   │   ├── presets-claude.ts        # Claude 预设
+│   │   ├── presets-codex.ts         # Codex 预设
+│   │   ├── presets-gemini.ts        # Gemini 预设
+│   │   ├── presets-openclaw.ts      # OpenClaw 预设
+│   │   ├── providers.ts             # 供应商元数据
+│   │   └── prompt-templates.ts      # 提示词模板
+│   │
+│   ├── themes/                      # 🎨 主题配置
+│   │   ├── index.ts                 # 主题入口
+│   │   ├── buildOverrides.ts        # 主题构建器
+│   │   ├── amber.ts                 # 琥珀主题
+│   │   ├── midnight.ts              # 午夜主题
+│   │   └── deepnight.ts             # 深夜主题
+│   │
+│   ├── types/                       # 📝 TypeScript 类型
+│   │   ├── utools-cctoggle.d.ts    # 业务类型定义
+│   │   └── env.d.ts                 # 环境类型
+│   │
+│   ├── utils/                       # 🛠️ 前端工具
+│   │   ├── browser-adapter.ts       # 浏览器适配器
+│   │   ├── markdown.ts              # Markdown 渲染
+│   │   └── openUrl.ts               # URL 打开
+│   │
+│   ├── router/                      # 🛣️ 路由配置
+│   │   └── index.ts
+│   │
+│   ├── main.ts                      # 前端入口
+│   ├── setup.ts                     # uTools 命令注册
+│   └── App.vue                      # 根组件
+│
+├── scripts/                         # 📜 构建脚本
+│   ├── build-preload.cjs            # Preload 构建
+│   └── dev-api-server.cjs           # 浏览器模式 API 服务器
+│
 ├── package.json
-├── vite.config.js
+├── vite.config.ts
+├── tsconfig.preload.json
 └── README.md
 ```
+
+### 🏛️ 架构图
+
+```mermaid
+graph TB
+    subgraph "uTools 环境"
+        A[uTools 主进程] --> B[Preload 层]
+        B --> C[Vue 前端]
+    end
+
+    subgraph "Preload 层 (后端)"
+        D[UtoolsPreload] --> E[ProviderStore]
+        D --> F[ProxyManager]
+        D --> G[SessionManager]
+        D --> H[PromptManager]
+        D --> I[SkillManager]
+        D --> J[McpManager]
+        D --> K[StatsCollector]
+    end
+
+    subgraph "Vue 前端"
+        L[Composables] --> M[Views]
+        M --> N[Components]
+        L --> O[数据层 data/]
+    end
+
+    subgraph "外部配置"
+        P[Claude 配置文件]
+        Q[Codex 配置文件]
+        R[Gemini 配置文件]
+        S[OpenClaw 配置文件]
+    end
+
+    B <-->|读写配置| P
+    B <-->|读写配置| Q
+    B <-->|读写配置| R
+    B <-->|读写配置| S
+
+    C <-->|API 调用| B
+```
+
+### 📦 模块职责
+
+| 模块 | 文件 | 职责 |
+|------|------|------|
+| **入口** | `preload.ts` | 初始化所有管理器，暴露 API |
+| **供应商** | `provider-db.ts` | CRUD、切换、导入导出 |
+| **代理** | `proxy.ts` | 代理服务器、负载均衡 |
+| **会话** | `sessions.ts` | 扫描和管理 Claude 会话 |
+| **提示词** | `prompts.ts` | 提示词管理、备份恢复 |
+| **技能** | `skills.ts` | 技能安装、部署、同步 |
+| **MCP** | `mcp.ts` | MCP 服务器配置 |
+| **统计** | `stats.ts` | API 用量统计 |
 
 ## 🤝 贡献指南
 
@@ -173,8 +311,8 @@ utools-cctoggle/
 
 ### 添加新供应商
 
-1. 在 `src/data/providers.js` 中添加供应商元数据
-2. 在对应的 `src/data/presets-*.js` 中添加预设配置
+1. 在 `src/data/providers.ts` 中添加供应商元数据
+2. 在对应的 `src/data/presets-*.ts` 中添加预设配置
 3. 测试配置是否正确
 
 ## 📄 开源协议

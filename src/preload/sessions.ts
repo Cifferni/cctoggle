@@ -1,893 +1,990 @@
-// @ts-nocheck TODO: 逐步添加类型注解后移除
-// uTools ccToggle - sessions.js
+// uTools ccToggle - sessions.ts
 // 会话管理：读取各 AI 应用的本地会话数据
 
-var utils = require("./utils");
-var fs = utils.fs;
-var path = utils.path;
-var getHomeDir = utils.getHomeDir;
+import utils = require("./utils");
+
+const fs = utils.fs;
+const path = utils.path;
+const getHomeDir = utils.getHomeDir;
+
+// --- 类型定义 ---
+
+interface ScanCacheEntry {
+  sessions: Session[];
+}
+
+interface ScanCache {
+  data: Record<string, ScanCacheEntry> | null;
+  timestamp: number;
+  readonly TTL: number;
+}
+
+interface Session {
+  id: string;
+  app: string;
+  sessionId: string;
+  title: string;
+  projectPath: string;
+  messageCount: number;
+  tokenUsage: number;
+  model: string;
+  createdAt: string;
+  updatedAt: string;
+  filePath: string;
+}
+
+interface ContentBlock {
+  type: string;
+  text?: string;
+  name?: string;
+  input?: Record<string, unknown>;
+}
+
+interface Message {
+  role: string;
+  contentBlocks: ContentBlock[];
+  timestamp: string;
+}
+
+interface ScanResult {
+  sessions: Session[];
+  total: number;
+  error?: string;
+}
+
+interface ScanOptions {
+  offset?: number;
+  limit?: number;
+  search?: string;
+  sort?: string;
+}
+
+interface FileWithMtime {
+  path: string;
+  mtime: number;
+}
+
+interface HeadTailResult {
+  head: string[];
+  tail: string[];
+  size: number;
+}
+
+interface DeleteResult {
+  success: boolean;
+  error?: string;
+}
+
+interface ClearAllResult {
+  success: boolean;
+  count: number;
+  errors: string[];
+}
 
 // --- 扫描缓存 ---
-var _scanCache = {
-  data: null,       // { sessions, files, canEarlyStop }
+const _scanCache: ScanCache = {
+  data: null,
   timestamp: 0,
   TTL: 30000,
 };
-var _sessionCache = {}; // filePath -> full messages (on-demand)
-
-function _clearScanCache() {
-  _scanCache.data = null;
-  _scanCache.timestamp = 0;
-}
+let _sessionCache: Record<string, Message[]> = {};
 
 // ============================================================
 // 大文件优化：只读头尾，提取元数据
 // ============================================================
 
-var CHUNK_SIZE = 4096;
+const CHUNK_SIZE = 4096;
 
-// 一次打开文件，读取头部和尾部（只 open/stat/close 一次）
-async function _readHeadAndTail(filePath) {
-  var fd;
-  try { fd = await fs.promises.open(filePath, "r"); } catch (e) { return { head: [], tail: [], size: 0 }; }
-  try {
-    var size = (await fd.stat()).size;
-    // 读头部
-    var headLen = Math.min(CHUNK_SIZE, size);
-    var headBuf = Buffer.alloc(headLen);
-    await fd.read(headBuf, 0, headLen, 0);
-    var head = headBuf.toString("utf8").split(/\r?\n/);
+type ScanFunction = (home: string, opts?: { offset?: number; limit?: number }) => Promise<{ sessions: Session[]; totalFiles: number }>;
 
-    // 读尾部（文件够大时）
-    var tail = [];
-    if (size > CHUNK_SIZE) {
-      var tailPos = size - CHUNK_SIZE;
-      var tailBuf = Buffer.alloc(CHUNK_SIZE);
-      await fd.read(tailBuf, 0, CHUNK_SIZE, tailPos);
-      tail = tailBuf.toString("utf8").split(/\r?\n/);
-    }
+export class SessionManager {
+  // ============================================================
+  // 内部辅助方法
+  // ============================================================
 
-    return { head: head, tail: tail, size: size };
-  } catch (e) {
-    return { head: [], tail: [], size: 0 };
-  } finally {
-    await fd.close();
+  private static _clearScanCache(): void {
+    _scanCache.data = null;
+    _scanCache.timestamp = 0;
   }
-}
 
-// 统计 JSONL 中的消息行数（user/assistant/human 类型）
-function _countMessageLines(lines) {
-  var count = 0;
-  for (var i = 0; i < lines.length; i++) {
-    var line = lines[i];
-    if (!line || line[0] !== "{") continue;
+  // 一次打开文件，读取头部和尾部（只 open/stat/close 一次）
+  private static async _readHeadAndTail(filePath: string): Promise<HeadTailResult> {
+    let fd: import("fs").promises.FileHandle;
     try {
-      var d = JSON.parse(line);
-      if (d && (d.type === "assistant" || d.type === "human" || d.type === "user"
-        || (d.type === "event_msg" && d.payload && (d.payload.type === "user_message" || d.payload.type === "agent_message"))
-        || (d.type === "message" && d.message && (d.message.role === "user" || d.message.role === "assistant"))
-      )) count++;
-    } catch (e) { /* skip */ }
-  }
-  return count;
-}
+      fd = await fs.promises.open(filePath, "r");
+    } catch (e) {
+      return { head: [], tail: [], size: 0 };
+    }
+    try {
+      const size = (await fd.stat()).size;
+      // 读头部
+      const headLen = Math.min(CHUNK_SIZE, size);
+      const headBuf = Buffer.alloc(headLen);
+      await fd.read(headBuf, 0, headLen, 0);
+      const head = headBuf.toString("utf8").split(/\r?\n/);
 
-// 快速统计消息数：直接数头尾的消息行
-function _estimateMessageCount(headLines, tailLines, size) {
-  // 小文件：头尾重叠，直接数头部
-  if (size <= CHUNK_SIZE * 2) return _countMessageLines(headLines);
-  // 大文件：头尾各数一遍（中间的数不到，但比瞎猜准）
-  return _countMessageLines(headLines) + _countMessageLines(tailLines);
-}
-
-// ============================================================
-// Claude / Claude Desktop 元数据解析
-// ============================================================
-
-async function _parseClaudeMeta(filePath, projectName) {
-  var r = await _readHeadAndTail(filePath);
-  var headLines = r.head;
-  var tailLines = r.tail;
-
-  var sessionId = path.basename(filePath, ".jsonl");
-  var title = "";
-  var firstTs = "";
-  var lastTs = "";
-  var tokenUsage = 0;
-  var lastModel = "";
-  var projectPath = "";
-
-  // 解析头部行
-  for (var i = 0; i < headLines.length; i++) {
-    var line = headLines[i];
-    if (!line || line[0] !== "{") continue;
-    var d;
-    try { d = JSON.parse(line); } catch (e) { continue; }
-    if (!d || typeof d !== "object") continue;
-
-    if (d.type === "summary" && d.summary) title = d.summary;
-    if (!projectPath && d.cwd) projectPath = d.cwd;
-
-    if (d.type === "assistant" || d.type === "human" || d.type === "user") {
-      if (d.timestamp) {
-        if (!firstTs) firstTs = d.timestamp;
-        lastTs = d.timestamp;
+      // 读尾部（文件够大时）
+      let tail: string[] = [];
+      if (size > CHUNK_SIZE) {
+        const tailPos = size - CHUNK_SIZE;
+        const tailBuf = Buffer.alloc(CHUNK_SIZE);
+        await fd.read(tailBuf, 0, CHUNK_SIZE, tailPos);
+        tail = tailBuf.toString("utf8").split(/\r?\n/);
       }
-      if (!title && d.type === "user" && d.message && d.message.content) {
-        var c = typeof d.message.content === "string" ? d.message.content : "";
-        if (c.length > 60) c = c.substring(0, 60) + "...";
-        if (c) title = c;
-      }
-      if (d.type === "assistant" && d.message && d.message.usage) {
-        var u = d.message.usage;
-        tokenUsage += (Number(u.input_tokens) || 0) + (Number(u.output_tokens) || 0);
-        if (d.message.model && d.message.model !== "<synthetic>") lastModel = d.message.model;
-      }
+
+      return { head, tail, size };
+    } catch (e) {
+      return { head: [], tail: [], size: 0 };
+    } finally {
+      await fd.close();
     }
   }
 
-  // 解析尾部行（补充 lastTs、tokenUsage）
-  for (var j = 0; j < tailLines.length; j++) {
-    var line2 = tailLines[j];
-    if (!line2 || line2[0] !== "{") continue;
-    var d2;
-    try { d2 = JSON.parse(line2); } catch (e) { continue; }
-    if (!d2 || typeof d2 !== "object") continue;
-    if (d2.type === "assistant" || d2.type === "human" || d2.type === "user") {
-      if (d2.timestamp) lastTs = d2.timestamp;
-      if (d2.type === "assistant" && d2.message && d2.message.usage) {
-        var u2 = d2.message.usage;
-        tokenUsage += (Number(u2.input_tokens) || 0) + (Number(u2.output_tokens) || 0);
-        if (d2.message.model && d2.message.model !== "<synthetic>") lastModel = d2.message.model;
-      }
-    }
-  }
-
-  // 用文件大小估算消息数
-  var messageCount = _estimateMessageCount(headLines, tailLines, r.size);
-
-  if (!title) title = sessionId.substring(0, 12) + "...";
-  if (!projectPath) projectPath = (projectName || "").replace(/-/g, "/");
-
-  return {
-    id: "claude_" + sessionId,
-    app: "claude",
-    sessionId: sessionId,
-    title: title,
-    projectPath: projectPath,
-    messageCount: messageCount,
-    tokenUsage: tokenUsage,
-    model: lastModel,
-    createdAt: firstTs || "",
-    updatedAt: lastTs || "",
-    filePath: filePath,
-  };
-}
-
-// ============================================================
-// Codex 元数据解析
-// ============================================================
-
-async function _parseCodexMeta(filePath) {
-  var r = await _readHeadAndTail(filePath);
-  var headLines = r.head;
-  var tailLines = r.tail;
-
-  var sessionId = path.basename(filePath, ".jsonl");
-  var title = "";
-  var firstTs = "";
-  var lastTs = "";
-  var tokenUsage = 0;
-  var lastModel = "";
-  var projectPath = "";
-
-  for (var i = 0; i < headLines.length; i++) {
-    var line = headLines[i];
-    if (!line || line[0] !== "{") continue;
-    var d;
-    try { d = JSON.parse(line); } catch (e) { continue; }
-    if (!d || typeof d !== "object") continue;
-
-    if (d.type === "session_meta" && d.payload) {
-      if (d.payload.cwd) projectPath = d.payload.cwd;
-      if (d.payload.model_provider) lastModel = d.payload.model_provider;
-    }
-    if (d.type === "event_msg" && d.payload) {
-      if (d.payload.type === "user_message" && d.payload.message) {
-        if (!title) {
-          var t = d.payload.message;
-          if (t.length > 60) t = t.substring(0, 60) + "...";
-          title = t;
-        }
-      } else if (d.payload.type === "token_count" && d.payload.info && d.payload.info.last_token_usage) {
-        var u = d.payload.info.last_token_usage;
-        tokenUsage += (Number(u.input_tokens) || 0) + (Number(u.output_tokens) || 0);
-      }
-    }
-    if (d.type === "response_item" && d.payload && d.payload.model) lastModel = d.payload.model;
-    if (d.timestamp) { if (!firstTs) firstTs = d.timestamp; lastTs = d.timestamp; }
-  }
-
-  for (var j = 0; j < tailLines.length; j++) {
-    var line2 = tailLines[j];
-    if (!line2 || line2[0] !== "{") continue;
-    var d2;
-    try { d2 = JSON.parse(line2); } catch (e) { continue; }
-    if (!d2 || typeof d2 !== "object") continue;
-    if (d2.type === "event_msg" && d2.payload) {
-      if (d2.payload.type === "token_count" && d2.payload.info && d2.payload.info.last_token_usage) {
-        var u2 = d2.payload.info.last_token_usage;
-        tokenUsage += (Number(u2.input_tokens) || 0) + (Number(u2.output_tokens) || 0);
-      }
-    }
-    if (d2.type === "response_item" && d2.payload && d2.payload.model) lastModel = d2.payload.model;
-    if (d2.timestamp) lastTs = d2.timestamp;
-  }
-
-  var messageCount = _estimateMessageCount(headLines, tailLines, r.size);
-  if (!title) title = sessionId.substring(0, 12) + "...";
-
-  return {
-    id: "codex_" + sessionId,
-    app: "codex",
-    sessionId: sessionId,
-    title: title,
-    projectPath: projectPath,
-    messageCount: messageCount,
-    tokenUsage: tokenUsage,
-    model: lastModel,
-    createdAt: firstTs || "",
-    updatedAt: lastTs || "",
-    filePath: filePath,
-  };
-}
-
-// ============================================================
-// OpenClaw 元数据解析
-// ============================================================
-
-async function _parseOpenClawMeta(filePath, agentId) {
-  var r = await _readHeadAndTail(filePath);
-  var headLines = r.head;
-  var tailLines = r.tail;
-
-  var sessionId = path.basename(filePath, ".jsonl");
-  var title = "";
-  var firstTs = "";
-  var lastTs = "";
-  var tokenUsage = 0;
-  var lastModel = "";
-  var projectPath = "";
-
-  function parseOpenClawLines(lines) {
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i];
+  // 统计 JSONL 中的消息行数（user/assistant/human 类型）
+  private static _countMessageLines(lines: string[]): number {
+    let count = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       if (!line || line[0] !== "{") continue;
-      var d;
+      try {
+        const d = JSON.parse(line);
+        if (d && (d.type === "assistant" || d.type === "human" || d.type === "user"
+          || (d.type === "event_msg" && d.payload && (d.payload.type === "user_message" || d.payload.type === "agent_message"))
+          || (d.type === "message" && d.message && (d.message.role === "user" || d.message.role === "assistant"))
+        )) count++;
+      } catch (e) { /* skip */ }
+    }
+    return count;
+  }
+
+  // 快速统计消息数：直接数头尾的消息行
+  private static _estimateMessageCount(headLines: string[], tailLines: string[], size: number): number {
+    // 小文件：头尾重叠，直接数头部
+    if (size <= CHUNK_SIZE * 2) return SessionManager._countMessageLines(headLines);
+    // 大文件：头尾各数一遍（中间的数不到，但比瞎猜准）
+    return SessionManager._countMessageLines(headLines) + SessionManager._countMessageLines(tailLines);
+  }
+
+  // ============================================================
+  // Claude / Claude Desktop 元数据解析
+  // ============================================================
+
+  private static async _parseClaudeMeta(filePath: string, projectName: string): Promise<Session> {
+    const r = await SessionManager._readHeadAndTail(filePath);
+    const headLines = r.head;
+    const tailLines = r.tail;
+
+    const sessionId = path.basename(filePath, ".jsonl");
+    let title = "";
+    let firstTs = "";
+    let lastTs = "";
+    let tokenUsage = 0;
+    let lastModel = "";
+    let projectPath = "";
+
+    // 解析头部行
+    for (let i = 0; i < headLines.length; i++) {
+      const line = headLines[i];
+      if (!line || line[0] !== "{") continue;
+      let d: Record<string, any>;
       try { d = JSON.parse(line); } catch (e) { continue; }
       if (!d || typeof d !== "object") continue;
 
-      if (d.type === "session") {
-        if (d.id) sessionId = d.id;
-        if (d.cwd) projectPath = d.cwd;
-        if (d.timestamp) { if (!firstTs) firstTs = d.timestamp; lastTs = d.timestamp; }
+      if (d.type === "summary" && d.summary) title = d.summary;
+      if (!projectPath && d.cwd) projectPath = d.cwd;
+
+      if (d.type === "assistant" || d.type === "human" || d.type === "user") {
+        if (d.timestamp) {
+          if (!firstTs) firstTs = d.timestamp;
+          lastTs = d.timestamp;
+        }
+        if (!title && d.type === "user" && d.message && d.message.content) {
+          let c = typeof d.message.content === "string" ? d.message.content : "";
+          if (c.length > 60) c = c.substring(0, 60) + "...";
+          if (c) title = c;
+        }
+        if (d.type === "assistant" && d.message && d.message.usage) {
+          const u = d.message.usage;
+          tokenUsage += (Number(u.input_tokens) || 0) + (Number(u.output_tokens) || 0);
+          if (d.message.model && d.message.model !== "<synthetic>") lastModel = d.message.model;
+        }
       }
-      if (d.type === "message" && d.message) {
-        var role = d.message.role || "";
-        if (role === "user" || role === "assistant") {
-          if (!title && role === "user") {
-            var c = "";
-            if (typeof d.message.content === "string") c = d.message.content;
-            else if (Array.isArray(d.message.content)) {
-              for (var k = 0; k < d.message.content.length; k++) {
-                if (d.message.content[k].type === "text") { c = d.message.content[k].text; break; }
+    }
+
+    // 解析尾部行（补充 lastTs、tokenUsage）
+    for (let j = 0; j < tailLines.length; j++) {
+      const line2 = tailLines[j];
+      if (!line2 || line2[0] !== "{") continue;
+      let d2: Record<string, any>;
+      try { d2 = JSON.parse(line2); } catch (e) { continue; }
+      if (!d2 || typeof d2 !== "object") continue;
+      if (d2.type === "assistant" || d2.type === "human" || d2.type === "user") {
+        if (d2.timestamp) lastTs = d2.timestamp;
+        if (d2.type === "assistant" && d2.message && d2.message.usage) {
+          const u2 = d2.message.usage;
+          tokenUsage += (Number(u2.input_tokens) || 0) + (Number(u2.output_tokens) || 0);
+          if (d2.message.model && d2.message.model !== "<synthetic>") lastModel = d2.message.model;
+        }
+      }
+    }
+
+    // 用文件大小估算消息数
+    const messageCount = SessionManager._estimateMessageCount(headLines, tailLines, r.size);
+
+    if (!title) title = sessionId.substring(0, 12) + "...";
+    if (!projectPath) projectPath = (projectName || "").replace(/-/g, "/");
+
+    return {
+      id: "claude_" + sessionId,
+      app: "claude",
+      sessionId,
+      title,
+      projectPath,
+      messageCount,
+      tokenUsage,
+      model: lastModel,
+      createdAt: firstTs || "",
+      updatedAt: lastTs || "",
+      filePath,
+    };
+  }
+
+  // ============================================================
+  // Codex 元数据解析
+  // ============================================================
+
+  private static async _parseCodexMeta(filePath: string): Promise<Session> {
+    const r = await SessionManager._readHeadAndTail(filePath);
+    const headLines = r.head;
+    const tailLines = r.tail;
+
+    const sessionId = path.basename(filePath, ".jsonl");
+    let title = "";
+    let firstTs = "";
+    let lastTs = "";
+    let tokenUsage = 0;
+    let lastModel = "";
+    let projectPath = "";
+
+    for (let i = 0; i < headLines.length; i++) {
+      const line = headLines[i];
+      if (!line || line[0] !== "{") continue;
+      let d: Record<string, any>;
+      try { d = JSON.parse(line); } catch (e) { continue; }
+      if (!d || typeof d !== "object") continue;
+
+      if (d.type === "session_meta" && d.payload) {
+        if (d.payload.cwd) projectPath = d.payload.cwd;
+        if (d.payload.model_provider) lastModel = d.payload.model_provider;
+      }
+      if (d.type === "event_msg" && d.payload) {
+        if (d.payload.type === "user_message" && d.payload.message) {
+          if (!title) {
+            let t: string = d.payload.message;
+            if (t.length > 60) t = t.substring(0, 60) + "...";
+            title = t;
+          }
+        } else if (d.payload.type === "token_count" && d.payload.info && d.payload.info.last_token_usage) {
+          const u = d.payload.info.last_token_usage;
+          tokenUsage += (Number(u.input_tokens) || 0) + (Number(u.output_tokens) || 0);
+        }
+      }
+      if (d.type === "response_item" && d.payload && d.payload.model) lastModel = d.payload.model;
+      if (d.timestamp) { if (!firstTs) firstTs = d.timestamp; lastTs = d.timestamp; }
+    }
+
+    for (let j = 0; j < tailLines.length; j++) {
+      const line2 = tailLines[j];
+      if (!line2 || line2[0] !== "{") continue;
+      let d2: Record<string, any>;
+      try { d2 = JSON.parse(line2); } catch (e) { continue; }
+      if (!d2 || typeof d2 !== "object") continue;
+      if (d2.type === "event_msg" && d2.payload) {
+        if (d2.payload.type === "token_count" && d2.payload.info && d2.payload.info.last_token_usage) {
+          const u2 = d2.payload.info.last_token_usage;
+          tokenUsage += (Number(u2.input_tokens) || 0) + (Number(u2.output_tokens) || 0);
+        }
+      }
+      if (d2.type === "response_item" && d2.payload && d2.payload.model) lastModel = d2.payload.model;
+      if (d2.timestamp) lastTs = d2.timestamp;
+    }
+
+    const messageCount = SessionManager._estimateMessageCount(headLines, tailLines, r.size);
+    if (!title) title = sessionId.substring(0, 12) + "...";
+
+    return {
+      id: "codex_" + sessionId,
+      app: "codex",
+      sessionId,
+      title,
+      projectPath,
+      messageCount,
+      tokenUsage,
+      model: lastModel,
+      createdAt: firstTs || "",
+      updatedAt: lastTs || "",
+      filePath,
+    };
+  }
+
+  // ============================================================
+  // OpenClaw 元数据解析
+  // ============================================================
+
+  private static async _parseOpenClawMeta(filePath: string, agentId: string): Promise<Session> {
+    const r = await SessionManager._readHeadAndTail(filePath);
+    const headLines = r.head;
+    const tailLines = r.tail;
+
+    let sessionId = path.basename(filePath, ".jsonl");
+    let title = "";
+    let firstTs = "";
+    let lastTs = "";
+    let tokenUsage = 0;
+    let lastModel = "";
+    let projectPath = "";
+
+    function parseOpenClawLines(lines: string[]): void {
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line || line[0] !== "{") continue;
+        let d: Record<string, any>;
+        try { d = JSON.parse(line); } catch (e) { continue; }
+        if (!d || typeof d !== "object") continue;
+
+        if (d.type === "session") {
+          if (d.id) sessionId = d.id;
+          if (d.cwd) projectPath = d.cwd;
+          if (d.timestamp) { if (!firstTs) firstTs = d.timestamp; lastTs = d.timestamp; }
+        }
+        if (d.type === "message" && d.message) {
+          const role: string = d.message.role || "";
+          if (role === "user" || role === "assistant") {
+            if (!title && role === "user") {
+              let c = "";
+              if (typeof d.message.content === "string") c = d.message.content;
+              else if (Array.isArray(d.message.content)) {
+                for (let k = 0; k < d.message.content.length; k++) {
+                  if (d.message.content[k].type === "text") { c = d.message.content[k].text; break; }
+                }
               }
+              if (c) { title = c.substring(0, 60); if (c.length > 60) title += "..."; }
             }
-            if (c) { title = c.substring(0, 60); if (c.length > 60) title += "..."; }
+            if (d.message.usage) {
+              const u = d.message.usage;
+              tokenUsage += (Number(u.input) || 0) + (Number(u.output) || 0) + (Number(u.totalTokens) || 0);
+            }
+            if (d.message.model) lastModel = d.message.model;
           }
-          if (d.message.usage) {
-            var u = d.message.usage;
-            tokenUsage += (Number(u.input) || 0) + (Number(u.output) || 0) + (Number(u.totalTokens) || 0);
-          }
-          if (d.message.model) lastModel = d.message.model;
+          if (d.timestamp) { if (!firstTs) firstTs = d.timestamp; lastTs = d.timestamp; }
         }
-        if (d.timestamp) { if (!firstTs) firstTs = d.timestamp; lastTs = d.timestamp; }
-      }
-      if (d.timestamp && d.type !== "session" && d.type !== "message") {
-        if (!firstTs) firstTs = d.timestamp; lastTs = d.timestamp;
-      }
-    }
-  }
-
-  parseOpenClawLines(headLines);
-  parseOpenClawLines(tailLines);
-
-  var messageCount = _estimateMessageCount(headLines, tailLines, r.size);
-  if (!title) title = sessionId.substring(0, 12) + "...";
-  if (!projectPath && agentId) projectPath = agentId;
-
-  return {
-    id: "openclaw_" + sessionId,
-    app: "openclaw",
-    sessionId: sessionId,
-    title: title,
-    projectPath: projectPath,
-    messageCount: messageCount,
-    tokenUsage: tokenUsage,
-    model: lastModel,
-    createdAt: firstTs || "",
-    updatedAt: lastTs || "",
-    filePath: filePath,
-  };
-}
-
-// ============================================================
-// 收集文件路径 + mtime（按 mtime 倒序）
-// ============================================================
-
-async function _collectFilesWithMtime(dirPath, recursive) {
-  var results = [];
-  var entries;
-  try { entries = await fs.promises.readdir(dirPath, { withFileTypes: true }); } catch (e) { return results; }
-
-  for (var i = 0; i < entries.length; i++) {
-    var ent = entries[i];
-    var fullPath = path.join(dirPath, ent.name);
-    if (ent.isDirectory() && recursive) {
-      var sub = await _collectFilesWithMtime(fullPath, true);
-      results = results.concat(sub);
-    } else if (ent.isFile() && /\.jsonl$/i.test(ent.name)) {
-      var st;
-      try { st = await fs.promises.stat(fullPath); } catch (e) { continue; }
-      results.push({ path: fullPath, mtime: st.mtimeMs });
-    }
-  }
-  return results;
-}
-
-// ============================================================
-// Claude / Claude Desktop 扫描（带分页）
-// ============================================================
-
-async function _scanClaudeSessions(home, opts) {
-  opts = opts || {};
-  var offset = opts.offset || 0;
-  var limit = opts.limit != null ? opts.limit : 20;
-
-  var projectsDir = utils.getAgentSessionPath("claude") || path.join(home, ".claude", "projects");
-  var sessions = [];
-  var entries;
-  try { entries = await fs.promises.readdir(projectsDir, { withFileTypes: true }); } catch (e) { return { sessions: sessions, totalFiles: 0 }; }
-
-  // 收集所有文件路径 + mtime
-  var allFiles = [];
-  for (var i = 0; i < entries.length; i++) {
-    var ent = entries[i];
-    if (!ent.isDirectory()) continue;
-    var projectPath = path.join(projectsDir, ent.name);
-    var files;
-    try { files = await fs.promises.readdir(projectPath); } catch (e) { continue; }
-    for (var j = 0; j < files.length; j++) {
-      var fname = files[j];
-      if (!/\.jsonl$/i.test(fname)) continue;
-      var filePath = path.join(projectPath, fname);
-      var st;
-      try { st = await fs.promises.stat(filePath); } catch (e) { continue; }
-      allFiles.push({ path: filePath, mtime: st.mtimeMs, project: ent.name });
-    }
-  }
-
-  // 按 mtime 倒序排序
-  allFiles.sort(function (a, b) { return b.mtime - a.mtime; });
-
-  // 扫描：跳过 offset 个，取 limit 个
-  var skipped = 0;
-  for (var k = 0; k < allFiles.length; k++) {
-    var f = allFiles[k];
-    var session = await _parseClaudeMeta(f.path, f.project);
-    if (!session) continue;
-    if (skipped < offset) { skipped++; continue; }
-    sessions.push(session);
-    if (sessions.length >= limit) break;
-  }
-
-  return { sessions: sessions, totalFiles: allFiles.length };
-}
-
-async function _scanClaudeDesktopSessions(home, opts) {
-  opts = opts || {};
-  var offset = opts.offset || 0;
-  var limit = opts.limit != null ? opts.limit : 20;
-
-  var projectsDir = utils.getAgentSessionPath("claude-desktop") || path.join(home, ".claude-desktop", "projects");
-  var entries;
-  try { entries = await fs.promises.readdir(projectsDir, { withFileTypes: true }); } catch (e) {
-    // 如果配置的路径不存在，尝试默认路径
-    if (utils.getAgentSessionPath("claude-desktop")) {
-      projectsDir = path.join(home, ".claude-desktop", "projects");
-      try { entries = await fs.promises.readdir(projectsDir, { withFileTypes: true }); } catch (e2) {
-        // 继续尝试 APPDATA
-      }
-    }
-    if (!entries) {
-      var appData;
-      try { appData = process.env.APPDATA || ""; } catch (e3) { appData = ""; }
-      if (appData) {
-        try {
-          var altDir = path.join(appData, "Claude", "projects");
-          entries = await fs.promises.readdir(altDir, { withFileTypes: true });
-          projectsDir = altDir;
-        } catch (e4) { return { sessions: [], totalFiles: 0 }; }
-      } else {
-        return { sessions: [], totalFiles: 0 };
-      }
-    }
-  }
-
-  var allFiles = [];
-  for (var i = 0; i < entries.length; i++) {
-    var ent = entries[i];
-    if (!ent.isDirectory()) continue;
-    var projectPath = path.join(projectsDir, ent.name);
-    var files;
-    try { files = await fs.promises.readdir(projectPath); } catch (e) { continue; }
-    for (var j = 0; j < files.length; j++) {
-      var fname = files[j];
-      if (!/\.jsonl$/i.test(fname)) continue;
-      var filePath = path.join(projectPath, fname);
-      var st;
-      try { st = await fs.promises.stat(filePath); } catch (e) { continue; }
-      allFiles.push({ path: filePath, mtime: st.mtimeMs, project: ent.name });
-    }
-  }
-
-  allFiles.sort(function (a, b) { return b.mtime - a.mtime; });
-
-  var sessions = [];
-  var skipped = 0;
-  for (var k = 0; k < allFiles.length; k++) {
-    var f = allFiles[k];
-    var meta = await _parseClaudeMeta(f.path, f.project);
-    if (!meta) continue;
-    meta.id = "claude-desktop_" + meta.sessionId;
-    meta.app = "claude-desktop";
-    if (skipped < offset) { skipped++; continue; }
-    sessions.push(meta);
-    if (sessions.length >= limit) break;
-  }
-
-  return { sessions: sessions, totalFiles: allFiles.length };
-}
-
-// ============================================================
-// Codex 扫描（带分页，目录结构天然按时间排序）
-// ============================================================
-
-async function _scanCodexSessions(home, opts) {
-  opts = opts || {};
-  var offset = opts.offset || 0;
-  var limit = opts.limit != null ? opts.limit : 20;
-
-  var sessionsDir = utils.getAgentSessionPath("codex") || path.join(home, ".codex", "sessions");
-  var sessions = [];
-  var totalFiles = 0;
-  var scanned = 0; // 已处理（跳过或解析）的文件数
-  var years;
-  try { years = await fs.promises.readdir(sessionsDir, { withFileTypes: true }); } catch (e) { return { sessions: sessions, totalFiles: 0 }; }
-
-  // 从最新日期反向遍历，目录结构天然有序
-  var yearNames = years.filter(function (e) { return e.isDirectory(); }).map(function (e) { return e.name; }).sort().reverse();
-
-  for (var yi = 0; yi < yearNames.length; yi++) {
-    var yearDir = path.join(sessionsDir, yearNames[yi]);
-    var months;
-    try { months = await fs.promises.readdir(yearDir, { withFileTypes: true }); } catch (e) { continue; }
-    var monthNames = months.filter(function (e) { return e.isDirectory(); }).map(function (e) { return e.name; }).sort().reverse();
-
-    for (var mi = 0; mi < monthNames.length; mi++) {
-      var monthDir = path.join(yearDir, monthNames[mi]);
-      var days;
-      try { days = await fs.promises.readdir(monthDir, { withFileTypes: true }); } catch (e) { continue; }
-      var dayNames = days.filter(function (e) { return e.isDirectory(); }).map(function (e) { return e.name; }).sort().reverse();
-
-      for (var di = 0; di < dayNames.length; di++) {
-        var dayDir = path.join(monthDir, dayNames[di]);
-        var files;
-        try { files = await fs.promises.readdir(dayDir); } catch (e) { continue; }
-        var jsonlFiles = files.filter(function (f) { return /\.jsonl$/i.test(f); }).sort().reverse();
-
-        for (var fi = 0; fi < jsonlFiles.length; fi++) {
-          totalFiles++; // 始终统计总数
-          if (scanned < offset) { scanned++; continue; } // 跳过 offset 之前的
-          if (sessions.length >= limit) continue; // 够了只计数不解析
-          var session = await _parseCodexMeta(path.join(dayDir, jsonlFiles[fi]));
-          if (session) sessions.push(session);
-          scanned++;
+        if (d.timestamp && d.type !== "session" && d.type !== "message") {
+          if (!firstTs) firstTs = d.timestamp; lastTs = d.timestamp;
         }
       }
     }
+
+    parseOpenClawLines(headLines);
+    parseOpenClawLines(tailLines);
+
+    const messageCount = SessionManager._estimateMessageCount(headLines, tailLines, r.size);
+    if (!title) title = sessionId.substring(0, 12) + "...";
+    if (!projectPath && agentId) projectPath = agentId;
+
+    return {
+      id: "openclaw_" + sessionId,
+      app: "openclaw",
+      sessionId,
+      title,
+      projectPath,
+      messageCount,
+      tokenUsage,
+      model: lastModel,
+      createdAt: firstTs || "",
+      updatedAt: lastTs || "",
+      filePath,
+    };
   }
 
-  return { sessions: sessions, totalFiles: totalFiles };
-}
+  // ============================================================
+  // 收集文件路径 + mtime（按 mtime 倒序）
+  // ============================================================
 
-// ============================================================
-// OpenClaw 扫描（带分页）
-// ============================================================
-
-async function _scanOpenClawSessions(home, opts) {
-  opts = opts || {};
-  var offset = opts.offset || 0;
-  var limit = opts.limit != null ? opts.limit : 20;
-
-  var agentsDir = utils.getAgentSessionPath("openclaw") || path.join(home, ".openclaw", "agents");
-  var sessions = [];
-  var agentEntries;
-  try { agentEntries = await fs.promises.readdir(agentsDir, { withFileTypes: true }); } catch (e) { return { sessions: sessions, totalFiles: 0 }; }
-
-  var allFiles = [];
-  for (var i = 0; i < agentEntries.length; i++) {
-    var agentEnt = agentEntries[i];
-    if (!agentEnt.isDirectory()) continue;
-    var sessDir = path.join(agentsDir, agentEnt.name, "sessions");
-    var files;
-    try { files = await fs.promises.readdir(sessDir); } catch (e) { continue; }
-    for (var j = 0; j < files.length; j++) {
-      var fname = files[j];
-      if (!/\.jsonl$/i.test(fname)) continue;
-      var filePath = path.join(sessDir, fname);
-      var st;
-      try { st = await fs.promises.stat(filePath); } catch (e) { continue; }
-      allFiles.push({ path: filePath, mtime: st.mtimeMs, agent: agentEnt.name });
-    }
-  }
-
-  allFiles.sort(function (a, b) { return b.mtime - a.mtime; });
-
-  var skipped = 0;
-  for (var k = 0; k < allFiles.length; k++) {
-    var f = allFiles[k];
-    var session = await _parseOpenClawMeta(f.path, f.agent);
-    if (!session) continue;
-    if (skipped < offset) { skipped++; continue; }
-    sessions.push(session);
-    if (sessions.length >= limit) break;
-  }
-
-  return { sessions: sessions, totalFiles: allFiles.length };
-}
-
-// ============================================================
-// 加载会话详情（含完整消息历史）
-// ============================================================
-
-// 从文件路径推断应用类型
-function _detectApp(filePath) {
-  if (filePath.indexOf(".codex") >= 0) return "codex";
-  if (filePath.indexOf(".openclaw") >= 0 || filePath.indexOf("openclaw") >= 0) return "openclaw";
-  if (filePath.indexOf("claude-desktop") >= 0) return "claude-desktop";
-  return "claude";
-}
-
-// 从 content 字段提取结构化内容块
-function _extractContentBlocks(content) {
-  if (!content) return [];
-  if (typeof content === "string") return [{ type: "text", text: content }];
-  if (Array.isArray(content)) {
-    var blocks = [];
-    for (var i = 0; i < content.length; i++) {
-      var item = content[i];
-      if (!item || typeof item !== "object") continue;
-      if (item.type === "text" && item.text) {
-        blocks.push({ type: "text", text: item.text });
-      } else if (item.type === "thinking" && item.thinking) {
-        blocks.push({ type: "thinking", text: item.thinking });
-      } else if (item.type === "tool_use") {
-        blocks.push({ type: "tool_use", name: item.name || "unknown", input: item.input || {} });
-      } else if (item.type === "toolCall") {
-        blocks.push({ type: "tool_use", name: item.name || "unknown", input: {} });
-      } else if (item.type === "tool_result") {
-        // 工具执行结果：从嵌套的 content 中提取文本
-        var resultText = _extractToolResultText(item);
-        if (resultText) blocks.push({ type: "tool_result", text: resultText, name: item.tool_use_id || "" });
-      }
-    }
-    return blocks;
-  }
-  return [{ type: "text", text: JSON.stringify(content) }];
-}
-
-// 从 tool_result 中提取文本内容
-function _extractToolResultText(item) {
-  if (!item) return "";
-  var c = item.content;
-  if (typeof c === "string") return c;
-  if (Array.isArray(c)) {
-    var parts = [];
-    for (var i = 0; i < c.length; i++) {
-      if (c[i] && c[i].type === "text" && c[i].text) parts.push(c[i].text);
-    }
-    return parts.join("\n");
-  }
-  return "";
-}
-
-// 兼容旧接口：提取纯文本
-function _extractContent(content) {
-  var blocks = _extractContentBlocks(content);
-  var parts = [];
-  for (var i = 0; i < blocks.length; i++) {
-    var b = blocks[i];
-    if (b.type === "text") parts.push(b.text);
-    else if (b.type === "thinking") parts.push(b.text);
-    else if (b.type === "tool_use") parts.push("[工具调用: " + b.name + "]");
-  }
-  return parts.join("");
-}
-
-// 合并连续同角色消息
-function _mergeMessages(messages) {
-  if (messages.length <= 1) return messages;
-  var merged = [messages[0]];
-  for (var i = 1; i < messages.length; i++) {
-    var prev = merged[merged.length - 1];
-    var cur = messages[i];
-    if (cur.role === prev.role) {
-      // 合并 contentBlocks，使用最后一条的时间戳
-      prev.contentBlocks = prev.contentBlocks.concat(cur.contentBlocks);
-      if (cur.timestamp) prev.timestamp = cur.timestamp;
-    } else {
-      merged.push(cur);
-    }
-  }
-  return merged;
-}
-
-// 解析 OpenClaw 消息
-function _parseOpenClawMessages(lines) {
-  var messages = [];
-  for (var i = 0; i < lines.length; i++) {
-    var line = lines[i];
-    if (!line || line[0] !== "{") continue;
-    var d;
-    try { d = JSON.parse(line); } catch (e) { continue; }
-    if (!d || d.type !== "message" || !d.message) continue;
-    var role = d.message.role || "";
-    if (role !== "user" && role !== "assistant") continue;
-    var blocks = _extractContentBlocks(d.message.content);
-    if (blocks.length > 0) messages.push({ role: role, contentBlocks: blocks, timestamp: d.timestamp || "" });
-  }
-  return messages;
-}
-
-// 解析 Codex 消息
-function _parseCodexMessages(lines) {
-  var messages = [];
-  for (var i = 0; i < lines.length; i++) {
-    var line = lines[i];
-    if (!line || line[0] !== "{") continue;
-    var d;
-    try { d = JSON.parse(line); } catch (e) { continue; }
-    if (!d || d.type !== "event_msg" || !d.payload) continue;
-    if (d.payload.type === "user_message" && d.payload.message) {
-      messages.push({ role: "user", contentBlocks: [{ type: "text", text: d.payload.message }], timestamp: d.timestamp || "" });
-    } else if (d.payload.type === "agent_message" && d.payload.message) {
-      messages.push({ role: "assistant", contentBlocks: [{ type: "text", text: d.payload.message }], timestamp: d.timestamp || "" });
-    }
-  }
-  return messages;
-}
-
-// 解析 Claude / Claude Desktop 消息
-function _parseClaudeMessages(lines) {
-  var messages = [];
-  for (var i = 0; i < lines.length; i++) {
-    var line = lines[i];
-    if (!line || line[0] !== "{") continue;
-    var d;
-    try { d = JSON.parse(line); } catch (e) { continue; }
-    if (!d || typeof d !== "object") continue;
-    if (d.type === "human" || d.type === "user") {
-      var raw = d.message ? d.message.content : d.content;
-      var blocks = _extractContentBlocks(raw);
-      if (blocks.length > 0) messages.push({ role: "user", contentBlocks: blocks, timestamp: d.timestamp || "" });
-    } else if (d.type === "assistant") {
-      var araw = d.message ? d.message.content : d.content;
-      var ablocks = _extractContentBlocks(araw);
-      if (ablocks.length > 0) messages.push({ role: "assistant", contentBlocks: ablocks, timestamp: d.timestamp || "" });
-    }
-  }
-  return messages;
-}
-
-// 按应用类型分发解析
-var _MESSAGE_PARSERS = {
-  openclaw: _parseOpenClawMessages,
-  codex: _parseCodexMessages,
-  claude: _parseClaudeMessages,
-  "claude-desktop": _parseClaudeMessages,
-};
-
-async function loadSessionDetail(filePath) {
-  if (!filePath) return null;
-  if (_sessionCache[filePath]) return _sessionCache[filePath];
-
-  var text;
-  try { text = await fs.promises.readFile(filePath, "utf8"); } catch (e) { return null; }
-
-  var app = _detectApp(filePath);
-  // Claude 路径可能是 OpenClaw 格式
-  if (app === "claude") {
-    var firstLine = text.split(/\r?\n/)[0] || "";
-    if (firstLine.indexOf('"type":"session"') >= 0 && firstLine.indexOf('"version":3') >= 0) app = "openclaw";
-  }
-
-  var lines = text.split(/\r?\n/);
-  var parser = _MESSAGE_PARSERS[app] || _parseClaudeMessages;
-  var messages = _mergeMessages(parser(lines));
-
-  _sessionCache[filePath] = messages;
-  return messages;
-}
-
-// ============================================================
-// 删除会话
-// ============================================================
-
-function deleteSession(filePath) {
-  try {
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-      delete _sessionCache[filePath];
-      _clearScanCache();
-      return { success: true };
-    }
-    return { success: false, error: "file not found" };
-  } catch (e) {
-    return { success: false, error: String(e && e.message ? e.message : e) };
-  }
-}
-
-// ============================================================
-// 排序函数
-// ============================================================
-
-function _sortSessions(sessions, sort) {
-  var sorted = sessions.slice();
-  switch (sort) {
-    case "today":
-      var today = new Date().toISOString().substring(0, 10);
-      sorted = sorted.filter(function (s) { return (s.updatedAt || "").substring(0, 10) === today; });
-      sorted.sort(function (a, b) { return (b.updatedAt || "").localeCompare(a.updatedAt || ""); });
-      break;
-    case "time-asc":
-      sorted.sort(function (a, b) { return (a.updatedAt || "").localeCompare(b.updatedAt || ""); });
-      break;
-    case "name-asc":
-      sorted.sort(function (a, b) { return (a.title || "").localeCompare(b.title || ""); });
-      break;
-    case "name-desc":
-      sorted.sort(function (a, b) { return (b.title || "").localeCompare(a.title || ""); });
-      break;
-    case "time-desc":
-    case "all":
-    default:
-      sorted.sort(function (a, b) { return (b.updatedAt || "").localeCompare(a.updatedAt || ""); });
-      break;
-  }
-  return sorted;
-}
-
-// ============================================================
-// 主入口：扫描会话
-// ============================================================
-
-var SCAN_MAP = {
-  claude: _scanClaudeSessions,
-  codex: _scanCodexSessions,
-  openclaw: _scanOpenClawSessions,
-  "claude-desktop": _scanClaudeDesktopSessions,
-};
-
-async function scanSessions(app, opts) {
-  opts = opts || {};
-  var offset = opts.offset || 0;
-  var limit = opts.limit != null ? opts.limit : 20;
-  var search = (opts.search || "").toLowerCase();
-  var sort = opts.sort || "time-desc";
-
-  try {
-    var home = getHomeDir();
-    var now = Date.now();
-    var cacheKey = app || "all";
-
-    // 无搜索时可用缓存
-    var cached = _scanCache.data && _scanCache.data[cacheKey];
-    var useCache = !search && cached && (now - _scanCache.timestamp < _scanCache.TTL);
-
-    if (useCache) {
-      var sorted = _sortSessions(cached.sessions, sort);
-      var total = sorted.length;
-      var page = sorted.slice(offset, offset + limit);
-      return { sessions: page, total: total };
-    }
-
-    // 扫描所有文件头部元数据（只读 4KB，很快）
-    var all = [];
-    if (app && SCAN_MAP[app]) {
-      var r = await SCAN_MAP[app](home, { offset: 0, limit: Infinity });
-      all = r.sessions;
-    } else {
-      var results = await Promise.all([
-        _scanClaudeSessions(home, { offset: 0, limit: Infinity }),
-        _scanCodexSessions(home, { offset: 0, limit: Infinity }),
-        _scanOpenClawSessions(home, { offset: 0, limit: Infinity }),
-        _scanClaudeDesktopSessions(home, { offset: 0, limit: Infinity }),
-      ]);
-      for (var i = 0; i < results.length; i++) {
-        all = all.concat(results[i].sessions);
-      }
-    }
-
-    // 缓存（无搜索 + 有数据时）
-    if (!search && limit > 0) {
-      if (!_scanCache.data) _scanCache.data = {};
-      _scanCache.data[cacheKey] = { sessions: all };
-      _scanCache.timestamp = now;
-    }
-
-    // 搜索过滤
-    if (search) {
-      all = all.filter(function (s) {
-        return (s.title || "").toLowerCase().indexOf(search) >= 0
-          || (s.projectPath || "").toLowerCase().indexOf(search) >= 0
-          || (s.model || "").toLowerCase().indexOf(search) >= 0;
-      });
-    }
-
-    // 排序 + 分页
-    all = _sortSessions(all, sort);
-    var total2 = all.length;
-    var page2 = all.slice(offset, offset + limit);
-    return { sessions: page2, total: total2 };
-  } catch (e) {
-    return { sessions: [], total: 0, error: String(e && e.message ? e.message : e) };
-  }
-}
-
-// ============================================================
-// 批量删除 / 清空缓存
-// ============================================================
-
-function clearAllSessions(filePaths) {
-  if (!Array.isArray(filePaths)) return { success: false, error: "invalid input" };
-  var successCount = 0;
-  var errors = [];
-  for (var i = 0; i < filePaths.length; i++) {
+  private static async _collectFilesWithMtime(dirPath: string, recursive: boolean): Promise<FileWithMtime[]> {
+    const results: FileWithMtime[] = [];
+    let entries: import("fs").Dirent[];
     try {
-      if (fs.existsSync(filePaths[i])) {
-        fs.unlinkSync(filePaths[i]);
-        delete _sessionCache[filePaths[i]];
-        successCount++;
-      }
+      entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
     } catch (e) {
-      errors.push(String(e && e.message ? e.message : e));
+      return results;
+    }
+
+    for (let i = 0; i < entries.length; i++) {
+      const ent = entries[i];
+      const fullPath = path.join(dirPath, ent.name);
+      if (ent.isDirectory() && recursive) {
+        const sub = await SessionManager._collectFilesWithMtime(fullPath, true);
+        results.push(...sub);
+      } else if (ent.isFile() && /\.jsonl$/i.test(ent.name)) {
+        let st: import("fs").Stats;
+        try { st = await fs.promises.stat(fullPath); } catch (e) { continue; }
+        results.push({ path: fullPath, mtime: st.mtimeMs });
+      }
+    }
+    return results;
+  }
+
+  // ============================================================
+  // Claude / Claude Desktop 扫描（带分页）
+  // ============================================================
+
+  private static async _scanClaudeSessions(home: string, opts?: { offset?: number; limit?: number }): Promise<{ sessions: Session[]; totalFiles: number }> {
+    opts = opts || {};
+    const offset = opts.offset || 0;
+    const limit = opts.limit != null ? opts.limit : 20;
+
+    const projectsDir = utils.getAgentSessionPath("claude") || path.join(home, ".claude", "projects");
+    const sessions: Session[] = [];
+    let entries: import("fs").Dirent[];
+    try {
+      entries = await fs.promises.readdir(projectsDir, { withFileTypes: true });
+    } catch (e) {
+      return { sessions, totalFiles: 0 };
+    }
+
+    // 收集所有文件路径 + mtime
+    const allFiles: Array<{ path: string; mtime: number; project: string }> = [];
+    for (let i = 0; i < entries.length; i++) {
+      const ent = entries[i];
+      if (!ent.isDirectory()) continue;
+      const projectPath = path.join(projectsDir, ent.name);
+      let files: string[];
+      try { files = await fs.promises.readdir(projectPath); } catch (e) { continue; }
+      for (let j = 0; j < files.length; j++) {
+        const fname = files[j];
+        if (!/\.jsonl$/i.test(fname)) continue;
+        const filePath = path.join(projectPath, fname);
+        let st: import("fs").Stats;
+        try { st = await fs.promises.stat(filePath); } catch (e) { continue; }
+        allFiles.push({ path: filePath, mtime: st.mtimeMs, project: ent.name });
+      }
+    }
+
+    // 按 mtime 倒序排序
+    allFiles.sort((a, b) => b.mtime - a.mtime);
+
+    // 扫描：跳过 offset 个，取 limit 个
+    let skipped = 0;
+    for (let k = 0; k < allFiles.length; k++) {
+      const f = allFiles[k];
+      const session = await SessionManager._parseClaudeMeta(f.path, f.project);
+      if (!session) continue;
+      if (skipped < offset) { skipped++; continue; }
+      sessions.push(session);
+      if (sessions.length >= limit) break;
+    }
+
+    return { sessions, totalFiles: allFiles.length };
+  }
+
+  private static async _scanClaudeDesktopSessions(home: string, opts?: { offset?: number; limit?: number }): Promise<{ sessions: Session[]; totalFiles: number }> {
+    opts = opts || {};
+    const offset = opts.offset || 0;
+    const limit = opts.limit != null ? opts.limit : 20;
+
+    let projectsDir = utils.getAgentSessionPath("claude-desktop") || path.join(home, ".claude-desktop", "projects");
+    let entries: import("fs").Dirent[] | undefined;
+    try {
+      entries = await fs.promises.readdir(projectsDir, { withFileTypes: true });
+    } catch (e) {
+      // 如果配置的路径不存在，尝试默认路径
+      if (utils.getAgentSessionPath("claude-desktop")) {
+        projectsDir = path.join(home, ".claude-desktop", "projects");
+        try {
+          entries = await fs.promises.readdir(projectsDir, { withFileTypes: true });
+        } catch (e2) {
+          // 继续尝试 APPDATA
+        }
+      }
+      if (!entries) {
+        let appData: string;
+        try { appData = process.env.APPDATA || ""; } catch (e3) { appData = ""; }
+        if (appData) {
+          try {
+            const altDir = path.join(appData, "Claude", "projects");
+            entries = await fs.promises.readdir(altDir, { withFileTypes: true });
+            projectsDir = altDir;
+          } catch (e4) {
+            return { sessions: [], totalFiles: 0 };
+          }
+        } else {
+          return { sessions: [], totalFiles: 0 };
+        }
+      }
+    }
+
+    const allFiles: Array<{ path: string; mtime: number; project: string }> = [];
+    for (let i = 0; i < entries!.length; i++) {
+      const ent = entries![i];
+      if (!ent.isDirectory()) continue;
+      const projectPath = path.join(projectsDir, ent.name);
+      let files: string[];
+      try { files = await fs.promises.readdir(projectPath); } catch (e) { continue; }
+      for (let j = 0; j < files.length; j++) {
+        const fname = files[j];
+        if (!/\.jsonl$/i.test(fname)) continue;
+        const filePath = path.join(projectPath, fname);
+        let st: import("fs").Stats;
+        try { st = await fs.promises.stat(filePath); } catch (e) { continue; }
+        allFiles.push({ path: filePath, mtime: st.mtimeMs, project: ent.name });
+      }
+    }
+
+    allFiles.sort((a, b) => b.mtime - a.mtime);
+
+    const sessions: Session[] = [];
+    let skipped = 0;
+    for (let k = 0; k < allFiles.length; k++) {
+      const f = allFiles[k];
+      const meta = await SessionManager._parseClaudeMeta(f.path, f.project);
+      if (!meta) continue;
+      meta.id = "claude-desktop_" + meta.sessionId;
+      meta.app = "claude-desktop";
+      if (skipped < offset) { skipped++; continue; }
+      sessions.push(meta);
+      if (sessions.length >= limit) break;
+    }
+
+    return { sessions, totalFiles: allFiles.length };
+  }
+
+  // ============================================================
+  // Codex 扫描（带分页，目录结构天然按时间排序）
+  // ============================================================
+
+  private static async _scanCodexSessions(home: string, opts?: { offset?: number; limit?: number }): Promise<{ sessions: Session[]; totalFiles: number }> {
+    opts = opts || {};
+    const offset = opts.offset || 0;
+    const limit = opts.limit != null ? opts.limit : 20;
+
+    const sessionsDir = utils.getAgentSessionPath("codex") || path.join(home, ".codex", "sessions");
+    const sessions: Session[] = [];
+    let totalFiles = 0;
+    let scanned = 0; // 已处理（跳过或解析）的文件数
+    let years: import("fs").Dirent[];
+    try {
+      years = await fs.promises.readdir(sessionsDir, { withFileTypes: true });
+    } catch (e) {
+      return { sessions, totalFiles: 0 };
+    }
+
+    // 从最新日期反向遍历，目录结构天然有序
+    const yearNames = years.filter((e) => e.isDirectory()).map((e) => e.name).sort().reverse();
+
+    for (let yi = 0; yi < yearNames.length; yi++) {
+      const yearDir = path.join(sessionsDir, yearNames[yi]);
+      let months: import("fs").Dirent[];
+      try { months = await fs.promises.readdir(yearDir, { withFileTypes: true }); } catch (e) { continue; }
+      const monthNames = months.filter((e) => e.isDirectory()).map((e) => e.name).sort().reverse();
+
+      for (let mi = 0; mi < monthNames.length; mi++) {
+        const monthDir = path.join(yearDir, monthNames[mi]);
+        let days: import("fs").Dirent[];
+        try { days = await fs.promises.readdir(monthDir, { withFileTypes: true }); } catch (e) { continue; }
+        const dayNames = days.filter((e) => e.isDirectory()).map((e) => e.name).sort().reverse();
+
+        for (let di = 0; di < dayNames.length; di++) {
+          const dayDir = path.join(monthDir, dayNames[di]);
+          let files: string[];
+          try { files = await fs.promises.readdir(dayDir); } catch (e) { continue; }
+          const jsonlFiles = files.filter((f) => /\.jsonl$/i.test(f)).sort().reverse();
+
+          for (let fi = 0; fi < jsonlFiles.length; fi++) {
+            totalFiles++; // 始终统计总数
+            if (scanned < offset) { scanned++; continue; } // 跳过 offset 之前的
+            if (sessions.length >= limit) continue; // 够了只计数不解析
+            const session = await SessionManager._parseCodexMeta(path.join(dayDir, jsonlFiles[fi]));
+            if (session) sessions.push(session);
+            scanned++;
+          }
+        }
+      }
+    }
+
+    return { sessions, totalFiles };
+  }
+
+  // ============================================================
+  // OpenClaw 扫描（带分页）
+  // ============================================================
+
+  private static async _scanOpenClawSessions(home: string, opts?: { offset?: number; limit?: number }): Promise<{ sessions: Session[]; totalFiles: number }> {
+    opts = opts || {};
+    const offset = opts.offset || 0;
+    const limit = opts.limit != null ? opts.limit : 20;
+
+    const agentsDir = utils.getAgentSessionPath("openclaw") || path.join(home, ".openclaw", "agents");
+    const sessions: Session[] = [];
+    let agentEntries: import("fs").Dirent[];
+    try {
+      agentEntries = await fs.promises.readdir(agentsDir, { withFileTypes: true });
+    } catch (e) {
+      return { sessions, totalFiles: 0 };
+    }
+
+    const allFiles: Array<{ path: string; mtime: number; agent: string }> = [];
+    for (let i = 0; i < agentEntries.length; i++) {
+      const agentEnt = agentEntries[i];
+      if (!agentEnt.isDirectory()) continue;
+      const sessDir = path.join(agentsDir, agentEnt.name, "sessions");
+      let files: string[];
+      try { files = await fs.promises.readdir(sessDir); } catch (e) { continue; }
+      for (let j = 0; j < files.length; j++) {
+        const fname = files[j];
+        if (!/\.jsonl$/i.test(fname)) continue;
+        const filePath = path.join(sessDir, fname);
+        let st: import("fs").Stats;
+        try { st = await fs.promises.stat(filePath); } catch (e) { continue; }
+        allFiles.push({ path: filePath, mtime: st.mtimeMs, agent: agentEnt.name });
+      }
+    }
+
+    allFiles.sort((a, b) => b.mtime - a.mtime);
+
+    let skipped = 0;
+    for (let k = 0; k < allFiles.length; k++) {
+      const f = allFiles[k];
+      const session = await SessionManager._parseOpenClawMeta(f.path, f.agent);
+      if (!session) continue;
+      if (skipped < offset) { skipped++; continue; }
+      sessions.push(session);
+      if (sessions.length >= limit) break;
+    }
+
+    return { sessions, totalFiles: allFiles.length };
+  }
+
+  // ============================================================
+  // 加载会话详情（含完整消息历史）
+  // ============================================================
+
+  // 从文件路径推断应用类型
+  private static _detectApp(filePath: string): string {
+    if (filePath.indexOf(".codex") >= 0) return "codex";
+    if (filePath.indexOf(".openclaw") >= 0 || filePath.indexOf("openclaw") >= 0) return "openclaw";
+    if (filePath.indexOf("claude-desktop") >= 0) return "claude-desktop";
+    return "claude";
+  }
+
+  // 从 content 字段提取结构化内容块
+  private static _extractContentBlocks(content: unknown): ContentBlock[] {
+    if (!content) return [];
+    if (typeof content === "string") return [{ type: "text", text: content }];
+    if (Array.isArray(content)) {
+      const blocks: ContentBlock[] = [];
+      for (let i = 0; i < content.length; i++) {
+        const item = content[i];
+        if (!item || typeof item !== "object") continue;
+        if (item.type === "text" && item.text) {
+          blocks.push({ type: "text", text: item.text });
+        } else if (item.type === "thinking" && item.thinking) {
+          blocks.push({ type: "thinking", text: item.thinking });
+        } else if (item.type === "tool_use") {
+          blocks.push({ type: "tool_use", name: item.name || "unknown", input: item.input || {} });
+        } else if (item.type === "toolCall") {
+          blocks.push({ type: "tool_use", name: item.name || "unknown", input: {} });
+        } else if (item.type === "tool_result") {
+          // 工具执行结果：从嵌套的 content 中提取文本
+          const resultText = SessionManager._extractToolResultText(item);
+          if (resultText) blocks.push({ type: "tool_result", text: resultText, name: item.tool_use_id || "" });
+        }
+      }
+      return blocks;
+    }
+    return [{ type: "text", text: JSON.stringify(content) }];
+  }
+
+  // 从 tool_result 中提取文本内容
+  private static _extractToolResultText(item: Record<string, any>): string {
+    if (!item) return "";
+    const c = item.content;
+    if (typeof c === "string") return c;
+    if (Array.isArray(c)) {
+      const parts: string[] = [];
+      for (let i = 0; i < c.length; i++) {
+        if (c[i] && c[i].type === "text" && c[i].text) parts.push(c[i].text);
+      }
+      return parts.join("\n");
+    }
+    return "";
+  }
+
+  // 兼容旧接口：提取纯文本
+  private static _extractContent(content: unknown): string {
+    const blocks = SessionManager._extractContentBlocks(content);
+    const parts: string[] = [];
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i];
+      if (b.type === "text") parts.push(b.text!);
+      else if (b.type === "thinking") parts.push(b.text!);
+      else if (b.type === "tool_use") parts.push("[工具调用: " + b.name + "]");
+    }
+    return parts.join("");
+  }
+
+  // 合并连续同角色消息
+  private static _mergeMessages(messages: Message[]): Message[] {
+    if (messages.length <= 1) return messages;
+    const merged: Message[] = [messages[0]];
+    for (let i = 1; i < messages.length; i++) {
+      const prev = merged[merged.length - 1];
+      const cur = messages[i];
+      if (cur.role === prev.role) {
+        // 合并 contentBlocks，使用最后一条的时间戳
+        prev.contentBlocks = prev.contentBlocks.concat(cur.contentBlocks);
+        if (cur.timestamp) prev.timestamp = cur.timestamp;
+      } else {
+        merged.push(cur);
+      }
+    }
+    return merged;
+  }
+
+  // 解析 OpenClaw 消息
+  private static _parseOpenClawMessages(lines: string[]): Message[] {
+    const messages: Message[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line || line[0] !== "{") continue;
+      let d: Record<string, any>;
+      try { d = JSON.parse(line); } catch (e) { continue; }
+      if (!d || d.type !== "message" || !d.message) continue;
+      const role: string = d.message.role || "";
+      if (role !== "user" && role !== "assistant") continue;
+      const blocks = SessionManager._extractContentBlocks(d.message.content);
+      if (blocks.length > 0) messages.push({ role, contentBlocks: blocks, timestamp: d.timestamp || "" });
+    }
+    return messages;
+  }
+
+  // 解析 Codex 消息
+  private static _parseCodexMessages(lines: string[]): Message[] {
+    const messages: Message[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line || line[0] !== "{") continue;
+      let d: Record<string, any>;
+      try { d = JSON.parse(line); } catch (e) { continue; }
+      if (!d || d.type !== "event_msg" || !d.payload) continue;
+      if (d.payload.type === "user_message" && d.payload.message) {
+        messages.push({ role: "user", contentBlocks: [{ type: "text", text: d.payload.message }], timestamp: d.timestamp || "" });
+      } else if (d.payload.type === "agent_message" && d.payload.message) {
+        messages.push({ role: "assistant", contentBlocks: [{ type: "text", text: d.payload.message }], timestamp: d.timestamp || "" });
+      }
+    }
+    return messages;
+  }
+
+  // 解析 Claude / Claude Desktop 消息
+  private static _parseClaudeMessages(lines: string[]): Message[] {
+    const messages: Message[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line || line[0] !== "{") continue;
+      let d: Record<string, any>;
+      try { d = JSON.parse(line); } catch (e) { continue; }
+      if (!d || typeof d !== "object") continue;
+      if (d.type === "human" || d.type === "user") {
+        const raw = d.message ? d.message.content : d.content;
+        const blocks = SessionManager._extractContentBlocks(raw);
+        if (blocks.length > 0) messages.push({ role: "user", contentBlocks: blocks, timestamp: d.timestamp || "" });
+      } else if (d.type === "assistant") {
+        const araw = d.message ? d.message.content : d.content;
+        const ablocks = SessionManager._extractContentBlocks(araw);
+        if (ablocks.length > 0) messages.push({ role: "assistant", contentBlocks: ablocks, timestamp: d.timestamp || "" });
+      }
+    }
+    return messages;
+  }
+
+  // 按应用类型分发解析
+  private static readonly _MESSAGE_PARSERS: Record<string, (lines: string[]) => Message[]> = {
+    openclaw: SessionManager._parseOpenClawMessages,
+    codex: SessionManager._parseCodexMessages,
+    claude: SessionManager._parseClaudeMessages,
+    "claude-desktop": SessionManager._parseClaudeMessages,
+  };
+
+  // ============================================================
+  // 排序函数
+  // ============================================================
+
+  private static _sortSessions(sessions: Session[], sort: string): Session[] {
+    let sorted = sessions.slice();
+    switch (sort) {
+      case "today": {
+        const today = new Date().toISOString().substring(0, 10);
+        sorted = sorted.filter((s) => (s.updatedAt || "").substring(0, 10) === today);
+        sorted.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+        break;
+      }
+      case "time-asc":
+        sorted.sort((a, b) => (a.updatedAt || "").localeCompare(b.updatedAt || ""));
+        break;
+      case "name-asc":
+        sorted.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+        break;
+      case "name-desc":
+        sorted.sort((a, b) => (b.title || "").localeCompare(a.title || ""));
+        break;
+      case "time-desc":
+      case "all":
+      default:
+        sorted.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+        break;
+    }
+    return sorted;
+  }
+
+  // ============================================================
+  // 主入口：扫描会话
+  // ============================================================
+
+  private static readonly _SCAN_MAP: Record<string, ScanFunction> = {
+    claude: SessionManager._scanClaudeSessions,
+    codex: SessionManager._scanCodexSessions,
+    openclaw: SessionManager._scanOpenClawSessions,
+    "claude-desktop": SessionManager._scanClaudeDesktopSessions,
+  };
+
+  // ============================================================
+  // 公共方法
+  // ============================================================
+
+  static async scanSessions(app: string, opts?: ScanOptions): Promise<ScanResult> {
+    opts = opts || {};
+    const offset = opts.offset || 0;
+    const limit = opts.limit != null ? opts.limit : 20;
+    const search = (opts.search || "").toLowerCase();
+    const sort = opts.sort || "time-desc";
+
+    try {
+      const home = getHomeDir();
+      const now = Date.now();
+      const cacheKey = app || "all";
+
+      // 无搜索时可用缓存
+      const cached = _scanCache.data && _scanCache.data[cacheKey];
+      const useCache = !search && cached && (now - _scanCache.timestamp < _scanCache.TTL);
+
+      if (useCache) {
+        const sorted = SessionManager._sortSessions(cached!.sessions, sort);
+        const total = sorted.length;
+        const page = sorted.slice(offset, offset + limit);
+        return { sessions: page, total };
+      }
+
+      // 扫描所有文件头部元数据（只读 4KB，很快）
+      let all: Session[] = [];
+      if (app && SessionManager._SCAN_MAP[app]) {
+        const r = await SessionManager._SCAN_MAP[app](home, { offset: 0, limit: Infinity });
+        all = r.sessions;
+      } else {
+        const results = await Promise.all([
+          SessionManager._scanClaudeSessions(home, { offset: 0, limit: Infinity }),
+          SessionManager._scanCodexSessions(home, { offset: 0, limit: Infinity }),
+          SessionManager._scanOpenClawSessions(home, { offset: 0, limit: Infinity }),
+          SessionManager._scanClaudeDesktopSessions(home, { offset: 0, limit: Infinity }),
+        ]);
+        for (let i = 0; i < results.length; i++) {
+          all = all.concat(results[i].sessions);
+        }
+      }
+
+      // 缓存（无搜索 + 有数据时）
+      if (!search && limit > 0) {
+        if (!_scanCache.data) _scanCache.data = {};
+        _scanCache.data[cacheKey] = { sessions: all };
+        _scanCache.timestamp = now;
+      }
+
+      // 搜索过滤
+      if (search) {
+        all = all.filter((s) =>
+          (s.title || "").toLowerCase().indexOf(search) >= 0
+          || (s.projectPath || "").toLowerCase().indexOf(search) >= 0
+          || (s.model || "").toLowerCase().indexOf(search) >= 0
+        );
+      }
+
+      // 排序 + 分页
+      all = SessionManager._sortSessions(all, sort);
+      const total = all.length;
+      const page = all.slice(offset, offset + limit);
+      return { sessions: page, total };
+    } catch (e: any) {
+      return { sessions: [], total: 0, error: String(e && e.message ? e.message : e) };
     }
   }
-  _clearScanCache();
-  return { success: successCount > 0, count: successCount, errors: errors };
-}
 
-function clearSessionCache() {
-  _scanCache.data = null;
-  _scanCache.timestamp = 0;
-  _sessionCache = {};
-}
+  static async loadSessionDetail(filePath: string): Promise<Message[] | null> {
+    if (!filePath) return null;
+    if (_sessionCache[filePath]) return _sessionCache[filePath];
 
-module.exports = {
-  scanSessions: scanSessions,
-  loadSessionDetail: loadSessionDetail,
-  deleteSession: deleteSession,
-  clearAllSessions: clearAllSessions,
-  clearSessionCache: clearSessionCache,
-};
+    let text: string;
+    try { text = await fs.promises.readFile(filePath, "utf8"); } catch (e) { return null; }
+
+    let app = SessionManager._detectApp(filePath);
+    // Claude 路径可能是 OpenClaw 格式
+    if (app === "claude") {
+      const firstLine = text.split(/\r?\n/)[0] || "";
+      if (firstLine.indexOf('"type":"session"') >= 0 && firstLine.indexOf('"version":3') >= 0) app = "openclaw";
+    }
+
+    const lines = text.split(/\r?\n/);
+    const parser = SessionManager._MESSAGE_PARSERS[app] || SessionManager._parseClaudeMessages;
+    const messages = SessionManager._mergeMessages(parser(lines));
+
+    _sessionCache[filePath] = messages;
+    return messages;
+  }
+
+  static deleteSession(filePath: string): DeleteResult {
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        delete _sessionCache[filePath];
+        SessionManager._clearScanCache();
+        return { success: true };
+      }
+      return { success: false, error: "file not found" };
+    } catch (e: any) {
+      return { success: false, error: String(e && e.message ? e.message : e) };
+    }
+  }
+
+  static clearAllSessions(filePaths: string[]): ClearAllResult {
+    if (!Array.isArray(filePaths)) return { success: false, count: 0, errors: ["invalid input"] };
+    let successCount = 0;
+    const errors: string[] = [];
+    for (let i = 0; i < filePaths.length; i++) {
+      try {
+        if (fs.existsSync(filePaths[i])) {
+          fs.unlinkSync(filePaths[i]);
+          delete _sessionCache[filePaths[i]];
+          successCount++;
+        }
+      } catch (e: any) {
+        errors.push(String(e && e.message ? e.message : e));
+      }
+    }
+    SessionManager._clearScanCache();
+    return { success: successCount > 0, count: successCount, errors };
+  }
+
+  static clearSessionCache(): void {
+    _scanCache.data = null;
+    _scanCache.timestamp = 0;
+    _sessionCache = {};
+  }
+}

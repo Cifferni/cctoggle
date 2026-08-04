@@ -8,15 +8,14 @@
     "dev:all": "pnpm build:preload && pnpm parallel:vue-preload",
     "dev:browser": "pnpm build:preload && pnpm parallel:vue-preload-api",
     "build": "pnpm build:preload && pnpm tsc:check && vite build",
-    "build:preload": "pnpm tsc:preload && pnpm copy:preload",
+    "build:preload": "pnpm tsc:preload",
     "preview": "vite preview",
     "type-check": "pnpm tsc:check",
     "parallel:vue-preload": "concurrently -n vue,preload \"vite\" \"pnpm tsc:preload:watch\"",
     "parallel:vue-preload-api": "concurrently -n vue,preload,api \"vite\" \"pnpm tsc:preload:watch\" \"node scripts/dev-api-server.cjs\"",
-    "tsc:preload": "node -e \"var d='public/preload';try{require('fs').rmSync(d,{recursive:true,force:true})}catch(e){}require('fs').mkdirSync(d,{recursive:true})\" && tsc -p tsconfig.preload.json",
+    "tsc:preload": "node scripts/build-preload.cjs",
     "tsc:preload:watch": "tsc -p tsconfig.preload.json --watch --preserveWatchOutput",
-    "tsc:check": "vue-tsc --noEmit",
-    "copy:preload": "node scripts/copy-preload-assets.cjs"
+    "tsc:check": "vue-tsc --noEmit"
   },
   "dependencies": {
     "@vicons/ionicons5": "^0.13.0",

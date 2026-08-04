@@ -1,5 +1,5 @@
 // @ts-nocheck TODO: 逐步添加类型注解后移除
-﻿// public/preload/proxy-daemon.js
+// public/preload/proxy-daemon.js
 // 后台隐藏窗口的 preload：起 http 代理，支持 failover + 健康检查 + 熔断
 // 通过 IPC 接收主窗口指令，通过 utools.sendToParent 上报状态/日志
 
@@ -7,6 +7,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 const { ipcRenderer } = require("electron");
+const { getLogger } = require("./utils.js");
 
 let group = null;              // 当前路由组配置
 let members = [];              // { providerId, name, baseUrl, apiKey, priority, weight, state, fails, openUntil, latency, up }
@@ -20,6 +21,9 @@ let reqSuccess = 0;             // 成功请求 (<500)
 let reqFail = 0;                // 失败请求 (>=500 或 upstream error)
 let lastMemberId = null;        // 最近一次转发命中的成员
 let authToken = "";             // 本地代理访问令牌：仅持有者可用本代理转发
+
+// 日志记录器
+const proxyLog = getLogger("proxy");
 
 // 请求体上限：仅防御异常/恶意撑爆内存，正常大对话/多模态请求远达不到
 const MAX_REQUEST_BYTES = 50 * 1024 * 1024;
@@ -37,6 +41,11 @@ function isAuthed(req) {
 }
 
 function log(level, msg, meta) {
+  // 写入日志文件
+  try {
+    proxyLog[level](msg, meta);
+  } catch (e) {}
+  // IPC 发送到父窗口
   try {
     utools.sendToParent("proxy-log", {
       ts: Date.now(), level: level, msg: msg, meta: meta || null,
@@ -144,7 +153,7 @@ function noteFailure(m) {
   if (m.state !== "open" && m.fails >= th) {
     const cd = (group.breaker && group.breaker.cooldownMs) || 60000;
     m.state = "open"; m.openUntil = Date.now() + cd;
-    log("warn", "breaker open", { id: m.providerId, cooldownMs: cd });
+    log("warn", "breaker open", { id: m.providerId });
   }
 }
 function tickBreaker() {
@@ -152,7 +161,6 @@ function tickBreaker() {
   members.forEach(function (m) {
     if (m.state === "open" && now >= m.openUntil) {
       m.state = "half-open"; m.fails = 0;
-      log("info", "breaker half-open", { id: m.providerId });
     }
   });
 }
@@ -186,7 +194,7 @@ function pickMember() {
 
 // —— 协议转换器 ——
 let converter = null;
-try { converter = require("./proxy-converter.js"); } catch (e) { log("warn", "converter load failed", { err: String(e && e.message) }); }
+try { converter = require("./proxy-converter.js"); } catch (e) {}
 
 function joinUrl(baseUrl, reqPath) {
   // 保留 baseUrl 的路径前缀（如 /v1），再拼上 reqPath
@@ -245,7 +253,6 @@ function forward(member, req, res, attemptsLeft, reqBody, reasoningStripped) {
               bodyForTools.tools = filtered.length > 0 ? filtered : undefined;
               reqBody = Buffer.from(JSON.stringify(bodyForTools), "utf8");
               outBody = reqBody;
-              log("info", "filtered unsupported tools", { id: member.providerId });
             }
           }
         } catch (e) { /* 非 JSON body，跳过 */ }
@@ -271,7 +278,7 @@ function forward(member, req, res, attemptsLeft, reqBody, reasoningStripped) {
         // 自适应重试已剥离 reasoning 时，用剥离后的 body 转发（reqBody 已是剥离版，无需再处理）
       }
     } catch (e) {
-      log("error", "convert request failed", { err: String(e && e.message) });
+      log("error", "convert failed", { id: member.providerId });
       upstream = joinUrl(member.baseUrl, reqPath);
       outBody = reqBody;
       doConvert = false;
@@ -340,7 +347,6 @@ function forward(member, req, res, attemptsLeft, reqBody, reasoningStripped) {
             } catch (e) { /* 非 JSON 无法剥离 */ }
           }
           if (canRetry) {
-            log("info", "retry without reasoning", { id: member.providerId });
             return forward(member, req, res, attemptsLeft, stripped, true).then(resolve);
           }
           // 非 reasoning 类 400，原样回给客户端
@@ -352,7 +358,7 @@ function forward(member, req, res, attemptsLeft, reqBody, reasoningStripped) {
       }
       if (sc >= 500) {
         noteFailure(member); reqFail++;
-        log("warn", "upstream 5xx", { id: member.providerId, sc: sc, url: reqPath });
+        log("warn", "upstream 5xx", { id: member.providerId, sc: sc });
         upRes.resume();
         if (attemptsLeft > 0) {
           var next = pickMember();
@@ -364,7 +370,6 @@ function forward(member, req, res, attemptsLeft, reqBody, reasoningStripped) {
         return void res.end('{"error":"upstream 5xx"}');
       }
       noteSuccess(member); reqSuccess++; member.latency = latency;
-      log("info", "forward ok", { id: member.providerId, sc: sc, ms: latency, url: reqPath, convert: doConvert });
 
       var ct = (upRes.headers["content-type"] || "").toLowerCase();
       var isSse = ct.indexOf("text/event-stream") >= 0;
@@ -390,7 +395,7 @@ function forward(member, req, res, attemptsLeft, reqBody, reasoningStripped) {
           try {
             var converted = converter.convertSse(member, complete, state);
             if (converted) res.write(converted.replace(/\n(event:)/g, "\n\n$1").replace(/\n$/, "\n\n"));
-          } catch (e) { log("error", "sse convert", { err: String(e && e.message) }); }
+          } catch (e) { log("error", "sse convert failed", { id: member.providerId }); }
         });
         upRes.on("end", function () {
           if (leftover.trim()) {
@@ -490,7 +495,7 @@ function forward(member, req, res, attemptsLeft, reqBody, reasoningStripped) {
 
     upReq.on("error", function (err) {
       noteFailure(member); reqFail++;
-      log("error", "upstream error", { id: member.providerId, err: String(err && err.message || err) });
+      log("error", "upstream error", { id: member.providerId });
       if (attemptsLeft > 0) {
         var next = pickMember();
         if (next && next.providerId !== member.providerId) {
@@ -518,7 +523,7 @@ function startServer() {
       res.on("close", function () { activeConn = Math.max(0, activeConn - 1); });
       if (!isAuthed(req)) {
         reqFail++;
-        log("warn", "unauthorized request rejected", { url: req.url });
+        log("warn", "unauthorized request");
         res.writeHead(401, { "content-type": "application/json" });
         return res.end('{"error":"unauthorized: invalid proxy token"}');
       }
@@ -536,7 +541,6 @@ function startServer() {
           aborted = true;
           reqFail++;
           chunks = [];
-          log("warn", "request body too large", { url: req.url, bytes: received });
           if (!res.headersSent) res.writeHead(413, { "content-type": "application/json" });
           res.end('{"error":"request entity too large"}');
           req.destroy();
@@ -551,7 +555,7 @@ function startServer() {
       });
     });
     server.on("error", function (err) {
-      log("error", "server error", { err: String(err.message || err) });
+      log("error", "server error");
       reject(err);
     });
     server.listen(port, "127.0.0.1", function () {
@@ -619,7 +623,6 @@ ipcRenderer.on("cfg", function (_e, payload) {
       state: "closed", fails: 0, openUntil: 0, latency: 0, up: true,
     };
   });
-  log("info", "cfg received", { group: group.name, members: members.map(function (m) { return { id: m.providerId, key: maskKey(m.apiKey) }; }) });
   startServer().then(startHealth).catch(function () {});
 });
 
@@ -627,7 +630,7 @@ ipcRenderer.on("stop", function () {
   try { if (server) server.close(); server = null; } catch (e) {}
   if (healthTimer) { clearInterval(healthTimer); healthTimer = null; }
   startedAt = 0;
-  log("info", "stopped");
+  log("info", "proxy stopped");
   stat();
 });
 

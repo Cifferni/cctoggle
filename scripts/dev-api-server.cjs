@@ -59,14 +59,14 @@ loadDb();
 // 需要先加载 utils（其他模块依赖它）
 const utils = require(path.join(PRELOAD_DIR, 'utils'));
 const configRw = require(path.join(PRELOAD_DIR, 'config-rw'));
-const providerDb = require(path.join(PRELOAD_DIR, 'provider-db'));
-const sessions = require(path.join(PRELOAD_DIR, 'sessions'));
-const stats = require(path.join(PRELOAD_DIR, 'stats'));
+const { ProviderStore } = require(path.join(PRELOAD_DIR, 'provider-db'));
+const { SessionManager } = require(path.join(PRELOAD_DIR, 'sessions'));
+const { StatsCollector } = require(path.join(PRELOAD_DIR, 'stats'));
 
 // 启动时标记当前供应商
 try {
   ['codex', 'claude', 'claude-desktop', 'gemini'].forEach(appType => {
-    providerDb.markCurrent(appType, providerDb.getCurrentProviderId(appType));
+    ProviderStore.markCurrent(appType, ProviderStore.getCurrentProviderId(appType));
   });
 } catch (e) {}
 
@@ -132,32 +132,32 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/providers' && req.method === 'GET') {
       const appType = url.searchParams.get('appType');
       if (!appType) return sendError(res, 'appType required');
-      return sendJson(res, providerDb.listProviders(appType));
+      return sendJson(res, ProviderStore.listProviders(appType));
     }
 
     if (pathname === '/api/provider' && req.method === 'GET') {
       const appType = url.searchParams.get('appType');
       const id = url.searchParams.get('id');
       if (!appType || !id) return sendError(res, 'appType and id required');
-      return sendJson(res, providerDb.getProvider(appType, id));
+      return sendJson(res, ProviderStore.getProvider(appType, id));
     }
 
     if (pathname === '/api/provider' && req.method === 'POST') {
       const body = await parseBody(req);
-      const id = providerDb.saveProvider(body.appType, body.data);
+      const id = ProviderStore.saveProvider(body.appType, body.data);
       return sendJson(res, { success: true, id });
     }
 
     if (pathname === '/api/provider-delete' && req.method === 'POST') {
       const body = await parseBody(req);
-      providerDb.deleteProvider(body.appType, body.id);
+      ProviderStore.deleteProvider(body.appType, body.id);
       return sendJson(res, { success: true });
     }
 
     if (pathname === '/api/provider/current') {
       const appType = url.searchParams.get('appType');
       if (!appType) return sendError(res, 'appType required');
-      return sendJson(res, { id: providerDb.getCurrentProviderId(appType) });
+      return sendJson(res, { id: ProviderStore.getCurrentProviderId(appType) });
     }
 
     // ─── 会话管理 ───
@@ -167,31 +167,31 @@ const server = http.createServer(async (req, res) => {
       const limit = parseInt(url.searchParams.get('limit') || '20');
       const search = url.searchParams.get('search') || '';
       const sort = url.searchParams.get('sort') || 'time-desc';
-      const result = await sessions.scanSessions(app, { offset, limit, search, sort });
+      const result = await SessionManager.scanSessions(app, { offset, limit, search, sort });
       return sendJson(res, result);
     }
 
     if (pathname === '/api/session/detail') {
       const filePath = url.searchParams.get('filePath');
       if (!filePath) return sendError(res, 'filePath required');
-      const detail = await sessions.loadSessionDetail(filePath);
+      const detail = await SessionManager.loadSessionDetail(filePath);
       return sendJson(res, detail);
     }
 
     if (pathname === '/api/session-delete' && req.method === 'POST') {
       const body = await parseBody(req);
-      return sendJson(res, sessions.deleteSession(body.filePath));
+      return sendJson(res, SessionManager.deleteSession(body.filePath));
     }
 
     // ─── 统计 ───
     if (pathname === '/api/stats') {
-      const result = await stats.scanUsageLogs();
+      const result = await StatsCollector.scanUsageLogs();
       return sendJson(res, result);
     }
 
     if (pathname === '/api/stats/clear' && req.method === 'POST') {
       const body = await parseBody(req);
-      return sendJson(res, stats.clearStats(body.appType));
+      return sendJson(res, StatsCollector.clearStats(body.appType));
     }
 
     sendError(res, 'Not found: ' + pathname);

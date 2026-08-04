@@ -12,7 +12,6 @@
     "resolveJsonModule": true,
     "declaration": false,
     "sourceMap": false,
-    "removeComments": true,
     "types": ["utools-api-types"]
   },
   "include": ["src/preload/**/*.ts"]

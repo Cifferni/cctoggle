@@ -62,6 +62,7 @@ const hidden = reactive({ settingsConfig: {}, authData: {}, endpointCandidates: 
 // 测试连接状态
 const testing = ref(false);
 const fetchingModels = ref(false);
+const testResult = ref(null);
 
 // config.toml 实时预览：镜像后端 switchProviderCodex 的拼装逻辑（services.js），仅用于只读展示
 function slugifyName(name) {
@@ -320,6 +321,7 @@ async function handleTestConnection() {
   testing.value = true;
   try {
     const result = await window.utoolsCctoggle.testConnection(form.baseUrl, form.apiKey, tab.value);
+    testResult.value = result;
     if (result.success) {
       // 如果检测成功，自动填充 apiFormat
       if (result.apiFormat) {
@@ -484,7 +486,7 @@ function handleClose() {
 const catalogColumns = [
   { title: '菜单显示名', key: 'displayName', render: (row) => h(NInput, { value: row.displayName, 'onUpdate:value': v => row.displayName = v, placeholder: 'Ark Code Latest', size: 'small' }) },
   { title: '实际模型 ID', key: 'model', render: (row) => h(NInput, { value: row.model, 'onUpdate:value': v => row.model = v, placeholder: 'ark-code-latest', size: 'small' }) },
-  { title: '上下文窗口', key: 'contextWindow', width: 100, render: (row) => h(NInput, { value: row.contextWindow, 'onUpdate:value': v => row.contextWindow = v, placeholder: '256000', size: 'small' }) },
+  { title: '上下文窗口', key: 'contextWindow', width: 100, render: (row) => h(NInput, { value: String(row.contextWindow ?? ''), 'onUpdate:value': v => row.contextWindow = v, placeholder: '256000', size: 'small' }) },
   { title: '', key: 'actions', width: 40, render: (row, rowIndex) => h(NButton, { quaternary: true, type: 'error', size: 'tiny', onClick: () => removeCatalogRow(rowIndex) }, { default: () => '×' }) },
 ];
 
@@ -492,7 +494,7 @@ const catalogColumns = [
 const openclawColumns = [
   { title: '模型 ID', key: 'id', render: (row) => h(NInput, { value: row.id, 'onUpdate:value': v => row.id = v, placeholder: 'kimi-k2.7-code', size: 'small' }) },
   { title: '显示名', key: 'name', render: (row) => h(NInput, { value: row.name, 'onUpdate:value': v => row.name = v, placeholder: 'Kimi K2.7 Code', size: 'small' }) },
-  { title: '上下文窗口', key: 'contextWindow', width: 100, render: (row) => h(NInput, { value: row.contextWindow, 'onUpdate:value': v => row.contextWindow = v, placeholder: '262144', size: 'small' }) },
+  { title: '上下文窗口', key: 'contextWindow', width: 100, render: (row) => h(NInput, { value: String(row.contextWindow ?? ''), 'onUpdate:value': v => row.contextWindow = v, placeholder: '262144', size: 'small' }) },
   { title: '操作', key: 'actions', width: 80, render: (row, rowIndex) => h(NFlex, { size: 4 }, { default: () => [
     h(NButton, { quaternary: true, size: 'tiny', disabled: rowIndex === 0, title: rowIndex === 0 ? '当前主模型' : '设为主模型', onClick: () => promoteOpenclawRow(rowIndex) }, { default: () => '↑' }),
     h(NButton, { quaternary: true, type: 'error', size: 'tiny', title: '删除', onClick: () => removeOpenclawRow(rowIndex) }, { default: () => '×' }),
