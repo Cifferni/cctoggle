@@ -64,6 +64,8 @@ export default defineConfig({
             return "chartjs";
           if (id.includes("node_modules/naive-ui") || id.includes("node_modules/@css-render"))
             return "naive-ui";
+          if (id.includes("node_modules/marked")) return "marked";
+          if (id.includes("node_modules/diff")) return "diff";
         },
       },
     },
