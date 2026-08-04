@@ -45,7 +45,6 @@ function cleanupDynamicFeatures() {
         removed++;
       }
     }
-    console.log(`[cctoggle] cleanupDynamicFeatures: found ${features.length}, removed ${removed}`);
   } catch (e) {
     console.warn("[cctoggle] cleanupDynamicFeatures failed", e);
   }

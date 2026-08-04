@@ -10,6 +10,7 @@ const tabs = [
   { path: "/settings/claude",  label: "通用配置" },
   { path: "/settings/routes",  label: "路由 / 代理" },
   { path: "/settings/storage", label: "Skill 存储" },
+  { path: "/settings/about",   label: "关于" },
 ];
 
 const activePath = computed(() => route.path);
@@ -21,10 +22,7 @@ function go(p) {
 
 <template>
   <div class="settings-page">
-    <header class="sub-header">
-      <router-link to="/" class="back-btn" title="Back">&#8592;</router-link>
-      <span class="sub-title">设置</span>
-    </header>
+    <n-page-header title="设置" @back="router.push('/')" />
 
     <nav class="sub-tabs">
       <button
@@ -47,23 +45,26 @@ function go(p) {
   display: flex;
   flex-direction: column;
 }
-.sub-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+
+/* n-page-header 统一样式 */
+.settings-page :deep(.n-page-header) {
   padding: 8px 16px;
+  min-height: 44px;
   border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
 }
-.back-btn {
-  width: 28px; height: 28px;
-  display: flex; align-items: center; justify-content: center;
-  border: none; background: none; border-radius: var(--radius);
-  color: var(--text-secondary); font-size: 16px;
-  cursor: pointer; text-decoration: none; transition: all .15s;
+.settings-page :deep(.n-page-header__title) {
+  font-size: 14px !important;
+  font-weight: 600;
 }
-.back-btn:hover { background: var(--bg-hover); color: var(--text); }
-.sub-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.settings-page :deep(.n-page-header__back) {
+  margin-right: 8px;
+}
+.settings-page :deep(.n-page-header__back:hover) {
+  color: var(--primary);
+}
+.settings-page :deep(.n-page-header .n-button) {
+  font-size: 12px;
+}
 
 .sub-tabs {
   display: flex;

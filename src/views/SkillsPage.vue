@@ -1,9 +1,11 @@
 ﻿<script setup lang="ts">
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { ref } from "vue";
+import { useRouter } from "vue-router";
 import SkillInstallSection from "../components/skills/SkillInstallSection.vue";
 import SkillListSection from "../components/skills/SkillListSection.vue";
 
+const router = useRouter();
 const activeTab = ref("install");
 
 const tabs = [
@@ -14,10 +16,7 @@ const tabs = [
 
 <template>
   <div class="skills-page">
-    <header class="sub-header">
-      <router-link to="/" class="back-btn" title="Back">&#8592;</router-link>
-      <span class="sub-title">Skill管理</span>
-    </header>
+    <n-page-header title="Skill 管理" @back="router.push('/')" />
     <nav class="sub-tabs">
       <button
         v-for="t in tabs" :key="t.key"
@@ -36,19 +35,27 @@ const tabs = [
 
 <style scoped>
 .skills-page { height: 100%; display: flex; flex-direction: column; }
-.sub-header {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+
+/* n-page-header 统一样式 */
+.skills-page :deep(.n-page-header) {
+  padding: 8px 16px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--border);
 }
-.back-btn {
-  width: 28px; height: 28px;
-  display: flex; align-items: center; justify-content: center;
-  border: none; background: none; border-radius: var(--radius);
-  color: var(--text-secondary); font-size: 16px;
-  cursor: pointer; text-decoration: none; transition: all .15s;
+.skills-page :deep(.n-page-header__title) {
+  font-size: 14px !important;
+  font-weight: 600;
 }
-.back-btn:hover { background: var(--bg-hover); color: var(--text); }
-.sub-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.skills-page :deep(.n-page-header__back) {
+  margin-right: 8px;
+}
+.skills-page :deep(.n-page-header__back:hover) {
+  color: var(--primary);
+}
+.skills-page :deep(.n-page-header .n-button) {
+  font-size: 12px;
+}
+
 .sub-tabs {
   display: flex; gap: 0; border-bottom: 2px solid var(--border);
   padding: 0 20px; flex-shrink: 0;

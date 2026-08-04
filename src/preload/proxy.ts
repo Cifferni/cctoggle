@@ -93,7 +93,6 @@ interface ProxyRuntimeEntry {
   port: number;
   groupId: string;
   members: RuntimeMember[];
-  logs: any[];
   startedAt?: number;
   activeConn?: number;
   reqTotal?: number;
@@ -122,7 +121,6 @@ interface ProxyStatus {
   reqFail?: number;
   lastMemberId?: string | null;
   members?: RuntimeMember[];
-  logs?: any[];
 }
 
 interface BackupEntry {
@@ -310,7 +308,6 @@ export class ProxyManager {
         members: members.map(function (m) {
           return { id: m.providerId, name: m.name, state: "closed", fails: 0, openUntil: 0, latency: 0, up: true };
         }),
-        logs: [],
       };
       return { success: true };
     } catch (e: any) {
@@ -348,7 +345,6 @@ export class ProxyManager {
       reqFail: rt.reqFail || 0,
       lastMemberId: rt.lastMemberId || null,
       members: members,
-      logs: (rt.logs || []).slice(-200),
     };
   }
 
@@ -357,13 +353,11 @@ export class ProxyManager {
     if (typeof cb !== "function") return;
     try {
       const { ipcRenderer } = require("electron");
-      ipcRenderer.removeAllListeners("parent-message");
-      ipcRenderer.on("parent-message", function (_event: any, ...args: any[]) {
-        // uTools 独立窗口 sendToParent 落地为 parent-message 事件
-        const [channel, data] = args;
+
+      // 处理事件的通用函数
+      function handleEvent(channel: string, data: any) {
         try {
           if (channel === "proxy-stat" && data) {
-            // 无法反查 appType，简单方案：同端口匹配
             Object.keys(proxyRuntime).forEach(function (app) {
               const rt = proxyRuntime[app];
               if (rt && rt.port === data.port) {
@@ -377,18 +371,24 @@ export class ProxyManager {
                 rt.lastMemberId = data.lastMemberId || null;
               }
             });
-          } else if (channel === "proxy-log" && data) {
-            Object.keys(proxyRuntime).forEach(function (app) {
-              const rt = proxyRuntime[app];
-              if (!rt.logs) rt.logs = [];
-              rt.logs.push(data);
-              if (rt.logs.length > 500) rt.logs.splice(0, rt.logs.length - 500);
-            });
           } else if (channel === "proxy-usage" && data) {
             // 统计改为扫描本地 CLI 日志（见 scanUsageLogs），代理事件不再写库，避免双写与关面板丢数据
           }
         } catch (e) {}
         try { cb(channel, data); } catch (e) {}
+      }
+
+      // 监听 parent-message 事件（utools.sendToParent）
+      ipcRenderer.removeAllListeners("parent-message");
+      ipcRenderer.on("parent-message", function (_event: any, ...args: any[]) {
+        const [channel, data] = args;
+        handleEvent(channel, data);
+      });
+
+      // 监听 ipcRenderer.send 发送的事件
+      ipcRenderer.removeAllListeners("proxy-stat");
+      ipcRenderer.on("proxy-stat", function (_event: any, data: any) {
+        handleEvent("proxy-stat", data);
       });
     } catch (e) {}
   }
@@ -518,7 +518,7 @@ export class ProxyManager {
       name: "默认路由（自动）",
       strategy: "failover",
       members: all.map(function (p: any, i: number) { return { providerId: p.id, priority: i + 1, weight: 1 }; }),
-      health: { intervalMs: 30000, timeoutMs: 5000, path: appType === "claude" ? "/v1/models" : "/models" },
+      health: { intervalMs: 30000, timeoutMs: 5000, path: (appType === "claude" || appType === "codex") ? "/v1/models" : "/models" },
       breaker: { failThreshold: 3, cooldownMs: 60000 },
       timeoutMs: 30000,
     });

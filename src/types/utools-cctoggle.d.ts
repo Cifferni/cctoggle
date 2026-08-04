@@ -206,7 +206,6 @@ export interface ProxyStatusRunning {
   reqFail: number
   lastMemberId: string | null
   members: ProxyMemberStatus[]
-  logs: any[]
 }
 
 export interface ProxyStatusStopped {

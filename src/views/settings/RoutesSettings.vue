@@ -75,11 +75,16 @@ const uptime = computed(() => {
 // Member state
 const stateTypeMap = { closed: "success", "half-open": "warning", open: "error" };
 const stateLabelMap = { closed: "正常", "half-open": "半开", open: "断开" };
+function memberState(m) {
+  if (m.up === false) return "open";
+  return m.state || "closed";
+}
 
 function reload() {
   refreshStatus(currentApp.value);
   loadProviders();
   syncPort();
+  console.log("[DEBUG] UI reload, rt:", {running: rt.value.running, port: rt.value.port, reqTotal: rt.value.reqTotal, reqSuccess: rt.value.reqSuccess, members: rt.value.members?.map(m => ({id: m.id, name: m.name, latency: m.latency, up: m.up, state: m.state}))});
 }
 onMounted(() => {
   reload();
@@ -185,11 +190,11 @@ watch(isRunning, syncPort);
       </div>
       <n-empty v-if="!(rt.members && rt.members.length)" description="暂无成员数据" size="small" />
       <div v-else class="member-list">
-        <div v-for="m in rt.members" :key="m.id" class="member-row" :class="'member-row--' + (m.state || 'closed')">
-          <n-badge :type="stateTypeMap[m.state] || 'default'" dot :offset="[0, 0]" />
+        <div v-for="m in rt.members" :key="m.id" class="member-row" :class="'member-row--' + memberState(m)">
+          <n-badge :type="stateTypeMap[memberState(m)] || 'default'" dot :offset="[0, 0]" />
           <span class="member-name">{{ m.name }}</span>
-          <n-tag :type="stateTypeMap[m.state] || 'default'" size="tiny" :bordered="false" round>
-            {{ stateLabelMap[m.state] || m.state }}
+          <n-tag :type="stateTypeMap[memberState(m)] || 'default'" size="tiny" :bordered="false" round>
+            {{ stateLabelMap[memberState(m)] || memberState(m) }}
           </n-tag>
           <span class="member-latency">{{ m.latency || '-' }}ms</span>
           <n-tag v-if="m.fails" type="warning" size="tiny" :bordered="false">
@@ -197,26 +202,6 @@ watch(isRunning, syncPort);
           </n-tag>
         </div>
       </div>
-    </div>
-
-    <!-- 实时日志（运行时） -->
-    <div v-if="isRunning" class="section-card">
-      <div class="section-head">
-        <n-text depth="2" style="font-size: 12px; font-weight: 600;">实时日志</n-text>
-        <n-tag v-if="rt.logs && rt.logs.length" size="tiny" :bordered="false" type="info">
-          {{ rt.logs.length }}
-        </n-tag>
-      </div>
-      <n-scrollbar style="max-height: 200px;">
-        <n-log
-          v-if="rt.logs && rt.logs.length"
-          :log="(rt.logs || []).slice(-50).map(l => `[${new Date(l.ts).toLocaleTimeString()}] ${l.msg}${l.meta ? ' · ' + JSON.stringify(l.meta) : ''}`).join('\n')"
-          language="text"
-          :rows="8"
-          :font-size="11"
-        />
-        <n-empty v-else description="暂无日志" size="small" />
-      </n-scrollbar>
     </div>
   </div>
 </template>
@@ -326,7 +311,7 @@ watch(isRunning, syncPort);
 /* ── Metrics Grid ── */
 .metrics-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
 }
 .metric-card {
@@ -393,28 +378,31 @@ watch(isRunning, syncPort);
 
 /* ── Member List ── */
 .member-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 .member-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
-  border-radius: var(--radius);
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   border-left: 3px solid transparent;
-  transition: background 0.15s;
+  transition: all 0.2s;
 }
 .member-row:hover {
   background: var(--bg-hover);
+  transform: translateX(2px);
 }
 .member-row--closed  { border-left-color: #22c55e; }
 .member-row--half-open { border-left-color: #f59e0b; }
-.member-row--open    { border-left-color: #ef4444; }
+.member-row--open    { border-left-color: #ef4444; opacity: 0.7; }
 .member-name {
   flex: 1;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text);
 }

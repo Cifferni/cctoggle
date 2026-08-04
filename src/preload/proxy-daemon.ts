@@ -45,29 +45,29 @@ function log(level, msg, meta) {
   try {
     proxyLog[level](msg, meta);
   } catch (e) {}
-  // IPC 发送到父窗口
-  try {
-    utools.sendToParent("proxy-log", {
-      ts: Date.now(), level: level, msg: msg, meta: meta || null,
-    });
-  } catch (e) {}
 }
 
 function stat() {
+  var data = {
+    running: !!server,
+    port: group ? group.listenPort : 0,
+    startedAt: startedAt,
+    activeConn: activeConn,
+    reqTotal: reqTotal,
+    reqSuccess: reqSuccess,
+    reqFail: reqFail,
+    lastMemberId: lastMemberId,
+    members: members.map(function (m) {
+      return { id: m.providerId, name: m.name, state: m.state, fails: m.fails, openUntil: m.openUntil, latency: m.latency, up: m.up };
+    }),
+  };
   try {
-    utools.sendToParent("proxy-stat", {
-      running: !!server,
-      port: group ? group.listenPort : 0,
-      startedAt: startedAt,
-      activeConn: activeConn,
-      reqTotal: reqTotal,
-      reqSuccess: reqSuccess,
-      reqFail: reqFail,
-      lastMemberId: lastMemberId,
-      members: members.map(function (m) {
-        return { id: m.providerId, name: m.name, state: m.state, fails: m.fails, openUntil: m.openUntil, latency: m.latency, up: m.up };
-      }),
-    });
+    utools.sendToParent("proxy-stat", data);
+  } catch (e) {
+    log("error", "sendToParent failed", { error: String(e) });
+  }
+  try {
+    ipcRenderer.send("proxy-stat", data);
   } catch (e) {}
 }
 
@@ -159,7 +159,7 @@ function noteFailure(m) {
 function tickBreaker() {
   const now = Date.now();
   members.forEach(function (m) {
-    if (m.state === "open" && now >= m.openUntil) {
+    if (m.state === "open" && now >= m.openUntil && m.up !== false) {
       m.state = "half-open"; m.fails = 0;
     }
   });
@@ -350,6 +350,7 @@ function forward(member, req, res, attemptsLeft, reqBody, reasoningStripped) {
             return forward(member, req, res, attemptsLeft, stripped, true).then(resolve);
           }
           // 非 reasoning 类 400，原样回给客户端
+          noteSuccess(member); reqSuccess++; member.latency = latency;
           if (!res.headersSent) res.writeHead(sc, { "content-type": upRes.headers["content-type"] || "application/json" });
           res.end(Buffer.concat(_eb));
           resolve();
@@ -520,6 +521,8 @@ function startServer() {
     server = http.createServer(function (req, res) {
       reqTotal++;
       activeConn++;
+      console.log("[DEBUG] request received:", req.method, req.url, "total:", reqTotal);
+      log("info", "request received", { method: req.method, url: req.url, total: reqTotal });
       res.on("close", function () { activeConn = Math.max(0, activeConn - 1); });
       if (!isAuthed(req)) {
         reqFail++;
@@ -562,6 +565,7 @@ function startServer() {
       startedAt = Date.now();
       activeConn = 0; reqTotal = 0; reqSuccess = 0; reqFail = 0; lastMemberId = null;
       log("info", "proxy listening", { port: port });
+      console.log("[DEBUG] proxy listening on port", port, "members:", members.length);
       stat();
       resolve();
     });
@@ -571,9 +575,15 @@ function startServer() {
 // —— 健康检查 ——
 function pingOnce(m) {
   return new Promise(function (resolve) {
+    // 没有apiKey的供应商跳过健康检查
+    if (!m.apiKey) {
+      m.up = true;
+      m.latency = 0;
+      return resolve();
+    }
     let u;
     try { u = new URL((group.health && group.health.path) || "/", m.baseUrl); }
-    catch (e) { m.up = false; return resolve(); }
+    catch (e) { m.up = false; m.latency = 0; return resolve(); }
     const client = u.protocol === "https:" ? https : http;
     const t0 = Date.now();
     const req = client.request({
@@ -581,15 +591,15 @@ function pingOnce(m) {
       hostname: u.hostname, port: u.port || (u.protocol === "https:" ? 443 : 80),
       path: u.pathname + u.search,
       timeout: (group.health && group.health.timeoutMs) || 5000,
-      headers: m.apiKey ? { authorization: "Bearer " + m.apiKey, "x-api-key": m.apiKey } : {},
+      headers: { authorization: "Bearer " + m.apiKey, "x-api-key": m.apiKey },
     }, function (r) {
       m.latency = Date.now() - t0;
       m.up = (r.statusCode || 0) < 500;
       r.resume();
       resolve();
     });
-    req.on("error", function () { m.up = false; resolve(); });
-    req.on("timeout", function () { m.up = false; req.destroy(); resolve(); });
+    req.on("error", function () { m.up = false; m.latency = 0; resolve(); });
+    req.on("timeout", function () { m.up = false; m.latency = 0; req.destroy(); resolve(); });
     req.end();
   });
 }

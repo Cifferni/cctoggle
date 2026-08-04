@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // @ts-nocheck TODO: 逐步添加类型注解后移除
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, nextTick } from "vue";
 import { useProviders } from "../composables/useProviders";
 import TabBar from "../components/common/TabBar.vue";
 import ProviderCard from "../components/provider/ProviderCard.vue";
@@ -12,6 +12,11 @@ const showForm = ref(false), editingId = ref(null), formInitialData = ref(null);
 const currentProvider = computed(() => providers.value.find(p => p.isCurrent));
 const otherProviders = computed(() => providers.value.filter(p => !p.isCurrent));
 
+// FLIP 动画状态
+const flipStyle = ref({});
+const isFlipping = ref(false);
+const heroRef = ref(null);
+
 onMounted(() => loadProviders());
 
 function onAdd() { editingId.value = null; formInitialData.value = null; showForm.value = true; }
@@ -20,6 +25,43 @@ function onDelete(id) { deleteProvider(id); }
 function onSave(data) {
   if (editingId.value) { data.id = editingId.value; data.sortOrder = providers.value.find(p => p.id === editingId.value)?.sortOrder || 0; }
   saveProvider(data); showForm.value = false; editingId.value = null;
+}
+
+function onSwitch(id, event) {
+  if (!event) { switchProvider(id); return; }
+
+  const clickedCard = event.currentTarget.closest('.provider-card') || event.currentTarget;
+  const firstRect = clickedCard.getBoundingClientRect();
+
+  switchProvider(id);
+
+  nextTick(() => {
+    const heroEl = document.querySelector('.hero-card .provider-card');
+    if (!heroEl) return;
+    const lastRect = heroEl.getBoundingClientRect();
+
+    const dx = firstRect.left - lastRect.left;
+    const dy = firstRect.top - lastRect.top;
+
+    // 只做位移，不做缩放和透明度，减少闪烁
+    flipStyle.value = {
+      transform: `translate(${dx}px, ${dy}px)`,
+      transition: 'none',
+    };
+    isFlipping.value = true;
+
+    requestAnimationFrame(() => {
+      flipStyle.value = {
+        transform: 'translate(0, 0)',
+        transition: 'transform 0.3s ease-out',
+      };
+
+      setTimeout(() => {
+        isFlipping.value = false;
+        flipStyle.value = {};
+      }, 300);
+    });
+  });
 }
 </script>
 
@@ -41,7 +83,9 @@ function onSave(data) {
       </n-empty>
 
       <template v-else>
-        <ProviderCard v-if="currentProvider" :provider="currentProvider" @switch="switchProvider" @edit="onEdit" @delete="onDelete" />
+        <div class="hero-card" :class="{ 'is-flipping': isFlipping }" :style="isFlipping ? flipStyle : {}">
+          <ProviderCard v-if="currentProvider" :key="currentProvider.id" :provider="currentProvider" @switch="onSwitch" @edit="onEdit" @delete="onDelete" />
+        </div>
 
         <div v-if="otherProviders.length" class="providers-section">
           <div class="section-label">
@@ -50,7 +94,7 @@ function onSave(data) {
           </div>
           <n-grid :cols="2" :x-gap="8" :y-gap="8" responsive="screen" :item-responsive="true">
             <n-gi v-for="p in otherProviders" :key="p.id" :span="1">
-              <ProviderCard :provider="p" compact @switch="switchProvider" @edit="onEdit" @delete="onDelete" />
+              <ProviderCard :provider="p" compact @switch="onSwitch" @edit="onEdit" @delete="onDelete" />
             </n-gi>
           </n-grid>
         </div>
@@ -70,10 +114,13 @@ function onSave(data) {
 .tab-bar-wrap {
   padding: 0 10px;
   flex-shrink: 0;
+  background: var(--bg-hover);
+  border-bottom: 1px solid var(--border);
 }
 .page-body {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 12px 20px 16px;
   display: flex;
   flex-direction: column;
@@ -104,5 +151,14 @@ function onSave(data) {
   color: var(--text-muted);
   padding-bottom: 6px;
   border-bottom: 1px solid var(--border);
+}
+
+/* ── Hero card FLIP ── */
+.hero-card {
+  will-change: transform, opacity;
+}
+.hero-card.is-flipping {
+  z-index: 10;
+  pointer-events: none;
 }
 </style>

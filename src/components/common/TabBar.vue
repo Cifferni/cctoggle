@@ -110,8 +110,6 @@ function onToggleProxy() {
   align-items: center;
   gap: 4px;
   padding: 3px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-hover);
 }
 .app-tabs {
   flex-shrink: 1;

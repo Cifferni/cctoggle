@@ -90,21 +90,20 @@ function onUpdateApps(id, apps) {
 
 <template>
   <div class="page">
-    <div class="page-header">
-      <div class="page-header__left">
-        <button class="back-btn" title="返回" @click="router.back()">
-          <n-icon :size="16"><arrow-back-outline /></n-icon>
-        </button>
-        <span class="page-title">MCP 管理</span>
-        <n-tag size="tiny" :bordered="false" round>{{ mcpServers.length }}</n-tag>
-      </div>
-      <n-space :size="6">
-        <n-button size="small" quaternary :disabled="syncing" @click="onSync" title="从 Agent 配置文件同步 MCP Server">
-          <span class="sync-icon" :class="{ 'sync-icon--spinning': syncing }">↻</span> 刷新
-        </n-button>
-        <n-button type="primary" size="small" @click="onAdd">+ 添加</n-button>
-      </n-space>
-    </div>
+    <n-page-header @back="router.back()">
+      <template #title>
+        <span>MCP 管理</span>
+        <n-tag size="tiny" :bordered="false" round style="margin-left: 8px;">{{ mcpServers.length }}</n-tag>
+      </template>
+      <template #extra>
+        <n-space :size="6">
+          <n-button size="small" quaternary :disabled="syncing" @click="onSync" title="从 Agent 配置文件同步 MCP Server">
+            <span class="sync-icon" :class="{ 'sync-icon--spinning': syncing }">↻</span> 刷新
+          </n-button>
+          <n-button type="primary" size="small" @click="onAdd">+ 添加</n-button>
+        </n-space>
+      </template>
+    </n-page-header>
 
     <div class="dash-grid">
       <div v-for="stat in agentStats" :key="stat.app" class="dash-card" :class="{ 'dash-card--zero': stat.count === 0 }">
@@ -146,46 +145,31 @@ function onUpdateApps(id, apps) {
   flex-direction: column;
 }
 
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 20px 8px;
-  flex-shrink: 0;
+/* n-page-header 统一样式 */
+.page :deep(.n-page-header) {
+  padding: 8px 16px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--border);
 }
-.page-header__left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.back-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  border-radius: 6px;
-  transition: all .15s;
-}
-.back-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-.page-title {
-  font-size: 15px;
+.page :deep(.n-page-header__title) {
+  font-size: 14px !important;
   font-weight: 600;
-  color: var(--text);
+}
+.page :deep(.n-page-header__back) {
+  margin-right: 8px;
+}
+.page :deep(.n-page-header__back:hover) {
+  color: var(--primary);
+}
+.page :deep(.n-page-header .n-button) {
+  font-size: 12px;
 }
 
 .dash-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 8px;
-  padding: 0 20px 8px;
+  padding: 12px 20px 8px;
   flex-shrink: 0;
 }
 .dash-card {

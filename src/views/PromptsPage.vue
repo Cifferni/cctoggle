@@ -1,12 +1,14 @@
 <script setup lang="ts">
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { ref, onMounted } from "vue";
+import { useRouter } from "vue-router";
 import { NButton, NCard, NCheckbox, NDrawer, NDrawerContent, NModal, NSpace, NText, useMessage, useDialog } from "naive-ui";
 import { usePrompts } from "../composables/usePrompts";
 import PromptCard from "../components/prompt/PromptCard.vue";
 import PromptEditor from "../components/prompt/PromptEditor.vue";
 import PromptPreview from "../components/prompt/PromptPreview.vue";
 
+const router = useRouter();
 const message = useMessage();
 const dialog = useDialog();
 
@@ -184,17 +186,17 @@ function handleRestoreAll() {
 
 <template>
   <div class="prompts-page">
-    <header class="sub-header">
-      <router-link to="/" class="back-btn" title="返回">&#8592;</router-link>
-      <span class="sub-title">提示词管理</span>
-      <div class="sub-header__actions">
-        <n-button size="small" quaternary @click="handleBackup">备份原始</n-button>
-        <n-button size="small" quaternary @click="showRestore = true">恢复原始</n-button>
-        <n-button size="small" quaternary @click="handleImport">导入</n-button>
-        <n-button size="small" quaternary @click="handleExport">导出</n-button>
-        <n-button type="primary" size="small" @click="handleCreate">+ 新建</n-button>
-      </div>
-    </header>
+    <n-page-header title="提示词管理" @back="router.push('/')">
+      <template #extra>
+        <n-space :size="8">
+          <n-button size="small" quaternary @click="handleBackup">备份原始</n-button>
+          <n-button size="small" quaternary @click="showRestore = true">恢复原始</n-button>
+          <n-button size="small" quaternary @click="handleImport">导入</n-button>
+          <n-button size="small" quaternary @click="handleExport">导出</n-button>
+          <n-button type="primary" size="small" @click="handleCreate">+ 新建</n-button>
+        </n-space>
+      </template>
+    </n-page-header>
 
     <div class="sub-content">
       <div v-if="loading" class="prompts-page__loading">
@@ -303,13 +305,7 @@ function handleRestoreAll() {
           <div v-for="agent in ALL_AGENTS" :key="agent" class="backup-agent-item" @click="selectedBackupAgents.includes(agent) ? selectedBackupAgents = selectedBackupAgents.filter(a => a !== agent) : selectedBackupAgents.push(agent)">
             <n-checkbox
               :checked="selectedBackupAgents.includes(agent)"
-              @update:checked="(val) => {
-                if (val) {
-                  if (!selectedBackupAgents.includes(agent)) selectedBackupAgents.push(agent);
-                } else {
-                  selectedBackupAgents = selectedBackupAgents.filter(a => a !== agent);
-                }
-              }"
+              style="pointer-events: none;"
             >
               {{ AGENT_LABELS[agent] }}
             </n-checkbox>
@@ -352,46 +348,24 @@ function handleRestoreAll() {
   flex-direction: column;
 }
 
-.sub-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+/* n-page-header 统一样式 */
+.prompts-page :deep(.n-page-header) {
   padding: 8px 16px;
+  min-height: 44px;
   border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
 }
-
-.back-btn {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: none;
-  border-radius: var(--radius);
-  color: var(--text-secondary);
-  font-size: 16px;
-  cursor: pointer;
-  text-decoration: none;
-  transition: all .15s;
-
-  &:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-  }
-}
-
-.sub-title {
-  font-size: 13px;
+.prompts-page :deep(.n-page-header__title) {
+  font-size: 14px !important;
   font-weight: 600;
-  color: var(--text-secondary);
-  flex: 1;
 }
-
-.sub-header__actions {
-  display: flex;
-  gap: 8px;
+.prompts-page :deep(.n-page-header__back) {
+  margin-right: 8px;
+}
+.prompts-page :deep(.n-page-header__back:hover) {
+  color: var(--primary);
+}
+.prompts-page :deep(.n-page-header .n-button) {
+  font-size: 12px;
 }
 
 .sub-content {

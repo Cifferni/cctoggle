@@ -183,7 +183,7 @@ export class DataMigration {
         }
 
         console.log("[Cleanup] Migration completed successfully");
-      } catch (e) {
+      } catch (e:any) {
         console.error("[Cleanup] Migration failed:", e.message);
       }
     }

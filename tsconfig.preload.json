@@ -1,4 +1,7 @@
 {
+  "watchOptions": {
+    "watchFile": "fixedPollingInterval"
+  },
   "compilerOptions": {
     "target": "ES2020",
     "module": "CommonJS",

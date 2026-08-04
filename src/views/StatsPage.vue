@@ -275,18 +275,16 @@ const heatmapChartOpts = computed(() => {
 
 <template>
   <div class="page">
-    <div class="stats-topbar">
-      <div class="stats-title">
-        <button class="back-btn" @click="router.push('/')" title="返回">←</button>
-        <span class="stats-h1">用量统计</span>
-      </div>
-      <div class="stats-actions">
-        <button class="refresh-btn" :disabled="refreshing" @click="refresh">
-          <span :class="{ spin: refreshing }">↻</span> {{ refreshing ? "扫描中…" : "刷新" }}
-        </button>
-        <button class="clear-btn" @click="onClear">清除统计</button>
-      </div>
-    </div>
+    <n-page-header title="用量统计" @back="router.push('/')">
+      <template #extra>
+        <n-space :size="6">
+          <n-button size="small" quaternary :disabled="refreshing" @click="refresh">
+            <span :class="{ spin: refreshing }">↻</span> {{ refreshing ? "扫描中…" : "刷新" }}
+          </n-button>
+          <n-button size="small" quaternary type="error" @click="onClear">清除统计</n-button>
+        </n-space>
+      </template>
+    </n-page-header>
 
     <div class="stats-filters">
       <div class="seg">
@@ -363,19 +361,26 @@ const heatmapChartOpts = computed(() => {
 
 <style scoped>
 .page { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
-.stats-topbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px 6px; }
-.stats-title { display: flex; align-items: center; gap: 8px; }
-.back-btn { border: none; background: var(--bg-hover); color: var(--text-secondary); width: 26px; height: 26px; border-radius: 7px; cursor: pointer; font-size: 15px; }
-.back-btn:hover { color: var(--text); }
-.stats-h1 { font-size: 15px; font-weight: 600; color: var(--text); }
-.clear-btn { border: 1px solid var(--border); background: none; color: var(--danger); padding: 5px 12px; border-radius: 7px; cursor: pointer; font-size: 12px; }
-.clear-btn:hover { background: var(--danger-light); }
-.stats-actions { display: flex; align-items: center; gap: 8px; }
-.refresh-btn { border: 1px solid var(--border); background: none; color: var(--text-secondary); padding: 5px 12px; border-radius: 7px; cursor: pointer; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
-.refresh-btn:hover:not(:disabled) { color: var(--text); background: var(--bg-hover); }
-.refresh-btn:disabled { opacity: .6; cursor: default; }
-.refresh-btn .spin { display: inline-block; animation: spin 1s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
+
+/* n-page-header 统一样式 */
+.page :deep(.n-page-header) {
+  padding: 8px 16px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--border);
+}
+.page :deep(.n-page-header__title) {
+  font-size: 14px !important;
+  font-weight: 600;
+}
+.page :deep(.n-page-header__back) {
+  margin-right: 8px;
+}
+.page :deep(.n-page-header__back:hover) {
+  color: var(--primary);
+}
+.page :deep(.n-page-header .n-button) {
+  font-size: 12px;
+}
 
 .stats-filters { display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 14px 8px; }
 .seg { display: flex; gap: 2px; background: var(--bg-hover); padding: 3px; border-radius: 9px; }

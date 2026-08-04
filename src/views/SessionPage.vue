@@ -130,18 +130,14 @@ function onCopyTo(targetApp) {
 <template>
   <div class="page">
     <!-- 页头 -->
-    <div class="page-header" v-once>
-      <div class="page-header__left">
-        <button class="back-btn" title="返回" @click="router.back()">
-          <n-icon :size="16"><arrow-back-outline /></n-icon>
-        </button>
-        <span class="page-title">会话管理</span>
-      </div>
-      <n-space :size="6">
-        <n-button size="small" quaternary @click="exportAllSessions('json')">导出</n-button>
-        <n-button size="small" quaternary type="error" @click="onClear">清空</n-button>
-      </n-space>
-    </div>
+    <n-page-header title="会话管理" @back="router.back()">
+      <template #extra>
+        <n-space :size="6">
+          <n-button size="small" quaternary @click="exportAllSessions('json')">导出</n-button>
+          <n-button size="small" quaternary type="error" @click="onClear">清空</n-button>
+        </n-space>
+      </template>
+    </n-page-header>
 
     <!-- 应用统计卡片 -->
     <AppDashboard :stats="appStats" unit="会话" />
@@ -250,43 +246,29 @@ function onCopyTo(targetApp) {
   flex-direction: column;
 }
 
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 20px 8px;
-  flex-shrink: 0;
+/* n-page-header 统一样式 */
+.page :deep(.n-page-header) {
+  padding: 8px 16px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--border);
 }
-
-.page-header__left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.back-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  border-radius: 6px;
-  transition: all .15s;
-
-  &:hover {
-    background: var(--bg-hover);
-    color: var(--text);
-  }
-}
-
-.page-title {
-  font-size: 15px;
+.page :deep(.n-page-header__title) {
+  font-size: 14px !important;
   font-weight: 600;
-  color: var(--text);
+}
+.page :deep(.n-page-header__back) {
+  margin-right: 8px;
+}
+.page :deep(.n-page-header__back:hover) {
+  color: var(--primary);
+}
+.page :deep(.n-page-header .n-button) {
+  font-size: 12px;
+}
+
+// 应用统计卡片间距
+.page :deep(.dash-grid) {
+  margin-top: 12px;
 }
 
 // 筛选栏

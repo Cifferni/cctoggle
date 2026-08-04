@@ -492,40 +492,64 @@ export class SessionManager {
     const offset = opts.offset || 0;
     const limit = opts.limit != null ? opts.limit : 20;
 
-    let projectsDir = utils.getAgentSessionPath("claude-desktop") || path.join(home, ".claude-desktop", "projects");
-    let entries: import("fs").Dirent[] | undefined;
-    try {
-      entries = await fs.promises.readdir(projectsDir, { withFileTypes: true });
-    } catch (e) {
-      // 如果配置的路径不存在，尝试默认路径
-      if (utils.getAgentSessionPath("claude-desktop")) {
-        projectsDir = path.join(home, ".claude-desktop", "projects");
-        try {
-          entries = await fs.promises.readdir(projectsDir, { withFileTypes: true });
-        } catch (e2) {
-          // 继续尝试 APPDATA
+    // Claude Desktop 会话路径优先级：
+    // 1. 用户自定义路径
+    // 2. LOCALAPPDATA/Claude-3p/local-agent-mode-sessions (Windows 新版本)
+    // 3. LOCALAPPDATA/Claude/projects (Windows 旧版本)
+    // 4. ~/.claude-desktop/projects (Linux/macOS fallback)
+
+    let customPath = utils.getAgentSessionPath("claude-desktop");
+    if (customPath) {
+      try {
+        const entries = await fs.promises.readdir(customPath, { withFileTypes: true });
+        if (entries.length > 0) {
+          return await SessionManager._scanClaudeDesktopFromDir(customPath, offset, limit);
         }
-      }
-      if (!entries) {
-        let appData: string;
-        try { appData = process.env.APPDATA || ""; } catch (e3) { appData = ""; }
-        if (appData) {
-          try {
-            const altDir = path.join(appData, "Claude", "projects");
-            entries = await fs.promises.readdir(altDir, { withFileTypes: true });
-            projectsDir = altDir;
-          } catch (e4) {
-            return { sessions: [], totalFiles: 0 };
-          }
-        } else {
-          return { sessions: [], totalFiles: 0 };
-        }
-      }
+      } catch (e) { /* ignore */ }
     }
 
+    let localAppData: string;
+    try { localAppData = process.env.LOCALAPPDATA || ""; } catch (e) { localAppData = ""; }
+
+    // 尝试新版本路径: LOCALAPPDATA/Claude-3p/local-agent-mode-sessions
+    if (localAppData) {
+      const claude3pSessionsDir = path.join(localAppData, "Claude-3p", "local-agent-mode-sessions");
+      try {
+        await fs.promises.access(claude3pSessionsDir);
+        return await SessionManager._scanClaude3pSessions(claude3pSessionsDir, offset, limit);
+      } catch (e) { /* ignore */ }
+    }
+
+    // 尝试旧版本路径: LOCALAPPDATA/Claude/projects
+    if (localAppData) {
+      const claudeProjectsDir = path.join(localAppData, "Claude", "projects");
+      try {
+        const entries = await fs.promises.readdir(claudeProjectsDir, { withFileTypes: true });
+        if (entries.length > 0) {
+          return await SessionManager._scanClaudeDesktopFromDir(claudeProjectsDir, offset, limit);
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    // 尝试 fallback: ~/.claude-desktop/projects
+    const fallbackDir = path.join(home, ".claude-desktop", "projects");
+    try {
+      const entries = await fs.promises.readdir(fallbackDir, { withFileTypes: true });
+      if (entries.length > 0) {
+        return await SessionManager._scanClaudeDesktopFromDir(fallbackDir, offset, limit);
+      }
+    } catch (e) { /* ignore */ }
+
+    return { sessions: [], totalFiles: 0 };
+  }
+
+  // 从标准目录结构扫描（projects/xxx.jsonl）
+  private static async _scanClaudeDesktopFromDir(projectsDir: string, offset: number, limit: number): Promise<{ sessions: Session[]; totalFiles: number }> {
+    const entries = await fs.promises.readdir(projectsDir, { withFileTypes: true });
     const allFiles: Array<{ path: string; mtime: number; project: string }> = [];
-    for (let i = 0; i < entries!.length; i++) {
-      const ent = entries![i];
+
+    for (let i = 0; i < entries.length; i++) {
+      const ent = entries[i];
       if (!ent.isDirectory()) continue;
       const projectPath = path.join(projectsDir, ent.name);
       let files: string[];
@@ -539,6 +563,70 @@ export class SessionManager {
         allFiles.push({ path: filePath, mtime: st.mtimeMs, project: ent.name });
       }
     }
+
+    allFiles.sort((a, b) => b.mtime - a.mtime);
+
+    const sessions: Session[] = [];
+    let skipped = 0;
+    for (let k = 0; k < allFiles.length; k++) {
+      const f = allFiles[k];
+      const meta = await SessionManager._parseClaudeMeta(f.path, f.project);
+      if (!meta) continue;
+      meta.id = "claude-desktop_" + meta.sessionId;
+      meta.app = "claude-desktop";
+      if (skipped < offset) { skipped++; continue; }
+      sessions.push(meta);
+      if (sessions.length >= limit) break;
+    }
+
+    return { sessions, totalFiles: allFiles.length };
+  }
+
+  // 递归扫描 Claude-3p 新版本目录结构
+  // 路径: {agentId}/{profileId}/local_{uuid}/.claude/projects/{project}/{session}.jsonl
+  private static async _scanClaude3pSessions(baseDir: string, offset: number, limit: number): Promise<{ sessions: Session[]; totalFiles: number }> {
+    const allFiles: Array<{ path: string; mtime: number; project: string }> = [];
+
+    // 递归查找所有 .claude/projects 目录下的 jsonl 文件
+    async function findSessionFiles(dir: string, depth: number): Promise<void> {
+      if (depth > 6) return; // 限制递归深度
+      let entries: import("fs").Dirent[];
+      try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch (e) { return; }
+
+      for (const ent of entries) {
+        const fullPath = path.join(dir, ent.name);
+        if (ent.isDirectory()) {
+          // 进入 projects 目录后，直接扫描 jsonl 文件
+          if (ent.name === "projects") {
+            await scanProjectsDir(fullPath);
+          } else {
+            await findSessionFiles(fullPath, depth + 1);
+          }
+        }
+      }
+    }
+
+    // 扫描 projects 目录下的 jsonl 文件
+    async function scanProjectsDir(projectsDir: string): Promise<void> {
+      let entries: import("fs").Dirent[];
+      try { entries = await fs.promises.readdir(projectsDir, { withFileTypes: true }); } catch (e) { return; }
+
+      for (const ent of entries) {
+        if (!ent.isDirectory()) continue;
+        const projectPath = path.join(projectsDir, ent.name);
+        let files: string[];
+        try { files = await fs.promises.readdir(projectPath); } catch (e) { continue; }
+        for (const fname of files) {
+          if (!/\.jsonl$/i.test(fname)) continue;
+          const filePath = path.join(projectPath, fname);
+          let st: import("fs").Stats;
+          try { st = await fs.promises.stat(filePath); } catch (e) { continue; }
+          allFiles.push({ path: filePath, mtime: st.mtimeMs, project: ent.name });
+        }
+      }
+    }
+
+    await findSessionFiles(baseDir, 0);
 
     allFiles.sort((a, b) => b.mtime - a.mtime);
 

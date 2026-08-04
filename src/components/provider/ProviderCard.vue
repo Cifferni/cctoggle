@@ -50,9 +50,6 @@ const CAT_COLORS = {
           <span v-if="provider.baseUrl" class="meta-url">{{ provider.baseUrl }}</span>
           <span v-if="provider.baseUrl && provider.model" class="meta-dot">&middot;</span>
           <span class="meta-model">{{ provider.model }}</span>
-          <n-tag v-if="provider.models && provider.models.length" type="primary" size="tiny" round :bordered="false">
-            +{{ provider.models.length }} 模型
-          </n-tag>
           <span v-if="provider.remark" class="meta-remark" :title="provider.remark">{{ provider.remark }}</span>
         </div>
       </div>
@@ -62,7 +59,7 @@ const CAT_COLORS = {
           :secondary="provider.isCurrent"
           size="tiny"
           :disabled="provider.isCurrent"
-          @click="emit('switch', provider.id)"
+          @click="emit('switch', provider.id, $event)"
         >{{ provider.isCurrent ? '已激活' : '切换' }}</n-button>
         <n-button quaternary size="tiny" @click="emit('edit', provider.id)">编辑</n-button>
         <n-popconfirm @positive-click="emit('delete', provider.id)">
@@ -89,7 +86,7 @@ const CAT_COLORS = {
           :secondary="provider.isCurrent"
           size="tiny"
           :disabled="provider.isCurrent"
-          @click="emit('switch', provider.id)"
+          @click="emit('switch', provider.id, $event)"
         >{{ provider.isCurrent ? '已激活' : '切换' }}</n-button>
         <n-button quaternary size="tiny" @click="emit('edit', provider.id)">编辑</n-button>
         <n-popconfirm @positive-click="emit('delete', provider.id)">
@@ -188,6 +185,17 @@ const CAT_COLORS = {
   line-height: 16px;
   height: 16px;
   margin-top: 4px;
+}
+
+/* ── Hover effect (compact cards only) ── */
+.provider-card:not(.provider-card--active) {
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+.provider-card:not(.provider-card--active):hover {
+  border-color: var(--primary);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
 }
 
 /* ── Active provider — strong visual treatment ── */

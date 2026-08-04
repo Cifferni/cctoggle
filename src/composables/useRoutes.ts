@@ -6,7 +6,6 @@ interface ProxyRuntime {
   running: boolean
   port: number
   members: any[]
-  logs: any[]
   startedAt: number
   activeConn: number
   reqTotal: number
@@ -17,7 +16,7 @@ interface ProxyRuntime {
 
 function _emptyRt(): ProxyRuntime {
   return {
-    running: false, port: 0, members: [], logs: [],
+    running: false, port: 0, members: [],
     startedAt: 0, activeConn: 0, reqTotal: 0, reqSuccess: 0, reqFail: 0,
     lastMemberId: null,
   }
@@ -38,12 +37,6 @@ function _wireEvents(): void {
   _wired = true
   try {
     getSkillNest().onProxyEvent((channel: string, data: any) => {
-      if (channel === 'proxy-log' && data) {
-        const active = Object.keys(runtime).find(a => runtime[a].running) || 'codex'
-        const logs = runtime[active].logs
-        logs.push(data)
-        if (logs.length > 200) logs.splice(0, logs.length - 200)
-      }
       if (channel === 'proxy-stat' && data) {
         for (const app of Object.keys(runtime)) {
           if (runtime[app].port && runtime[app].port === data.port) {
@@ -73,7 +66,6 @@ function refreshStatus(appType: string): void {
     running: !!(s as any).running,
     port: (s as any).port || 0,
     members: (s as any).members || [],
-    logs: (s as any).logs || rt.logs,
     startedAt: (s as any).startedAt || 0,
     activeConn: (s as any).activeConn || 0,
     reqTotal: (s as any).reqTotal || 0,
