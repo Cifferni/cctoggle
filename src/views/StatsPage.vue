@@ -414,4 +414,6 @@ const heatmapChartOpts = computed(() => {
 .empty-title { font-size: 15px; font-weight: 600; color: var(--text-secondary); }
 .empty-desc { font-size: 12px; text-align: center; line-height: 1.6; }
 .loading-spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .8s linear infinite; }
+.spin { display: inline-block; animation: spin .8s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>
