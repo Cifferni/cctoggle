@@ -7,6 +7,7 @@ import { useProviders } from "../../composables/useProviders";
 import { useRoutes } from "../../composables/useRoutes";
 import { useProfiles } from "../../composables/useProfiles";
 import { APP_LABELS } from "../../composables/shared";
+import { NIcon } from "naive-ui";
 
 const message = useMessage();
 const dialog = useDialog();
