@@ -10,6 +10,7 @@ import { SkillManager } from './skills';
 import { StatsCollector } from './stats';
 import { DataMigration } from './cleanup';
 import { ConnectionTester } from './test-connection';
+import { ProfileStore } from './profile-db';
 import * as configRw from './config-rw';
 import * as utils from './utils';
 class UtoolsPreload {
@@ -177,6 +178,15 @@ class UtoolsPreload {
       // Test connection
       testConnection: ConnectionTester.testConnection,
       fetchAvailableModels: ConnectionTester.fetchAvailableModels,
+
+      // Profile 管理
+      listProfiles: ProfileStore.listProfiles,
+      getProfile: ProfileStore.getProfile,
+      saveProfile: ProfileStore.saveProfile,
+      deleteProfile: ProfileStore.deleteProfile,
+      activateProfile: ProfileStore.activateProfile,
+      deactivateProfile: ProfileStore.deactivateProfile,
+      getActiveProfileId: ProfileStore.getActiveProfileId,
     };
   }
 }

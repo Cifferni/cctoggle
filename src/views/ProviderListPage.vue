@@ -15,51 +15,34 @@ const otherProviders = computed(() => providers.value.filter(p => !p.isCurrent))
 // FLIP 动画状态
 const flipStyle = ref({});
 const isFlipping = ref(false);
-const heroRef = ref(null);
 
-onMounted(() => loadProviders());
+onMounted(loadProviders);
 
 function onAdd() { editingId.value = null; formInitialData.value = null; showForm.value = true; }
 function onEdit(id) { editingId.value = id; formInitialData.value = getFullProvider(id); showForm.value = true; }
-function onDelete(id) { deleteProvider(id); }
 function onSave(data) {
   if (editingId.value) { data.id = editingId.value; data.sortOrder = providers.value.find(p => p.id === editingId.value)?.sortOrder || 0; }
   saveProvider(data); showForm.value = false; editingId.value = null;
 }
 
 function onSwitch(id, event) {
-  if (!event) { switchProvider(id); return; }
+  if (!event) return switchProvider(id);
 
   const clickedCard = event.currentTarget.closest('.provider-card') || event.currentTarget;
   const firstRect = clickedCard.getBoundingClientRect();
-
   switchProvider(id);
 
   nextTick(() => {
     const heroEl = document.querySelector('.hero-card .provider-card');
     if (!heroEl) return;
-    const lastRect = heroEl.getBoundingClientRect();
+    const { left, top } = heroEl.getBoundingClientRect();
 
-    const dx = firstRect.left - lastRect.left;
-    const dy = firstRect.top - lastRect.top;
-
-    // 只做位移，不做缩放和透明度，减少闪烁
-    flipStyle.value = {
-      transform: `translate(${dx}px, ${dy}px)`,
-      transition: 'none',
-    };
+    flipStyle.value = { transform: `translate(${firstRect.left - left}px, ${firstRect.top - top}px)`, transition: 'none' };
     isFlipping.value = true;
 
     requestAnimationFrame(() => {
-      flipStyle.value = {
-        transform: 'translate(0, 0)',
-        transition: 'transform 0.3s ease-out',
-      };
-
-      setTimeout(() => {
-        isFlipping.value = false;
-        flipStyle.value = {};
-      }, 300);
+      flipStyle.value = { transform: 'translate(0, 0)', transition: 'transform 0.3s ease-out' };
+      setTimeout(() => { isFlipping.value = false; flipStyle.value = {}; }, 300);
     });
   });
 }
@@ -84,7 +67,7 @@ function onSwitch(id, event) {
 
       <template v-else>
         <div class="hero-card" :class="{ 'is-flipping': isFlipping }" :style="isFlipping ? flipStyle : {}">
-          <ProviderCard v-if="currentProvider" :key="currentProvider.id" :provider="currentProvider" @switch="onSwitch" @edit="onEdit" @delete="onDelete" />
+          <ProviderCard v-if="currentProvider" :key="currentProvider.id" :provider="currentProvider" @switch="onSwitch" @edit="onEdit" @delete="deleteProvider" />
         </div>
 
         <div v-if="otherProviders.length" class="providers-section">
@@ -94,7 +77,7 @@ function onSwitch(id, event) {
           </div>
           <n-grid :cols="2" :x-gap="8" :y-gap="8" responsive="screen" :item-responsive="true">
             <n-gi v-for="p in otherProviders" :key="p.id" :span="1">
-              <ProviderCard :provider="p" compact @switch="onSwitch" @edit="onEdit" @delete="onDelete" />
+              <ProviderCard :provider="p" compact @switch="onSwitch" @edit="onEdit" @delete="deleteProvider" />
             </n-gi>
           </n-grid>
         </div>

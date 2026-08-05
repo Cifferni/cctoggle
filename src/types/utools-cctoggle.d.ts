@@ -78,6 +78,18 @@ export interface ExportData {
   exportTime: string
 }
 
+// ——————————— 项目配置方案 ———————————
+
+export interface ProjectProfile {
+  id: string
+  name: string
+  icon?: string
+  createdAt: string
+  updatedAt: string
+  providers: Record<string, Record<string, Provider>>  // appType → providerId → Provider
+  lastActiveApp?: string
+}
+
 // ——————————— Skill ———————————
 
 export interface NestSkill {
@@ -518,4 +530,13 @@ export interface UtoolsCctoggle {
   restoreAllOriginalPrompts(): Record<string, SuccessResult>
   applyPromptToAgent(promptId: string, agent: string): PromptSaveResult
   togglePromptAgent(promptId: string, agent: string): PromptToggleResult
+
+  // 项目配置方案
+  listProfiles(): ProjectProfile[]
+  getProfile(id: string): ProjectProfile | null
+  saveProfile(data: Partial<ProjectProfile>): string
+  deleteProfile(id: string): void
+  activateProfile(id: string): SuccessResult
+  deactivateProfile(): void
+  getActiveProfileId(): string | null
 }

@@ -87,10 +87,28 @@ export function createBrowserApi() {
     getCurrentProviderId: (appType: string) => fetchApiSync(`/provider/current?appType=${appType}`)?.id,
     reapplyCurrent: () => ({}),
     setLastActiveApp: (appType: string) => {
-      localStorage.setItem('cctoggle_last_active_app', appType);
-      return true;
+      // 写入当前激活 profile
+      try {
+        const activeId = window.utoolsCctoggle?.getActiveProfileId?.()
+        if (activeId) {
+          const profile = window.utoolsCctoggle?.getProfile?.(activeId)
+          if (profile) window.utoolsCctoggle?.saveProfile?.({ id: activeId, lastActiveApp: appType })
+        }
+      } catch (e) {}
+      return true
     },
-    getLastActiveApp: () => localStorage.getItem('cctoggle_last_active_app') || '',
+    getLastActiveApp: () => {
+      try {
+        const activeId = window.utoolsCctoggle?.getActiveProfileId?.()
+        if (activeId) {
+          const profile = window.utoolsCctoggle?.getProfile?.(activeId)
+          if (profile?.lastActiveApp) return profile.lastActiveApp
+        }
+        // fallback 到 default profile
+        const defaultProfile = window.utoolsCctoggle?.getProfile?.('default')
+        return defaultProfile?.lastActiveApp || ''
+      } catch (e) { return '' }
+    },
 
     // 统计
     clearStats: (appType?: string) => postApiSync('/stats/clear', { appType }),
@@ -190,5 +208,17 @@ export function createBrowserApi() {
     restoreAllOriginalPrompts: () => ({}),
     applyPromptToAgent: () => ({ success: true }),
     togglePromptAgent: () => ({ success: true }),
+
+    // Profile 管理
+    listProfiles: () => {
+      const result = fetchApiSync('/profiles');
+      return Array.isArray(result) ? result : [];
+    },
+    getProfile: (id: string) => fetchApiSync(`/profile?id=${id}`),
+    saveProfile: (data: any) => postApiSync('/profile', data),
+    deleteProfile: (id: string) => postApiSync('/profile-delete', { id }),
+    activateProfile: (id: string) => postApiSync('/profile-activate', { id }),
+    deactivateProfile: () => postApiSync('/profile-deactivate', {}),
+    getActiveProfileId: () => fetchApiSync('/profile/active')?.id || null,
   };
 }

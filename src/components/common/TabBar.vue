@@ -1,16 +1,184 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 // @ts-nocheck TODO: 逐步添加类型注解后移除
-import { computed } from "vue";
+import { computed, onMounted, ref, h } from "vue";
 import { useRouter } from "vue-router";
-import { NIcon, NTabs, NTabPane, NSwitch, useMessage } from "naive-ui";
-import { BuildOutline, SettingsOutline, CubeOutline, StatsChartOutline, ChatbubblesOutline, DocumentTextOutline } from "@vicons/ionicons5";
+import { NIcon, NTabs, NTabPane, NSwitch, NDropdown, NModal, NInput, useMessage, useDialog } from "naive-ui";
+import { BuildOutline, SettingsOutline, CubeOutline, StatsChartOutline, ChatbubblesOutline, DocumentTextOutline, FolderOutline, GlobeOutline, ChevronDownOutline, AddOutline, ListOutline, BriefcaseOutline, CodeOutline, RocketOutline, StarOutline, FlagOutline, BookmarkOutline, HomeOutline, TerminalOutline, CloudOutline, FlashOutline, TrophyOutline } from "@vicons/ionicons5";
 import { useProviders } from "../../composables/useProviders";
 import { useRoutes } from "../../composables/useRoutes";
+import { useProfiles } from "../../composables/useProfiles";
+import { APP_LABELS } from "../../composables/shared";
 
 const message = useMessage();
-const { APP_TYPES, APP_LABELS, APP_ICONS, activeTab, setActiveTab } = useProviders();
+const dialog = useDialog();
+const { APP_TYPES, APP_ICONS, activeTab, setActiveTab } = useProviders();
 const { runtime, toggleQuick } = useRoutes();
+const { profiles, activeProfileId, loadProfiles, activateProfile, deactivateProfile, createProfile, renameProfile, deleteProfile } = useProfiles();
 const router = useRouter();
+
+onMounted(() => {
+  loadProfiles();
+});
+
+// ── 图标映射 ──
+
+const ICON_MAP = { FolderOutline, BriefcaseOutline, HomeOutline, CodeOutline, TerminalOutline, RocketOutline, StarOutline, FlagOutline, BookmarkOutline, CloudOutline, FlashOutline, TrophyOutline, GlobeOutline, BuildOutline, CubeOutline, StatsChartOutline };
+
+function getIconComponent(name) { return ICON_MAP[name] || FolderOutline; }
+
+// ── 当前项目标签 ──
+
+const activeProfile = computed(() => profiles.value.find(pr => pr.id === activeProfileId.value));
+const activeProfileLabel = computed(() => activeProfile.value?.name || "全局默认");
+const activeProfileIconName = computed(() => activeProfile.value?.icon || "GlobeOutline");
+
+// ── 下拉菜单 ──
+
+const profileDropdownOptions = computed(() => {
+  const opts = [
+    { label: "全局默认", key: "__default__", icon: () => h(NIcon, { size: 14 }, { default: () => h(GlobeOutline) }) },
+  ];
+  if (profiles.value.length > 0) {
+    opts.push({ type: "divider", key: "d1" });
+    profiles.value.forEach(p => {
+      const Comp = getIconComponent(p.icon);
+      opts.push({ label: p.name, key: p.id, icon: () => h(NIcon, { size: 14 }, { default: () => h(Comp) }) });
+    });
+  }
+  opts.push({ type: "divider", key: "d2" });
+  opts.push({ label: "新建项目", key: "__create__", icon: () => h(NIcon, { size: 14 }, { default: () => h(AddOutline) }) });
+  opts.push({ label: "管理项目", key: "__manage__", icon: () => h(NIcon, { size: 14 }, { default: () => h(ListOutline) }) });
+  return opts;
+});
+
+function onProfileSelect(key) {
+  if (key === "__create__") return openCreate();
+  if (key === "__manage__") return showManage.value = true;
+  if (key === activeProfileId.value || (key === "__default__" && !activeProfileId.value)) return;
+
+  if (key === "__default__") {
+    deactivateProfile();
+    message.info("已切换到全局默认");
+  } else if (activateProfile(key)) {
+    message.success("已切换项目");
+  } else {
+    message.error("切换失败");
+  }
+}
+
+// ── 新建项目弹窗 ──
+
+const showCreate = ref(false);
+const newName = ref("");
+const newIcon = ref("FolderOutline");
+
+const PROJECT_ICONS = [
+  { name: "FolderOutline", icon: FolderOutline },
+  { name: "BriefcaseOutline", icon: BriefcaseOutline },
+  { name: "HomeOutline", icon: HomeOutline },
+  { name: "CodeOutline", icon: CodeOutline },
+  { name: "TerminalOutline", icon: TerminalOutline },
+  { name: "RocketOutline", icon: RocketOutline },
+  { name: "StarOutline", icon: StarOutline },
+  { name: "FlagOutline", icon: FlagOutline },
+  { name: "BookmarkOutline", icon: BookmarkOutline },
+  { name: "CloudOutline", icon: CloudOutline },
+  { name: "FlashOutline", icon: FlashOutline },
+  { name: "TrophyOutline", icon: TrophyOutline },
+  { name: "GlobeOutline", icon: GlobeOutline },
+  { name: "BuildOutline", icon: BuildOutline },
+  { name: "CubeOutline", icon: CubeOutline },
+  { name: "StatsChartOutline", icon: StatsChartOutline },
+];
+
+function openCreate() {
+  newName.value = "";
+  newIcon.value = "FolderOutline";
+  showCreate.value = true;
+}
+
+function onCreate() {
+  const name = newName.value.trim();
+  if (!name) {
+    message.warning("请输入项目名称");
+    return;
+  }
+  const id = createProfile(name, newIcon.value);
+  if (id) {
+    message.success("项目已创建");
+    showCreate.value = false;
+  } else {
+    message.error("创建失败");
+  }
+}
+
+// ── 管理项目弹窗 ──
+
+const showManage = ref(false);
+const editingId = ref("");
+const editingName = ref("");
+
+function startRename(p) {
+  editingId.value = p.id;
+  editingName.value = p.name;
+}
+
+function confirmRename() {
+  if (!editingName.value.trim()) {
+    message.warning("请输入项目名称");
+    return;
+  }
+  if (renameProfile(editingId.value, editingName.value.trim())) {
+    message.success("已改名");
+  } else {
+    message.error("改名失败");
+  }
+  editingId.value = "";
+}
+
+function cancelRename() {
+  editingId.value = "";
+}
+
+function onDelete(p) {
+  dialog.warning({
+    title: "删除项目",
+    content: `确定删除项目「${p.name}」？`,
+    positiveText: "删除",
+    negativeText: "取消",
+    onPositiveClick: () => {
+      if (deleteProfile(p.id)) {
+        message.success("已删除");
+      } else {
+        message.error("删除失败");
+      }
+    },
+  });
+}
+
+function onManageToggleActive(id) {
+  if (!id || activeProfileId.value === id) {
+    deactivateProfile();
+    message.info("已切换到全局默认");
+  } else {
+    if (activateProfile(id)) {
+      message.success("已切换项目");
+    } else {
+      message.error("切换失败");
+    }
+  }
+}
+
+function providerSummary(p) {
+  const entries = Object.entries(p.providers || {});
+  if (entries.length === 0) return "无供应商配置";
+  return entries.map(([appType, providers]) => {
+    const names = Object.values(providers).map(prov => prov.name || "未命名");
+    return `${APP_LABELS[appType] || appType}: ${names.join(", ")}`;
+  }).join(" | ");
+}
+
+// ── 代理 ──
 
 const proxyOn = computed(() => !!runtime[activeTab()]?.running);
 
@@ -66,11 +234,24 @@ function onToggleProxy() {
             {{ APP_LABELS[t] }}
           </span>
         </template>
-        <!-- 内容由 ProviderListPage 渲染，这里不渲染任何内容 -->
       </n-tab-pane>
     </n-tabs>
 
     <span class="tab-divider"></span>
+
+    <!-- 项目选择器 -->
+    <n-dropdown
+      :options="profileDropdownOptions"
+      trigger="click"
+      placement="bottom-start"
+      @select="onProfileSelect"
+    >
+      <button class="profile-btn" :class="{ 'profile-btn--active': activeProfileId }">
+        <n-icon :size="13" class="profile-btn-icon"><component :is="getIconComponent(activeProfileIconName)" /></n-icon>
+        <span class="profile-btn-label">{{ activeProfileLabel }}</span>
+        <n-icon :size="10" class="profile-btn-arrow"><chevron-down-outline /></n-icon>
+      </button>
+    </n-dropdown>
 
     <label
       class="proxy-switch"
@@ -85,7 +266,6 @@ function onToggleProxy() {
     <button class="nav-btn" title="用量统计" @click="router.push('/stats')">
       <n-icon :size="15"><stats-chart-outline /></n-icon>
     </button>
-
     <button class="nav-btn" title="提示词管理" @click="router.push('/prompts')">
       <n-icon :size="15"><document-text-outline /></n-icon>
     </button>
@@ -101,6 +281,73 @@ function onToggleProxy() {
     <button class="nav-btn" title="设置" @click="router.push('/settings')">
       <n-icon :size="15"><settings-outline /></n-icon>
     </button>
+
+    <!-- 新建项目弹窗 -->
+    <n-modal v-model:show="showCreate" preset="card" title="新建项目" :style="{ width: '440px' }" :bordered="false" :segmented="{ content: true }" :header-style="{ padding: '10px 16px 6px' }">
+      <n-input v-model:value="newName" placeholder="输入项目名称" autofocus @keydown.enter.prevent="onCreate" />
+      <div style="display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap;">
+        <button v-for="item in PROJECT_ICONS" :key="item.name" class="icon-option" :class="{ 'icon-option--active': newIcon === item.name }" @click="newIcon = item.name">
+          <n-icon :size="16"><component :is="item.icon" /></n-icon>
+        </button>
+      </div>
+      <div style="font-size: 11px; color: var(--text-3); margin-top: 8px;">将自动保存当前各 AI 工具的供应商选择</div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px;">
+        <n-button size="small" @click="showCreate = false">取消</n-button>
+        <n-button size="small" type="primary" :disabled="!newName.trim()" @click="onCreate">创建</n-button>
+      </div>
+    </n-modal>
+
+    <!-- 管理项目弹窗 -->
+    <n-modal v-model:show="showManage" preset="card" title="项目管理" :style="{ width: '560px' }" :bordered="false" :segmented="{ content: true }" :header-style="{ padding: '10px 16px 6px' }">
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <!-- 全局默认 -->
+        <div class="pm-card" :class="{ 'pm-card--active': !activeProfileId }">
+          <n-icon :size="18" class="pm-icon"><globe-outline /></n-icon>
+          <div class="pm-info">
+            <div class="pm-name">全局默认</div>
+            <div class="pm-desc">无项目激活时使用的基础配置</div>
+          </div>
+          <n-tag v-if="!activeProfileId" type="success" size="small" :bordered="false" round>当前</n-tag>
+          <n-button v-else size="tiny" quaternary @click="onManageToggleActive(null)">切换到此</n-button>
+        </div>
+
+        <!-- 用户项目 -->
+        <div v-for="p in profiles" :key="p.id" class="pm-card" :class="{ 'pm-card--active': activeProfileId === p.id }">
+          <n-icon :size="18" class="pm-icon"><component :is="getIconComponent(p.icon)" /></n-icon>
+          <div class="pm-info">
+            <template v-if="editingId === p.id">
+              <div style="display: flex; gap: 4px; align-items: center;">
+                <n-input
+                  v-model:value="editingName"
+                  size="tiny"
+                  autofocus
+                  @keydown.enter.prevent="confirmRename"
+                  @keydown.esc.prevent="cancelRename"
+                />
+                <n-button size="tiny" type="primary" @click="confirmRename">保存</n-button>
+              </div>
+            </template>
+            <template v-else>
+              <div class="pm-name">{{ p.name }}</div>
+              <div class="pm-desc">{{ providerSummary(p) }}</div>
+            </template>
+          </div>
+          <n-tag v-if="activeProfileId === p.id && editingId !== p.id" type="success" size="small" :bordered="false" round>当前</n-tag>
+          <div v-if="editingId !== p.id" class="pm-actions">
+            <n-button v-if="activeProfileId !== p.id" size="tiny" type="primary" quaternary @click="onManageToggleActive(p.id)">激活</n-button>
+            <n-button v-else size="tiny" quaternary @click="onManageToggleActive(p.id)">取消</n-button>
+            <n-button size="tiny" quaternary @click="startRename(p)">改名</n-button>
+            <n-button size="tiny" quaternary type="error" @click="onDelete(p)">删除</n-button>
+          </div>
+        </div>
+
+        <n-empty v-if="profiles.length === 0" description="暂无项目" style="padding: 16px 0;" />
+
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px;">
+          <n-button size="small" type="primary" @click="showManage = false; openCreate()">新建项目</n-button>
+        </div>
+      </div>
+    </n-modal>
   </nav>
 </template>
 
@@ -111,79 +358,101 @@ function onToggleProxy() {
   gap: 4px;
   padding: 3px;
 }
-.app-tabs {
-  flex-shrink: 1;
-  min-width: 0;
-}
-.app-tabs :deep(.n-tabs-tab-pad) {
-  width: 20px !important;
-}
-.app-tabs :deep(.n-tabs-content) {
-  height: 0 !important;
-  overflow: hidden !important;
-  min-height: 0 !important;
-}
-.app-tabs :deep(.n-tab-pane) {
-  height: 0 !important;
-  min-height: 0 !important;
-  padding-top: 0 !important;
-}
-.app-tabs :deep(.n-tabs-tab) {
-  padding: 4px 4px;
-  font-size: 12px;
-}
-.app-tabs :deep(.n-tabs-nav-scroll-content) {
-  height: 36px;
-  border: none !important;
-}
-.app-tabs :deep(.n-tabs-bar) {
-  background-color: var(--primary) !important;
-}
-.tab-label {
+.profile-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  width: 120px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-card, var(--n-color));
+  color: var(--text-secondary);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
+  transition: all .15s;
+  flex-shrink: 0;
 }
-.tab-icon-img {
-  width: 14px;
-  height: 14px;
-  vertical-align: middle;
-  object-fit: contain;
+.profile-btn:hover {
+  border-color: var(--primary);
+  color: var(--text);
 }
-.tab-divider {
+.profile-btn--active {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+}
+.profile-btn-icon { flex-shrink: 0; }
+.profile-btn-label {
   flex: 1;
-  min-width: 4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.profile-btn-arrow { flex-shrink: 0; opacity: 0.5; }
+
+.app-tabs { flex-shrink: 1; min-width: 0; }
+.app-tabs :deep(.n-tabs-tab-pad) { width: 20px !important; }
+.app-tabs :deep(.n-tabs-content) { height: 0 !important; overflow: hidden !important; min-height: 0 !important; }
+.app-tabs :deep(.n-tab-pane) { height: 0 !important; min-height: 0 !important; padding-top: 0 !important; }
+.app-tabs :deep(.n-tabs-tab) { padding: 4px 4px; font-size: 12px; }
+.app-tabs :deep(.n-tabs-nav-scroll-content) { height: 36px; border: none !important; }
+.app-tabs :deep(.n-tabs-bar) { background-color: var(--primary) !important; }
+.tab-label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.tab-icon-img { width: 14px; height: 14px; vertical-align: middle; object-fit: contain; }
+.tab-divider { flex: 1; min-width: 4px; }
 .nav-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: none;
+  width: 28px; height: 28px;
+  border: none; background: none;
   color: var(--text-secondary);
-  cursor: pointer;
-  border-radius: 6px;
+  cursor: pointer; border-radius: 6px;
   transition: all .15s;
 }
-.nav-btn:hover {
-  background: var(--bg-card);
-  color: var(--text);
-}
+.nav-btn:hover { background: var(--bg-card); color: var(--text); }
+.proxy-switch { display: flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; }
+.proxy-label { font-size: 12px; font-weight: 500; color: var(--text-secondary); white-space: nowrap; }
 
-.proxy-switch {
+/* 管理弹窗卡片 */
+.pm-card {
   display: flex;
   align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  user-select: none;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: border-color .15s;
 }
-.proxy-label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
+.pm-card--active {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 5%, transparent);
+}
+.pm-icon { flex-shrink: 0; }
+.pm-info { flex: 1; min-width: 0; }
+.pm-name { font-size: 13px; font-weight: 600; }
+.pm-desc {
+  font-size: 11px;
+  color: var(--text-3);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.pm-actions { display: flex; gap: 4px; flex-shrink: 0; }
+
+.icon-option {
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  transition: all .15s;
+}
+.icon-option:hover { border-color: var(--primary); }
+.icon-option--active { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, transparent); }
 </style>

@@ -60,6 +60,7 @@ loadDb();
 const utils = require(path.join(PRELOAD_DIR, 'utils'));
 const configRw = require(path.join(PRELOAD_DIR, 'config-rw'));
 const { ProviderStore } = require(path.join(PRELOAD_DIR, 'provider-db'));
+const { ProfileStore } = require(path.join(PRELOAD_DIR, 'profile-db'));
 const { SessionManager } = require(path.join(PRELOAD_DIR, 'sessions'));
 const { StatsCollector } = require(path.join(PRELOAD_DIR, 'stats'));
 
@@ -158,6 +159,43 @@ const server = http.createServer(async (req, res) => {
       const appType = url.searchParams.get('appType');
       if (!appType) return sendError(res, 'appType required');
       return sendJson(res, { id: ProviderStore.getCurrentProviderId(appType) });
+    }
+
+    // ─── Profile 管理 ───
+    if (pathname === '/api/profiles' && req.method === 'GET') {
+      return sendJson(res, ProfileStore.listProfiles());
+    }
+
+    if (pathname === '/api/profile' && req.method === 'GET') {
+      const id = url.searchParams.get('id');
+      if (!id) return sendError(res, 'id required');
+      return sendJson(res, ProfileStore.getProfile(id));
+    }
+
+    if (pathname === '/api/profile' && req.method === 'POST') {
+      const body = await parseBody(req);
+      const id = ProfileStore.saveProfile(body);
+      return sendJson(res, { success: true, id });
+    }
+
+    if (pathname === '/api/profile-delete' && req.method === 'POST') {
+      const body = await parseBody(req);
+      ProfileStore.deleteProfile(body.id);
+      return sendJson(res, { success: true });
+    }
+
+    if (pathname === '/api/profile-activate' && req.method === 'POST') {
+      const body = await parseBody(req);
+      return sendJson(res, ProfileStore.activateProfile(body.id));
+    }
+
+    if (pathname === '/api/profile-deactivate' && req.method === 'POST') {
+      ProfileStore.deactivateProfile();
+      return sendJson(res, { success: true });
+    }
+
+    if (pathname === '/api/profile/active' && req.method === 'GET') {
+      return sendJson(res, { id: ProfileStore.getActiveProfileId() });
     }
 
     // ─── 会话管理 ───

@@ -42,7 +42,7 @@ const form = reactive({
   supports1M: false,
   authMethod: "api_key",
 // Codex 路由转换
-  maxOutputTokens: "", customUserAgent: "", headersOverride: "", bodyOverride: "",
+  maxOutputTokens: null, customUserAgent: "", headersOverride: "", bodyOverride: "",
   impersonateClaudeCode: false,
 // OpenClaw 专属
   apiProtocol: "openai-completions",
@@ -135,7 +135,7 @@ function commonFormFields(d) {
     apiKeyUrl: d?.apiKeyUrl || "",
     category: d?.category || "custom",
     icon: d?.icon || "", iconColor: d?.iconColor || "",
-    maxOutputTokens: d?.maxOutputTokens || "",
+    maxOutputTokens: d?.maxOutputTokens ?? null,
     authField: deriveAuthField(env, d?.authField),
     apiProtocol: d?.apiProtocol || d?.settingsConfig?.api || "openai-completions",
     verbosity: d?.verbosity || "low",
@@ -484,16 +484,16 @@ function handleClose() {
 
 // Catalog 表格列定义（Codex）
 const catalogColumns = [
-  { title: '菜单显示名', key: 'displayName', render: (row) => h(NInput, { value: row.displayName, 'onUpdate:value': v => row.displayName = v, placeholder: 'Ark Code Latest', size: 'small' }) },
-  { title: '实际模型 ID', key: 'model', render: (row) => h(NInput, { value: row.model, 'onUpdate:value': v => row.model = v, placeholder: 'ark-code-latest', size: 'small' }) },
+  { title: '菜单显示名', key: 'displayName', width: 250, render: (row) => h(NInput, { value: row.displayName, 'onUpdate:value': v => row.displayName = v, placeholder: 'Ark Code Latest', size: 'small' }) },
+  { title: '实际模型 ID', key: 'model', width: 250, render: (row) => h(NInput, { value: row.model, 'onUpdate:value': v => row.model = v, placeholder: 'ark-code-latest', size: 'small' }) },
   { title: '上下文窗口', key: 'contextWindow', width: 100, render: (row) => h(NInput, { value: String(row.contextWindow ?? ''), 'onUpdate:value': v => row.contextWindow = v, placeholder: '256000', size: 'small' }) },
   { title: '', key: 'actions', width: 40, render: (row, rowIndex) => h(NButton, { quaternary: true, type: 'error', size: 'tiny', onClick: () => removeCatalogRow(rowIndex) }, { default: () => '×' }) },
 ];
 
 // OpenClaw 表格列定义
 const openclawColumns = [
-  { title: '模型 ID', key: 'id', render: (row) => h(NInput, { value: row.id, 'onUpdate:value': v => row.id = v, placeholder: 'kimi-k2.7-code', size: 'small' }) },
-  { title: '显示名', key: 'name', render: (row) => h(NInput, { value: row.name, 'onUpdate:value': v => row.name = v, placeholder: 'Kimi K2.7 Code', size: 'small' }) },
+  { title: '模型 ID', key: 'id', width: 250, render: (row) => h(NInput, { value: row.id, 'onUpdate:value': v => row.id = v, placeholder: 'kimi-k2.7-code', size: 'small' }) },
+  { title: '显示名', key: 'name', width: 250, render: (row) => h(NInput, { value: row.name, 'onUpdate:value': v => row.name = v, placeholder: 'Kimi K2.7 Code', size: 'small' }) },
   { title: '上下文窗口', key: 'contextWindow', width: 100, render: (row) => h(NInput, { value: String(row.contextWindow ?? ''), 'onUpdate:value': v => row.contextWindow = v, placeholder: '262144', size: 'small' }) },
   { title: '操作', key: 'actions', width: 80, render: (row, rowIndex) => h(NFlex, { size: 4 }, { default: () => [
     h(NButton, { quaternary: true, size: 'tiny', disabled: rowIndex === 0, title: rowIndex === 0 ? '当前主模型' : '设为主模型', onClick: () => promoteOpenclawRow(rowIndex) }, { default: () => '↑' }),
@@ -504,7 +504,7 @@ const openclawColumns = [
 
 <template>
   <n-drawer :show="visible" width="50vw" placement="right" @update:show="v => { if (!v) handleClose() }">
-    <n-drawer-content closable>
+    <n-drawer-content v-if="visible" closable>
       <template #header>
         {{ initialData ? '编辑供应商' : '添加供应商' }}
       </template>

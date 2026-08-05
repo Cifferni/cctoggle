@@ -1,23 +1,47 @@
-// @ts-nocheck TODO: 逐步添加类型注解后移除
 // uTools ccToggle - provider-db.ts
-// 供应商 CRUD、切换、导入导出
+// 供应商 CRUD、切换、导入导出（profile-aware）
 
 import * as utils from './utils';
 import * as configRw from './config-rw';
 
-const DB_PREFIX = "cctoggle_provider_";
-
 export class ProviderStore {
+  /** 延迟加载 ProfileStore 避免循环依赖 */
+  private static _profileStore: any = null;
+  private static get ProfileStore() {
+    if (!ProviderStore._profileStore) {
+      ProviderStore._profileStore = require('./profile-db').ProfileStore;
+    }
+    return ProviderStore._profileStore;
+  }
+
   static getProviderKey(appType: string, providerId: string): string {
-    return DB_PREFIX + appType + "_" + providerId;
+    return appType + "_" + providerId;
   }
 
   static listProviders(appType: string): any[] {
     try {
-      const docs = utools.db.allDocs(DB_PREFIX + appType + "_") || [];
-      return docs.map(function (doc) {
-        const provider = { id: doc._id.replace(DB_PREFIX + appType + "_", ""), name: doc.name, baseUrl: doc.baseUrl, model: doc.model, models: doc.models || [], websiteUrl: doc.websiteUrl, remark: doc.remark || "", icon: doc.icon, iconColor: doc.iconColor, category: doc.category, configType: doc.configType, isCurrent: doc.isCurrent, sortOrder: doc.sortOrder, createdAt: doc.createdAt, apiFormat: doc.apiFormat || "", wireApi: doc.wireApi || "" };
-        return provider;
+      const profile = ProviderStore.ProfileStore.getActiveProfile();
+      const appProviders = (profile.providers || {})[appType] || {};
+      return Object.keys(appProviders).map(function (id) {
+        const p = appProviders[id];
+        return {
+          id: id,
+          name: p.name || "",
+          baseUrl: p.baseUrl || "",
+          model: p.model || "",
+          models: p.models || [],
+          websiteUrl: p.websiteUrl || "",
+          remark: p.remark || "",
+          icon: p.icon || "",
+          iconColor: p.iconColor || "",
+          category: p.category || "",
+          configType: p.configType || "",
+          isCurrent: p.isCurrent || false,
+          sortOrder: p.sortOrder || 0,
+          createdAt: p.createdAt || "",
+          apiFormat: p.apiFormat || "",
+          wireApi: p.wireApi || "",
+        };
       });
     } catch (e) {
       return [];
@@ -26,60 +50,65 @@ export class ProviderStore {
 
   static getProvider(appType: string, providerId: string): any {
     try {
-      const doc = utools.db.get(ProviderStore.getProviderKey(appType, providerId));
-      if (!doc) return null;
+      const profile = ProviderStore.ProfileStore.getActiveProfile();
+      const p = ((profile.providers || {})[appType] || {})[providerId];
+      if (!p) return null;
       const apiKey = utools.dbCryptoStorage.getItem("apikey_" + appType + "_" + providerId) || "";
       return {
         id: providerId,
         appType: appType,
-        name: doc.name,
-        baseUrl: doc.baseUrl,
-        apiKey: apiKey, authType: doc.authType, apiKeyHeader: doc.apiKeyHeader, apiKeyPrefix: doc.apiKeyPrefix, reasoningEffort: doc.reasoningEffort, maxTokens: doc.maxTokens, temperature: doc.temperature, extraHeaders: doc.extraHeaders,
-        model: doc.model,
-        models: doc.models || [],
-        websiteUrl: doc.websiteUrl,
-        remark: doc.remark || "",
-        icon: doc.icon,
-        iconColor: doc.iconColor,
-        category: doc.category,
-        configType: doc.configType || "openai",
-        authData: doc.authData || {},
-        extraConfig: doc.extraConfig || "",
-        settingsConfig: doc.settingsConfig || {},
-        authField: doc.authField || "ANTHROPIC_AUTH_TOKEN",
-        wireApi: doc.wireApi || "",
-        apiFormat: doc.apiFormat || "",
-        apiKeyUrl: doc.apiKeyUrl || "",
-        modelCatalog: doc.modelCatalog || [],
-        endpointCandidates: doc.endpointCandidates || [],
-        customUserAgent: doc.customUserAgent || "",
-        headersOverride: doc.headersOverride || "",
-        bodyOverride: doc.bodyOverride || "",
-        authMethod: doc.authMethod || "api_key",
-        impersonateClaudeCode: doc.impersonateClaudeCode || false,
-        apiProtocol: doc.apiProtocol || "",
-        suggestedDefaults: doc.suggestedDefaults || null,
-        isCurrent: doc.isCurrent,
-        sortOrder: doc.sortOrder,
-        createdAt: doc.createdAt
+        name: p.name || "",
+        baseUrl: p.baseUrl || "",
+        apiKey: apiKey,
+        authType: p.authType || "api_key",
+        apiKeyHeader: p.apiKeyHeader || "Authorization",
+        apiKeyPrefix: p.apiKeyPrefix || "Bearer ",
+        reasoningEffort: p.reasoningEffort || "high",
+        maxTokens: p.maxTokens || "",
+        temperature: p.temperature || "",
+        extraHeaders: p.extraHeaders || "",
+        model: p.model || "",
+        models: p.models || [],
+        websiteUrl: p.websiteUrl || "",
+        remark: p.remark || "",
+        icon: p.icon || "",
+        iconColor: p.iconColor || "",
+        category: p.category || "custom",
+        configType: p.configType || "openai",
+        authData: p.authData || {},
+        extraConfig: p.extraConfig || "",
+        settingsConfig: p.settingsConfig || {},
+        authField: p.authField || "ANTHROPIC_AUTH_TOKEN",
+        wireApi: p.wireApi || "",
+        apiFormat: p.apiFormat || "",
+        apiKeyUrl: p.apiKeyUrl || "",
+        modelCatalog: p.modelCatalog || [],
+        endpointCandidates: p.endpointCandidates || [],
+        customUserAgent: p.customUserAgent || "",
+        headersOverride: p.headersOverride || "",
+        bodyOverride: p.bodyOverride || "",
+        authMethod: p.authMethod || "api_key",
+        impersonateClaudeCode: p.impersonateClaudeCode || false,
+        apiProtocol: p.apiProtocol || "",
+        suggestedDefaults: p.suggestedDefaults || null,
+        isCurrent: p.isCurrent || false,
+        sortOrder: p.sortOrder || 0,
+        createdAt: p.createdAt || "",
       };
     } catch (e) {
       return null;
     }
   }
 
+  /** 将单个供应商写入 active profile */
   static saveProvider(appType: string, providerData: any): string {
     const id = providerData.id || utils.generateId();
-    const key = ProviderStore.getProviderKey(appType, id);
-
     const apiKey = providerData.apiKey || "";
-    delete providerData.apiKey;
-    const existing = utools.db.get(key);
 
-    const doc = {
-      _id: key,
-      _rev: existing ? existing._rev : undefined,
-      appType: appType,
+    const profile = ProviderStore.ProfileStore.getActiveProfile();
+    const existing = ((profile.providers || {})[appType] || {})[id];
+
+    const provider: Record<string, any> = {
       name: providerData.name || "Unnamed",
       baseUrl: providerData.baseUrl || "",
       model: providerData.model || "",
@@ -88,7 +117,14 @@ export class ProviderStore {
       remark: providerData.remark || "",
       icon: providerData.icon || "",
       iconColor: providerData.iconColor || "",
-      category: providerData.category || "custom", authType: providerData.authType || "api_key", apiKeyHeader: providerData.apiKeyHeader || "Authorization", apiKeyPrefix: providerData.apiKeyPrefix || "Bearer ", reasoningEffort: providerData.reasoningEffort || "high", maxTokens: providerData.maxTokens || "", temperature: providerData.temperature || "", extraHeaders: providerData.extraHeaders || "",
+      category: providerData.category || "custom",
+      authType: providerData.authType || "api_key",
+      apiKeyHeader: providerData.apiKeyHeader || "Authorization",
+      apiKeyPrefix: providerData.apiKeyPrefix || "Bearer ",
+      reasoningEffort: providerData.reasoningEffort || "high",
+      maxTokens: providerData.maxTokens || "",
+      temperature: providerData.temperature || "",
+      extraHeaders: providerData.extraHeaders || "",
       configType: providerData.configType || "openai",
       authData: providerData.authData || {},
       extraConfig: providerData.extraConfig || "",
@@ -108,11 +144,23 @@ export class ProviderStore {
       suggestedDefaults: providerData.suggestedDefaults || null,
       isCurrent: providerData.isCurrent !== undefined ? providerData.isCurrent : (existing ? existing.isCurrent : false),
       sortOrder: providerData.sortOrder !== undefined ? providerData.sortOrder : (existing ? existing.sortOrder : 0),
-      createdAt: providerData.createdAt || (existing ? existing.createdAt : new Date().toISOString())
+      createdAt: providerData.createdAt || (existing ? existing.createdAt : new Date().toISOString()),
     };
 
-    utools.db.put(doc);
+    // 更新 profile 中的供应商
+    const providers = Object.assign({}, profile.providers || {});
+    if (!providers[appType]) providers[appType] = {};
+    providers[appType] = Object.assign({}, providers[appType]);
+    providers[appType][id] = provider;
 
+    ProviderStore.ProfileStore.saveProfile({
+      id: profile.id,
+      name: profile.name,
+      createdAt: profile.createdAt,
+      providers: providers,
+    });
+
+    // API Key 独立加密存储
     if (apiKey) {
       utools.dbCryptoStorage.setItem("apikey_" + appType + "_" + id, apiKey);
     }
@@ -121,14 +169,30 @@ export class ProviderStore {
   }
 
   static deleteProvider(appType: string, providerId: string): boolean {
-    utools.db.remove(ProviderStore.getProviderKey(appType, providerId));
+    // 从 active profile 中删除
+    const profile = ProviderStore.ProfileStore.getActiveProfile();
+    const providers = Object.assign({}, profile.providers || {});
+    if (providers[appType]) {
+      providers[appType] = Object.assign({}, providers[appType]);
+      delete providers[appType][providerId];
+      ProviderStore.ProfileStore.saveProfile({
+        id: profile.id,
+        name: profile.name,
+        createdAt: profile.createdAt,
+        providers: providers,
+      });
+    }
+
+    // 清理加密存储的 API Key
     utools.dbCryptoStorage.removeItem("apikey_" + appType + "_" + providerId);
+
+    // 清理关联的路由组
     try {
       var proxy = require("./proxy");
       var groups = proxy.ProxyManager.listRouteGroups(appType);
-      groups.forEach(function (g) {
+      groups.forEach(function (g: any) {
         var before = (g.members || []).length;
-        g.members = (g.members || []).filter(function (m) { return m.providerId !== providerId; });
+        g.members = (g.members || []).filter(function (m: any) { return m.providerId !== providerId; });
         if (g.members.length !== before) {
           g.appType = appType;
           if (g.members.length === 0) {
@@ -168,20 +232,29 @@ export class ProviderStore {
       }
       ProviderStore.markCurrent(appType, providerId);
       return { success: true, providerName: provider.name };
-    } catch (e) {
+    } catch (e: any) {
       return { success: false, error: e.message };
     }
   }
 
   static markCurrent(appType: string, providerId: string): void {
-    const all = ProviderStore.listProviders(appType);
-    all.forEach(function (p) {
-      const key = ProviderStore.getProviderKey(appType, p.id);
-      const doc = utools.db.get(key);
-      if (doc) {
-        doc.isCurrent = (p.id === providerId);
-        utools.db.put(doc);
-      }
+    const profile = ProviderStore.ProfileStore.getActiveProfile();
+    const providers = Object.assign({}, profile.providers || {});
+    if (!providers[appType]) return;
+
+    const appProviders: Record<string, any> = {};
+    Object.keys(providers[appType]).forEach(function (pid) {
+      appProviders[pid] = Object.assign({}, providers[appType][pid], {
+        isCurrent: pid === providerId,
+      });
+    });
+    providers[appType] = appProviders;
+
+    ProviderStore.ProfileStore.saveProfile({
+      id: profile.id,
+      name: profile.name,
+      createdAt: profile.createdAt,
+      providers: providers,
     });
   }
 
@@ -192,16 +265,16 @@ export class ProviderStore {
   }
 
   static setLastActiveApp(appType: string): boolean {
-    try { utools.dbStorage.setItem("cctoggle_last_active_app", appType); } catch (e) {}
+    try { ProviderStore.ProfileStore.setLastActiveApp(appType); } catch (e) {}
     return true;
   }
 
   static getLastActiveApp(): string {
-    try { return utools.dbStorage.getItem("cctoggle_last_active_app") || ""; } catch (e) { return ""; }
+    try { return ProviderStore.ProfileStore.getLastActiveApp(); } catch (e) { return ""; }
   }
 
   static reapplyCurrent(onlyAppType?: string): any {
-    const result = {};
+    const result: Record<string, any> = {};
     const apps = onlyAppType ? [onlyAppType] : ["codex", "claude", "gemini", "openclaw"];
     apps.forEach(function (appType) {
       try {
@@ -212,16 +285,16 @@ export class ProviderStore {
         if (!id) { result[appType] = { skipped: "no current" }; return; }
         const r = ProviderStore.switchProvider(appType, id);
         result[appType] = r;
-      } catch (e) { result[appType] = { success: false, error: e.message }; }
+      } catch (e: any) { result[appType] = { success: false, error: e.message }; }
     });
     return result;
   }
 
   static exportAllProviders(): any {
-    const result = { codex: [], claude: [], gemini: [], exportTime: new Date().toISOString() };
+    const result: Record<string, any> = { codex: [], claude: [], gemini: [], exportTime: new Date().toISOString() };
     ["codex", "claude", "gemini"].forEach(function (appType) {
       const providers = ProviderStore.listProviders(appType);
-      providers.forEach(function (p) {
+      providers.forEach(function (p: any) {
         const full = ProviderStore.getProvider(appType, p.id);
         result[appType].push(full);
       });
@@ -232,7 +305,7 @@ export class ProviderStore {
   static importProviders(data: any): number {
     let count = 0;
     ["codex", "claude", "gemini"].forEach(function (appType) {
-      (data[appType] || []).forEach(function (p) {
+      (data[appType] || []).forEach(function (p: any) {
         p.appType = appType;
         ProviderStore.saveProvider(appType, p);
         count++;
