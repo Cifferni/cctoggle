@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // @ts-nocheck TODO: 逐步添加类型注解后移除
-import { ref, computed, onMounted, nextTick } from "vue";
+import { ref, computed, onMounted, onUnmounted, nextTick } from "vue";
 import { useProviders } from "../composables/useProviders";
 import TabBar from "../components/common/TabBar.vue";
 import ProviderCard from "../components/provider/ProviderCard.vue";
@@ -17,6 +17,9 @@ const flipStyle = ref({});
 const isFlipping = ref(false);
 
 onMounted(loadProviders);
+
+let flipTimer = null;
+onUnmounted(() => { if (flipTimer) clearTimeout(flipTimer); });
 
 function onAdd() { editingId.value = null; formInitialData.value = null; showForm.value = true; }
 function onEdit(id) { editingId.value = id; formInitialData.value = getFullProvider(id); showForm.value = true; }
@@ -42,7 +45,7 @@ function onSwitch(id, event) {
 
     requestAnimationFrame(() => {
       flipStyle.value = { transform: 'translate(0, 0)', transition: 'transform 0.3s ease-out' };
-      setTimeout(() => { isFlipping.value = false; flipStyle.value = {}; }, 300);
+      flipTimer = setTimeout(() => { isFlipping.value = false; flipStyle.value = {}; }, 300);
     });
   });
 }
