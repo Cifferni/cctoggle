@@ -2,7 +2,6 @@
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
-import { NButton, NCard, NCheckbox, NDrawer, NDrawerContent, NModal, NSpace, NText, useMessage, useDialog } from "naive-ui";
 import { usePrompts } from "../composables/usePrompts";
 import PromptCard from "../components/prompt/PromptCard.vue";
 import PromptEditor from "../components/prompt/PromptEditor.vue";

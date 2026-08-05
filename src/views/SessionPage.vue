@@ -2,7 +2,6 @@
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { onMounted, ref, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
-import { NIcon, NTabs, NTabPane, NInput, NSelect, NSpace, NButton, NEmpty, NText, NSkeleton, NSpin, useMessage, useDialog } from "naive-ui";
 import { ArrowBackOutline, SearchOutline } from "@vicons/ionicons5";
 import { useSession } from "../composables/useSession";
 import AppDashboard from "../components/common/AppDashboard.vue";

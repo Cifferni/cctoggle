@@ -2,7 +2,6 @@
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { ref, computed, onMounted, nextTick } from "vue";
 import { useRouter } from "vue-router";
-import { NIcon, useDialog } from "naive-ui";
 import { ArrowBackOutline } from "@vicons/ionicons5";
 import { useMcp } from "../composables/useMcp";
 import { APP_LABELS, APP_ICONS } from "../composables/shared";

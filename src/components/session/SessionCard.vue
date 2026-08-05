@@ -1,7 +1,6 @@
 <script setup lang="ts">
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { computed } from "vue";
-import { NCard, NText, NSpace, NButton, NPopconfirm, NIcon } from "naive-ui";
 import { APP_ICONS, APP_LABELS } from "../../composables/shared";
 
 const props = defineProps({

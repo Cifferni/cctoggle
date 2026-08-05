@@ -1,7 +1,6 @@
 ﻿<script setup lang="ts">
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { computed, onMounted, ref } from "vue";
-import { useMessage, useDialog } from "naive-ui";
 import { useSkills } from "../../composables/useSkills";
 import { APP_ICONS } from "../../composables/shared";
 

@@ -2,7 +2,6 @@
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { onMounted, computed } from "vue";
 import { useRouter } from "vue-router";
-import { useDialog } from "naive-ui";
 import { useStats } from "../composables/useStats";
 import { themeVars } from "../composables/useTheme";
 import EChart from "../components/common/EChart.vue";

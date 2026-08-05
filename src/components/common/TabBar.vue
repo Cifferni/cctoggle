@@ -2,7 +2,6 @@
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { computed, onMounted, ref, h } from "vue";
 import { useRouter } from "vue-router";
-import { NIcon, NTabs, NTabPane, NSwitch, NDropdown, NModal, NInput, useMessage, useDialog } from "naive-ui";
 import { BuildOutline, SettingsOutline, CubeOutline, StatsChartOutline, ChatbubblesOutline, DocumentTextOutline, FolderOutline, GlobeOutline, ChevronDownOutline, AddOutline, ListOutline, BriefcaseOutline, CodeOutline, RocketOutline, StarOutline, FlagOutline, BookmarkOutline, HomeOutline, TerminalOutline, CloudOutline, FlashOutline, TrophyOutline } from "@vicons/ionicons5";
 import { useProviders } from "../../composables/useProviders";
 import { useRoutes } from "../../composables/useRoutes";

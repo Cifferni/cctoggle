@@ -1,7 +1,6 @@
 <script setup lang="ts">
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { ref, watch } from "vue";
-import { NModal, NCard, NDescriptions, NDescriptionsItem, NDivider, NTag, NText, NSpace, NButton, NSpin } from "naive-ui";
 import { APP_LABELS } from "../../composables/shared";
 import { renderMarkdown } from "../../utils/markdown";
 import { diffLines } from "diff";
