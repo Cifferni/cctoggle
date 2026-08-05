@@ -521,8 +521,7 @@ function startServer() {
     server = http.createServer(function (req, res) {
       reqTotal++;
       activeConn++;
-      console.log("[DEBUG] request received:", req.method, req.url, "total:", reqTotal);
-      log("info", "request received", { method: req.method, url: req.url, total: reqTotal });
+      log("debug", "request received", { method: req.method, url: req.url, total: reqTotal });
       res.on("close", function () { activeConn = Math.max(0, activeConn - 1); });
       if (!isAuthed(req)) {
         reqFail++;
@@ -564,8 +563,7 @@ function startServer() {
     server.listen(port, "127.0.0.1", function () {
       startedAt = Date.now();
       activeConn = 0; reqTotal = 0; reqSuccess = 0; reqFail = 0; lastMemberId = null;
-      log("info", "proxy listening", { port: port });
-      console.log("[DEBUG] proxy listening on port", port, "members:", members.length);
+      log("info", "proxy listening", { port: port, members: members.length });
       stat();
       resolve();
     });
@@ -641,6 +639,7 @@ ipcRenderer.on("stop", function () {
   if (healthTimer) { clearInterval(healthTimer); healthTimer = null; }
   startedAt = 0;
   log("info", "proxy stopped");
+  try { proxyLog.flush(); } catch (e) {}
   stat();
 });
 

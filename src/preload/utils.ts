@@ -490,10 +490,42 @@ function copyDirSync(src, dest) {
   });
 }
 
+// ─────────── 并发工具 ───────────
+
+// 有界并发 map：limit 个 worker 抢占式消费 items
+async function mapLimit(items, limit, fn) {
+  var results = new Array(items.length);
+  var idx = 0;
+  var n = Math.min(Math.max(1, limit | 0), items.length);
+  var workers = [];
+  for (var w = 0; w < n; w++) {
+    workers.push((async function () {
+      for (;;) {
+        var i = idx++;
+        if (i >= items.length) return;
+        try { results[i] = await fn(items[i], i); } catch (e) { results[i] = undefined; }
+      }
+    })());
+  }
+  await Promise.all(workers);
+  return results;
+}
+
 // ─────────── 日志工具 ───────────
 
 // 日志文件缓存
 var _logFileCache = {};
+
+// 日志级别门控：默认 info，debug 需显式开启
+var LOG_LEVELS = { debug: 10, info: 20, warn: 30, error: 40 };
+var _minLogLevel = (function () {
+  var env = '';
+  try { env = String(process.env.CCTOGGLE_LOG_LEVEL || '').toLowerCase(); } catch (e) {}
+  return LOG_LEVELS[env] || LOG_LEVELS.info;
+})();
+
+// 单文件上限 5MB，超出轮转为 .1（只保留一代）
+var MAX_LOG_BYTES = 5 * 1024 * 1024;
 
 /**
  * 创建日志记录器
@@ -535,21 +567,67 @@ function createLogger(module, options) {
     return ' | ' + data;
   }
 
-  function writeLog(level, message, data) {
+  // 异步写入：createWriteStream + 缓冲，避免每条同步磁盘 I/O
+  var _stream = null;
+  var _written = 0;
+  var _buf = [];
+  var _flushTimer = null;
+  var _rotating = false;
+
+  function openStream() {
+    if (_stream) return _stream;
     try {
-      var line = '[' + getTimestamp() + '] [' + level.padEnd(5) + '] [' + module + '] ' + message + formatData(data) + '\n';
-      fs.appendFileSync(logFile, line, 'utf8');
-    } catch (e) {
-      // 日志写入失败不影响主逻辑
-      console.error('[Logger] Failed to write log:', e.message);
+      _written = fs.existsSync(logFile) ? fs.statSync(logFile).size : 0;
+    } catch (e) { _written = 0; }
+    try {
+      _stream = fs.createWriteStream(logFile, { flags: 'a' });
+      _stream.on('error', function () { _stream = null; });
+    } catch (e) { _stream = null; }
+    return _stream;
+  }
+
+  // 超限轮转：关流 → rename 到 .1 → 重开
+  function rotate() {
+    if (_rotating) return;
+    _rotating = true;
+    var old = _stream;
+    _stream = null;
+    _written = 0;
+    function reopen() {
+      try { fs.renameSync(logFile, logFile + '.1'); } catch (e) {}
+      _rotating = false;
+      // 轮转期间积压的日志补写
+      if (_buf.length) flush();
     }
+    if (old) { try { old.end(reopen); } catch (e) { reopen(); } }
+    else reopen();
+  }
+
+  function flush() {
+    _flushTimer = null;
+    // 轮转进行中：留在缓冲里，reopen 后补写
+    if (_rotating || !_buf.length) return;
+    var chunk = _buf.join('');
+    _buf = [];
+    var s = openStream();
+    if (!s) return;
+    try { s.write(chunk); } catch (e) { return; }
+    _written += Buffer.byteLength(chunk, 'utf8');
+    if (_written >= MAX_LOG_BYTES) rotate();
+  }
+
+  function writeLog(level, message, data) {
+    if ((LOG_LEVELS[level.toLowerCase()] || LOG_LEVELS.info) < _minLogLevel) return;
+    _buf.push('[' + getTimestamp() + '] [' + level.padEnd(5) + '] [' + module + '] ' + message + formatData(data) + '\n');
+    // 批量：满 64 条立即刷，否则 200ms 合并写
+    if (_buf.length >= 64) { if (_flushTimer) { clearTimeout(_flushTimer); } flush(); return; }
+    if (!_flushTimer) _flushTimer = setTimeout(flush, 200);
   }
 
   return {
     // 基础日志方法
     info: function(msg, data) {
       writeLog('INFO', msg, data);
-      console.log('[' + module + '] ' + msg + formatData(data));
     },
     warn: function(msg, data) {
       writeLog('WARN', msg, data);
@@ -563,12 +641,15 @@ function createLogger(module, options) {
       writeLog('DEBUG', msg, data);
     },
 
+    flush: flush,
+
     // 获取日志文件路径
     getLogFile: function() { return logFile; },
     getLogDir: function() { return logDir; },
 
     // 读取日志内容
     readLog: function(lines) {
+      flush();
       try {
         if (!fs.existsSync(logFile)) return '';
         var content = fs.readFileSync(logFile, 'utf8');
@@ -584,6 +665,12 @@ function createLogger(module, options) {
 
     // 清空日志
     clearLog: function() {
+      _buf = [];
+      if (_flushTimer) { clearTimeout(_flushTimer); _flushTimer = null; }
+      var s = _stream;
+      _stream = null;
+      _written = 0;
+      if (s) { try { s.end(); } catch (e) {} }
       try {
         if (fs.existsSync(logFile)) {
           fs.writeFileSync(logFile, '', 'utf8');
@@ -608,11 +695,8 @@ function createLogger(module, options) {
 
     // 分段标记（用于标记不同的阶段）
     separator: function(title) {
-      var line = '\n' + '='.repeat(60) + '\n  ' + title + '\n' + '='.repeat(60) + '\n';
-      try {
-        fs.appendFileSync(logFile, line, 'utf8');
-      } catch (e) {}
-      console.log('\n' + '='.repeat(40) + '\n  ' + title + '\n' + '='.repeat(40));
+      _buf.push('\n' + '='.repeat(60) + '\n  ' + title + '\n' + '='.repeat(60) + '\n');
+      flush();
     },
   };
 }
@@ -663,4 +747,6 @@ export {
   logger,
   createLogger,
   getLogger,
+  // 并发工具
+  mapLimit,
 };
