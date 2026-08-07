@@ -1,11 +1,13 @@
 <script setup lang="ts">
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { reactive, watch, ref, computed, h } from "vue";
+import { NInput, NButton } from "naive-ui";
 const props = defineProps({ visible: Boolean, initialData: Object });
 const emit = defineEmits(["close", "save"]);
 const message = useMessage();
 
 import { useProviders } from "../../composables/useProviders";
+import { BALANCE_TEMPLATES } from "../../data/balance-templates";
 const { PRESETS, activeTab, presetToProviderData } = useProviders();
 const tab = computed(() => activeTab());
 
@@ -57,6 +59,36 @@ function removeOpenclawRow(i) { openclawRows.value.splice(i, 1); }
 function promoteOpenclawRow(i) { if (i <= 0) return; const rows = openclawRows.value; const [r] = rows.splice(i, 1); rows.unshift(r); }
 // 非表单直显字段：完整保留预设的差异化配置
 const hidden = reactive({ settingsConfig: {}, authData: {}, endpointCandidates: [] });
+
+// 余额查询配置（存入 Provider.balance，随供应商导入导出）
+const balanceForm = reactive({
+  enabled: false,
+  path: "",
+  balancePath: "",
+  usedPath: "",
+  balanceTransform: "",
+  currency: "AUTO",
+  lowThreshold: null,
+  autoRefresh: true,
+  refreshIntervalMin: 10,
+  timeoutMs: 8000,
+});
+const balanceTemplateOptions = BALANCE_TEMPLATES.map(t => ({ label: t.name, value: t.name }));
+const balanceTemplateName = ref(null);
+function applyBalanceTemplate(name) {
+  const t = BALANCE_TEMPLATES.find(x => x.name === name);
+  if (!t) return;
+  balanceForm.path = t.path;
+  balanceForm.balancePath = t.balancePath;
+  balanceForm.usedPath = t.usedPath || "";
+  balanceForm.balanceTransform = t.balanceTransform || "";
+  balanceForm.currency = t.currency || "AUTO";
+}
+const currencyOptions = [
+  { value: "AUTO", label: "AUTO（自动识别）" },
+  { value: "USD", label: "USD（美元 $）" },
+  { value: "CNY", label: "CNY（人民币 ¥）" },
+];
 
 // 测试连接状态
 const testing = ref(false);
@@ -169,6 +201,21 @@ watch(() => props.visible, v => {
   // 编辑已有供应商视为已确定协议，不自动覆盖；新建则允许按 base_url 自动推荐
   protocolTouched.value = !!(d && (d.apiFormat || d.wireApi));
   assignHidden(d);
+  // 回填余额查询配置
+  const b = d?.balance || {};
+  Object.assign(balanceForm, {
+    enabled: !!b.enabled,
+    path: b.path || "",
+    balancePath: b.balancePath || "",
+    usedPath: b.usedPath || "",
+    balanceTransform: b.balanceTransform || "",
+    currency: b.currency || "AUTO",
+    lowThreshold: b.lowThreshold != null ? Number(b.lowThreshold) : null,
+    autoRefresh: b.autoRefresh !== false,
+    refreshIntervalMin: b.refreshIntervalSec != null && b.refreshIntervalSec !== "" ? (Number(b.refreshIntervalSec) || 0) / 60 : 10,
+    timeoutMs: Number(b.timeoutMs) || 8000,
+  });
+  balanceTemplateName.value = null;
 });
 
 function addCatalogRow() { catalogRows.value.push({ model: "", displayName: "", contextWindow: "" }); }
@@ -255,6 +302,18 @@ function save() {
     ...hidden,
     modelCatalog,
     models: form.models.split(",").map(s => s.trim()).filter(Boolean),
+    balance: {
+      enabled: balanceForm.enabled,
+      path: balanceForm.path,
+      balancePath: balanceForm.balancePath,
+      usedPath: balanceForm.usedPath || undefined,
+      balanceTransform: balanceForm.balanceTransform || undefined,
+      currency: balanceForm.currency || "AUTO",
+      lowThreshold: balanceForm.lowThreshold != null && balanceForm.lowThreshold !== "" ? Number(balanceForm.lowThreshold) : undefined,
+      autoRefresh: balanceForm.autoRefresh !== false,
+      refreshIntervalSec: Math.max(0, Math.round((Number(balanceForm.refreshIntervalMin) || 0) * 60)),
+      timeoutMs: Number(balanceForm.timeoutMs) || 8000,
+    },
   };
   // Codex 已改为纯表单配置，不再支持整篇自定义 toml；清空 extraConfig 以免旧数据残留旁路表单字段
   if (t === "codex") payload.extraConfig = "";
@@ -808,6 +867,84 @@ const openclawColumns = [
                 <n-input v-model:value="form.model" placeholder="gemini-2.5-pro" />
               </n-form-item>
             </template>
+          </n-flex>
+        </n-card>
+
+        <!-- 余额查询 -->
+        <n-card size="small" :bordered="true" class="section-card">
+          <template #header>
+            <n-flex align="center" justify="space-between" :size="8">
+              <n-text depth="2" style="font-size: 12px; font-weight: 600;">余额查询</n-text>
+              <n-flex align="center" :size="8">
+                <n-switch v-model:value="balanceForm.enabled" size="small" />
+                <n-text depth="3" style="font-size: 11px; margin-left: 4px;">默认关，配置后卡片显示账户余额</n-text>
+              </n-flex>
+            </n-flex>
+          </template>
+          <n-flex v-if="balanceForm.enabled" vertical :size="10">
+            <n-form-item label="模板" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+              <n-select
+                v-model:value="balanceTemplateName"
+                :options="balanceTemplateOptions"
+                placeholder="选择厂商模板一键填入（可继续修改）"
+                filterable
+                clearable
+                @update:value="(v) => { if (v) applyBalanceTemplate(v); }"
+              />
+            </n-form-item>
+            <n-form-item label="请求路径" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+              <template #label>
+                <n-text style="font-size: 11px; font-weight: 600;">请求路径 <n-text depth="3" style="font-weight: 400;">({baseUrl} 之后)</n-text></n-text>
+              </template>
+              <n-input v-model:value="balanceForm.path" placeholder="如 /user/balance" />
+            </n-form-item>
+            <n-form-item label="余额取值路径" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+              <n-input v-model:value="balanceForm.balancePath" placeholder="如 balance_infos[0].total_balance" />
+            </n-form-item>
+            <n-form-item label="已用取值路径" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+              <template #label>
+                <n-text style="font-size: 11px; font-weight: 600;">已用取值路径 <n-text depth="3" style="font-weight: 400;">(可选)</n-text></n-text>
+              </template>
+              <n-input v-model:value="balanceForm.usedPath" placeholder="如 total_used" />
+            </n-form-item>
+            <n-flex align="center" justify="space-between" :size="12">
+              <div style="flex: 1; min-width: 0;">
+                <n-text strong style="font-size: 12px; display: block;">自动查询</n-text>
+                <n-text depth="3" style="font-size: 11px;">进入插件 / 定时刷新时自动查询该供应商（关闭则仅手动刷新）</n-text>
+              </div>
+              <n-switch v-model:value="balanceForm.autoRefresh" size="small" />
+            </n-flex>
+            <n-grid :cols="2" :x-gap="10">
+              <n-gi>
+                <n-form-item label="刷新间隔（分钟）" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                  <template #label>
+                    <n-text style="font-size: 11px; font-weight: 600;">刷新间隔（分钟） <n-text depth="3" style="font-weight: 400;">(0=不定时)</n-text></n-text>
+                  </template>
+                  <n-input-number v-model:value="balanceForm.refreshIntervalMin" :show-button="false" :min="0" style="width: 100%;" />
+                </n-form-item>
+              </n-gi>
+              <n-gi>
+                <n-form-item label="请求超时（毫秒）" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                  <n-input-number v-model:value="balanceForm.timeoutMs" :show-button="false" :min="1000" :step="1000" style="width: 100%;" />
+                </n-form-item>
+              </n-gi>
+            </n-grid>
+            <n-text depth="3" style="font-size: 11px;">页面定时刷新节奏以当前激活供应商的间隔为准。</n-text>
+            <n-grid :cols="2" :x-gap="10">
+              <n-gi>
+                <n-form-item label="货币" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                  <n-select v-model:value="balanceForm.currency" :options="currencyOptions" />
+                </n-form-item>
+              </n-gi>
+              <n-gi>
+                <n-form-item label="低余额阈值" label-placement="top" label-style="font-size: 11px; font-weight: 600;">
+                  <template #label>
+                    <n-text style="font-size: 11px; font-weight: 600;">低余额阈值 <n-text depth="3" style="font-weight: 400;">(留空用全局)</n-text></n-text>
+                  </template>
+                  <n-input-number v-model:value="balanceForm.lowThreshold" :show-button="false" placeholder="默认 5" style="width: 100%;" />
+                </n-form-item>
+              </n-gi>
+            </n-grid>
           </n-flex>
         </n-card>
 

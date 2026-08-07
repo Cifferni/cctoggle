@@ -1,9 +1,32 @@
 <script setup lang="ts">
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { computed } from "vue";
-const props = defineProps({ provider: Object, compact: Boolean });
-const emit = defineEmits(["switch", "edit", "copy", "delete"]);
+import { EllipsisHorizontalOutline } from "@vicons/ionicons5";
+import { NIcon } from "naive-ui";
+import BalanceCard from "./BalanceCard.vue";
+const props = defineProps({ provider: Object, compact: Boolean, balance: Object, lowThreshold: Number });
+const emit = defineEmits(["switch", "edit", "copy", "delete", "refresh"]);
+const dialog = useDialog();
 const contentStyle = computed(() => props.compact ? { padding: '12px 12px' } : { padding: '8px 12px' });
+
+const moreOptions = [
+  { label: "复制", key: "copy" },
+  { label: "删除", key: "delete", type: "error" },
+];
+
+function onMoreSelect(key) {
+  if (key === "copy") {
+    emit("copy", props.provider.id);
+  } else if (key === "delete") {
+    dialog.warning({
+      title: "删除供应商",
+      content: `确定删除供应商「${props.provider.name}」？`,
+      positiveText: "删除",
+      negativeText: "取消",
+      onPositiveClick: () => emit("delete", props.provider.id),
+    });
+  }
+}
 
 const proxyHint = computed(() => {
   const p = props.provider || {};
@@ -27,82 +50,107 @@ const CAT_COLORS = {
   <n-card size="small" :bordered="true" :content-style="contentStyle"
     class="provider-card" :class="{ 'provider-card--active': provider.isCurrent }">
 
-    <!-- Full layout -->
-    <div v-if="!compact" class="provider-row">
-      <div class="provider-info">
-        <div class="provider-name">
-          <n-text strong>{{ provider.name }}</n-text>
-          <n-tag v-if="provider.isCurrent" type="success" size="tiny" round :bordered="false">当前</n-tag>
-          <n-tag
-            v-if="provider.category && provider.category !== 'custom'"
-            size="tiny" round :bordered="false"
-            :color="CAT_COLORS[provider.category]"
-          >{{ CAT_LABELS[provider.category] }}</n-tag>
-          <n-tag size="tiny" :bordered="false">{{ provider.configType }}</n-tag>
-          <n-tooltip v-if="proxyHint" trigger="hover">
+    <div class="provider-main">
+      <!-- Full layout -->
+      <div v-if="!compact" class="provider-row">
+        <div class="provider-info">
+          <div class="provider-name">
+            <n-text strong>{{ provider.name }}</n-text>
+            <n-tag v-if="provider.isCurrent" type="success" size="tiny" round :bordered="false">当前</n-tag>
+            <n-tag
+              v-if="provider.category && provider.category !== 'custom'"
+              size="tiny" round :bordered="false"
+              :color="CAT_COLORS[provider.category]"
+            >{{ CAT_LABELS[provider.category] }}</n-tag>
+            <n-tag size="tiny" :bordered="false">{{ provider.configType }}</n-tag>
+            <n-tooltip v-if="proxyHint" trigger="hover">
+              <template #trigger>
+                <n-tag size="tiny" round :bordered="false" :type="proxyHint.level === 'required' ? 'error' : 'info'">{{ proxyHint.label }}</n-tag>
+              </template>
+              {{ proxyHint.tip }}
+            </n-tooltip>
+          </div>
+          <div class="provider-meta">
+            <span v-if="provider.baseUrl" class="meta-url">{{ provider.baseUrl }}</span>
+            <span v-if="provider.baseUrl && provider.model" class="meta-dot">&middot;</span>
+            <span class="meta-model">{{ provider.model }}</span>
+            <span v-if="provider.remark" class="meta-remark" :title="provider.remark">{{ provider.remark }}</span>
+          </div>
+        </div>
+        <n-space :size="4" align="center" :wrap="false" class="provider-actions">
+          <n-button
+            :type="provider.isCurrent ? 'default' : 'primary'"
+            :secondary="provider.isCurrent"
+            size="tiny"
+            :disabled="provider.isCurrent"
+            @click="emit('switch', provider.id, $event)"
+          >{{ provider.isCurrent ? '已激活' : '切换' }}</n-button>
+          <n-button quaternary size="tiny" @click="emit('edit', provider.id)">编辑</n-button>
+          <n-button quaternary size="tiny" @click="emit('copy', provider.id)">复制</n-button>
+          <n-popconfirm @positive-click="emit('delete', provider.id)">
             <template #trigger>
-              <n-tag size="tiny" round :bordered="false" :type="proxyHint.level === 'required' ? 'error' : 'info'">{{ proxyHint.label }}</n-tag>
+              <n-button quaternary type="error" size="tiny">删除</n-button>
             </template>
-            {{ proxyHint.tip }}
-          </n-tooltip>
-        </div>
-        <div class="provider-meta">
-          <span v-if="provider.baseUrl" class="meta-url">{{ provider.baseUrl }}</span>
-          <span v-if="provider.baseUrl && provider.model" class="meta-dot">&middot;</span>
-          <span class="meta-model">{{ provider.model }}</span>
-          <span v-if="provider.remark" class="meta-remark" :title="provider.remark">{{ provider.remark }}</span>
-        </div>
+            确定删除该供应商？
+          </n-popconfirm>
+        </n-space>
       </div>
-      <n-space :size="4" align="center" :wrap="false" class="provider-actions">
-        <n-button
-          :type="provider.isCurrent ? 'default' : 'primary'"
-          :secondary="provider.isCurrent"
-          size="tiny"
-          :disabled="provider.isCurrent"
-          @click="emit('switch', provider.id, $event)"
-        >{{ provider.isCurrent ? '已激活' : '切换' }}</n-button>
-        <n-button quaternary size="tiny" @click="emit('edit', provider.id)">编辑</n-button>
-        <n-button quaternary size="tiny" @click="emit('copy', provider.id)">复制</n-button>
-        <n-popconfirm @positive-click="emit('delete', provider.id)">
-          <template #trigger>
-            <n-button quaternary type="error" size="tiny">删除</n-button>
-          </template>
-          确定删除该供应商？
-        </n-popconfirm>
-      </n-space>
+
+      <!-- Compact grid layout -->
+      <div v-else class="compact-grid">
+        <div class="compact-info">
+          <div class="compact-row1">
+            <n-text strong class="compact-name">{{ provider.name }}</n-text>
+            <span class="meta-model">{{ provider.model }}</span>
+          </div>
+          <div class="compact-row2" :title="provider.remark">{{ provider.remark || '' }}</div>
+        </div>
+        <n-space :size="4" align="center" :wrap="false" class="compact-actions">
+          <n-button
+            :type="provider.isCurrent ? 'default' : 'primary'"
+            :secondary="provider.isCurrent"
+            size="tiny"
+            :disabled="provider.isCurrent"
+            @click="emit('switch', provider.id, $event)"
+          >{{ provider.isCurrent ? '已激活' : '切换' }}</n-button>
+          <n-button quaternary size="tiny" @click="emit('edit', provider.id)">编辑</n-button>
+          <n-dropdown :options="moreOptions" trigger="click" size="small" @select="onMoreSelect">
+            <n-button quaternary size="tiny" circle>
+              <n-icon :size="14"><EllipsisHorizontalOutline /></n-icon>
+            </n-button>
+          </n-dropdown>
+        </n-space>
+      </div>
     </div>
 
-    <!-- Compact grid layout -->
-    <div v-else class="compact-grid">
-      <div class="compact-info">
-        <div class="compact-row1">
-          <n-text strong class="compact-name">{{ provider.name }}</n-text>
-          <span class="meta-model">{{ provider.model }}</span>
-        </div>
-        <div class="compact-row2" :title="provider.remark">{{ provider.remark || '' }}</div>
-      </div>
-      <n-space :size="4" align="center" :wrap="false" class="compact-actions">
-        <n-button
-          :type="provider.isCurrent ? 'default' : 'primary'"
-          :secondary="provider.isCurrent"
-          size="tiny"
-          :disabled="provider.isCurrent"
-          @click="emit('switch', provider.id, $event)"
-        >{{ provider.isCurrent ? '已激活' : '切换' }}</n-button>
-        <n-button quaternary size="tiny" @click="emit('edit', provider.id)">编辑</n-button>
-        <n-button quaternary size="tiny" @click="emit('copy', provider.id)">复制</n-button>
-        <n-popconfirm @positive-click="emit('delete', provider.id)">
-          <template #trigger>
-            <n-button quaternary type="error" size="tiny">删除</n-button>
-          </template>
-          确定删除该供应商？
-        </n-popconfirm>
-      </n-space>
-    </div>
+    <!-- 余额区块 -->
+    <BalanceCard
+      v-if="provider.balance && provider.balance.enabled"
+      :provider="provider"
+      :balance="balance"
+      :low-threshold="lowThreshold"
+      :compact="compact"
+      @refresh="emit('refresh', provider.id)"
+    />
   </n-card>
 </template>
 
 <style scoped>
+.provider-card {
+  height: 100%;
+}
+.provider-card :deep(.n-card__content) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.provider-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 .provider-row {
   display: flex;
   align-items: center;

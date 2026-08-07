@@ -11,6 +11,7 @@ import { StatsCollector } from './stats';
 import { DataMigration } from './cleanup';
 import { ConnectionTester } from './test-connection';
 import { ProfileStore } from './profile-db';
+import { BalanceManager } from './balance';
 import * as configRw from './config-rw';
 import * as utils from './utils';
 class UtoolsPreload {
@@ -180,6 +181,12 @@ class UtoolsPreload {
       // Test connection
       testConnection: ConnectionTester.testConnection,
       fetchAvailableModels: ConnectionTester.fetchAvailableModels,
+
+      // 余额查询
+      getBalanceCache: BalanceManager.getBalanceCache,
+      clearBalanceCache: BalanceManager.clearProviderCache,
+      queryBalance: BalanceManager.queryBalance,
+      queryAllBalances: BalanceManager.queryAllBalances,
 
       // Profile 管理
       listProfiles: ProfileStore.listProfiles,

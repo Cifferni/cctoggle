@@ -64,6 +64,7 @@ const { ProfileStore } = require(path.join(PRELOAD_DIR, 'profile-db'));
 const { SessionManager } = require(path.join(PRELOAD_DIR, 'sessions'));
 const { StatsCollector } = require(path.join(PRELOAD_DIR, 'stats'));
 const { PromptManager } = require(path.join(PRELOAD_DIR, 'prompts'));
+const { BalanceManager } = require(path.join(PRELOAD_DIR, 'balance'));
 
 // 启动时标记当前供应商
 try {
@@ -300,6 +301,29 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/prompts/toggle' && req.method === 'POST') {
       const body = await parseBody(req);
       return sendJson(res, PromptManager.togglePromptAgent(body.promptId, body.agent, body.fileName));
+    }
+
+    // ─── 余额查询 ───
+    if (pathname === '/api/balance/cache' && req.method === 'GET') {
+      return sendJson(res, BalanceManager.getBalanceCache());
+    }
+
+    if (pathname === '/api/balance/cache-delete' && req.method === 'POST') {
+      const body = await parseBody(req);
+      BalanceManager.clearProviderCache(body.providerId);
+      return sendJson(res, { success: true });
+    }
+
+    if (pathname === '/api/balance/query' && req.method === 'POST') {
+      const body = await parseBody(req);
+      const result = await BalanceManager.queryBalance(body.appType, body.providerId);
+      return sendJson(res, result);
+    }
+
+    if (pathname === '/api/balance/query-all' && req.method === 'POST') {
+      const body = await parseBody(req);
+      const result = await BalanceManager.queryAllBalances(body.appType);
+      return sendJson(res, result);
     }
 
     sendError(res, 'Not found: ' + pathname);

@@ -58,6 +58,7 @@ export interface Provider {
   isCurrent: boolean
   sortOrder: number
   createdAt: string
+  balance?: ProviderBalanceConfig | null
 }
 
 export interface ModelCatalogEntry {
@@ -70,6 +71,37 @@ export interface ModelCatalogEntry {
   contextWindow?: number
   max_context_window?: number
   [key: string]: any
+}
+
+// ——————————— 余额查询 ———————————
+
+export interface ProviderBalanceConfig {
+  enabled: boolean
+  path: string
+  balancePath: string
+  usedPath?: string
+  balanceTransform?: string
+  currency?: 'AUTO' | 'USD' | 'CNY'
+  lowThreshold?: number
+  autoRefresh?: boolean
+  refreshIntervalSec?: number
+  timeoutMs?: number
+}
+
+export interface BalanceResult {
+  success: boolean
+  balance?: number
+  used?: number
+  currency?: string
+  queriedAt: number
+  error?: string
+}
+
+export interface BalanceCacheEntry {
+  providerId: string
+  appType: string
+  result: BalanceResult
+  queriedAt: number
 }
 
 export interface ExportData {
@@ -551,4 +583,10 @@ export interface UtoolsCctoggle {
   activateProfile(id: string): SuccessResult
   deactivateProfile(): void
   getActiveProfileId(): string | null
+
+  // 余额查询
+  getBalanceCache(): Record<string, BalanceCacheEntry>
+  clearBalanceCache(providerId: string): void
+  queryBalance(appType: string, providerId: string): Promise<BalanceResult>
+  queryAllBalances(appType?: string): Promise<Record<string, BalanceResult>>
 }

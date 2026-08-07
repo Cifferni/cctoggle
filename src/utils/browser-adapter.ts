@@ -234,5 +234,11 @@ export function createBrowserApi() {
     activateProfile: (id: string) => postApiSync('/profile-activate', { id }),
     deactivateProfile: () => postApiSync('/profile-deactivate', {}),
     getActiveProfileId: () => fetchApiSync('/profile/active')?.id || null,
+
+    // 余额查询
+    getBalanceCache: () => fetchApiSync('/balance/cache') || {},
+    clearBalanceCache: (providerId: string) => postApiSync('/balance/cache-delete', { providerId }),
+    queryBalance: async (appType: string, providerId: string) => postApiSync('/balance/query', { appType, providerId }),
+    queryAllBalances: async (appType?: string) => postApiSync('/balance/query-all', { appType }),
   };
 }

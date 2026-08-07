@@ -4,6 +4,7 @@
 import * as utils from './utils';
 import * as configRw from './config-rw';
 import * as cryptoApi from './crypto';
+import { BalanceManager } from './balance';
 
 export class ProviderStore {
   /** 延迟加载 ProfileStore 避免循环依赖 */
@@ -42,6 +43,7 @@ export class ProviderStore {
           createdAt: p.createdAt || "",
           apiFormat: p.apiFormat || "",
           wireApi: p.wireApi || "",
+          balance: p.balance || null,
         };
       });
     } catch (e) {
@@ -109,6 +111,7 @@ export class ProviderStore {
         isCurrent: p.isCurrent || false,
         sortOrder: p.sortOrder || 0,
         createdAt: p.createdAt || "",
+        balance: p.balance || null,
       };
     } catch (e) {
       return null;
@@ -179,6 +182,7 @@ export class ProviderStore {
       sortOrder: providerData.sortOrder !== undefined ? providerData.sortOrder : (existing ? existing.sortOrder : 0),
       createdAt: providerData.createdAt || (existing ? existing.createdAt : new Date().toISOString()),
       encryptedApiKey: encryptedApiKey,
+      balance: providerData.balance || null,
     };
 
     // 数据与加密 Key 均无改动时跳过写入，避免触发无意义的配置重应用
@@ -218,6 +222,11 @@ export class ProviderStore {
         providers: providers,
       });
     }
+
+    // 清理关联的余额缓存条目
+    try {
+      BalanceManager.clearProviderCache(providerId);
+    } catch (e) {}
 
     // 清理关联的路由组
     try {
