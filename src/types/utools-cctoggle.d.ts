@@ -325,6 +325,9 @@ export interface Prompt {
   name: string
   description: string
   content: string
+  fileName?: string | null
+  fileNames?: string[] | null
+  files?: Record<string, string> | null
   agents: string[]
   variables: string[]
   tags: string[]
@@ -339,7 +342,13 @@ export interface PromptBackup {
   backedUpAt: string
 }
 
-export type BackupMap = Record<string, PromptBackup>
+// 文件粒度备份：agent → fileName → PromptBackup
+export type BackupMap = Record<string, Record<string, PromptBackup>>
+
+export interface PromptBackupSelection {
+  agent: string
+  files?: string[]
+}
 
 export interface PromptSaveResult {
   success: boolean
@@ -524,13 +533,15 @@ export interface UtoolsCctoggle {
   importPrompts(jsonString: string): ImportPromptsResult
   readOriginalPrompt(agent: string): string
   readAllOriginalPrompts(): Record<string, string>
+  getOpenClawPromptFiles(): string[]
+  readOpenClawPromptFiles(): Record<string, string>
   backupOriginalPrompts(): { success: boolean; backups?: BackupMap; error?: string }
-  backupSelectedPrompts(agentList: string[]): { success: boolean; backups?: BackupMap; error?: string }
+  backupSelectedPrompts(selections: PromptBackupSelection[]): { success: boolean; backups?: BackupMap; error?: string }
   getBackups(): BackupMap
-  restoreOriginalPrompt(agent: string): SuccessResult
+  restoreOriginalPrompt(agent: string, fileName?: string): SuccessResult
   restoreAllOriginalPrompts(): Record<string, SuccessResult>
-  applyPromptToAgent(promptId: string, agent: string): PromptSaveResult
-  togglePromptAgent(promptId: string, agent: string): PromptToggleResult
+  applyPromptToAgent(promptId: string, agent: string, fileName?: string | string[]): PromptSaveResult
+  togglePromptAgent(promptId: string, agent: string, fileName?: string | string[]): PromptToggleResult
 
   // 项目配置方案
   listProfiles(): ProjectProfile[]

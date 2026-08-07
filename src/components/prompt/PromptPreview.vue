@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // @ts-nocheck TODO: 逐步添加类型注解后移除
-import { computed } from "vue";
+import { ref, computed } from "vue";
 import { usePrompts } from "../../composables/usePrompts";
 
 const props = defineProps({
@@ -9,7 +9,30 @@ const props = defineProps({
 
 const emit = defineEmits(["close", "edit"]);
 
-const { AGENT_LABELS } = usePrompts();
+const { AGENT_LABELS, OPENCLAW_PROMPT_FILES } = usePrompts();
+
+const activePackFile = ref("AGENTS.md");
+
+// 人设包模式
+const isPersonaPack = computed(() => {
+  return !!(props.prompt.files && Object.keys(props.prompt.files).length > 0);
+});
+
+// 已应用文件（多文件时展示列表）
+const appliedFileLabel = computed(() => {
+  if (Array.isArray(props.prompt.fileNames) && props.prompt.fileNames.length) {
+    return props.prompt.fileNames.filter(f => f !== "MEMORY.md").join(", ");
+  }
+  return props.prompt.fileName || "";
+});
+
+// 预览内容：人设包按 activePackFile，否则 content
+const previewContent = computed(() => {
+  if (isPersonaPack.value) {
+    return props.prompt.files[activePackFile.value] || "";
+  }
+  return props.prompt.content;
+});
 
 // Agent tags
 const agentTags = computed(() => {
@@ -18,6 +41,10 @@ const agentTags = computed(() => {
     label: AGENT_LABELS[agent] || agent,
     value: agent,
   }));
+});
+
+const packFileOptions = computed(() => {
+  return OPENCLAW_PROMPT_FILES.filter(f => (props.prompt.files || {})[f.file] != null);
 });
 </script>
 
@@ -56,11 +83,29 @@ const agentTags = computed(() => {
           >
             {{ tag.label }}
           </n-tag>
+          <template v-if="!isPersonaPack && appliedFileLabel">
+            <n-text depth="3" strong>目标文件：</n-text>
+            <n-tag size="small" :bordered="false" type="warning">{{ appliedFileLabel }}</n-tag>
+          </template>
         </n-space>
       </div>
 
-      <div class="prompt-preview__content">
-        <n-text>{{ prompt.content }}</n-text>
+      <template v-if="isPersonaPack">
+        <n-tabs v-model:value="activePackFile" type="line" size="small">
+          <n-tab-pane
+            v-for="f in packFileOptions"
+            :key="f.file"
+            :name="f.file"
+            :tab="f.file"
+          >
+            <div class="prompt-preview__content">
+              <n-text>{{ previewContent }}</n-text>
+            </div>
+          </n-tab-pane>
+        </n-tabs>
+      </template>
+      <div v-else class="prompt-preview__content">
+        <n-text>{{ previewContent }}</n-text>
       </div>
     </div>
   </n-card>

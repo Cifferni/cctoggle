@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
 import { getSkillNest } from './shared'
-import type { Prompt, BackupMap, PromptSaveResult } from '../types/utools-cctoggle'
+import type { Prompt, BackupMap, PromptSaveResult, PromptBackupSelection } from '../types/utools-cctoggle'
 
 const ALL_AGENTS = ['codex', 'claude', 'gemini', 'openclaw'] as const
 const AGENT_LABELS: Record<string, string> = {
@@ -9,6 +9,16 @@ const AGENT_LABELS: Record<string, string> = {
   gemini: 'Gemini',
   openclaw: 'OpenClaw',
 }
+
+// OpenClaw 提示词文件清单（与 preload utils.OPENCLAW_PROMPT_FILES 保持一致）
+const OPENCLAW_PROMPT_FILES: { file: string; label: string }[] = [
+  { file: 'AGENTS.md', label: '总体行为准则 · 红线' },
+  { file: 'SOUL.md', label: '性格调性' },
+  { file: 'IDENTITY.md', label: '身份人设' },
+  { file: 'USER.md', label: '用户笔记' },
+  { file: 'TOOLS.md', label: '环境备注' },
+  { file: 'HEARTBEAT.md', label: '心跳清单' },
+]
 
 const prompts = ref<Prompt[]>([])
 const activePrompt = ref<Prompt | null>(null)
@@ -47,6 +57,9 @@ function savePrompt(prompt: Partial<Prompt>): PromptSaveResult {
       name: String(prompt.name || ''),
       description: String(prompt.description || ''),
       content: String(prompt.content || ''),
+      fileName: prompt.fileName || null,
+      fileNames: Array.isArray(prompt.fileNames) && prompt.fileNames.length ? [...prompt.fileNames] : null,
+      files: prompt.files && typeof prompt.files === 'object' ? { ...prompt.files } : null,
       agents: Array.isArray(prompt.agents) ? [...prompt.agents] : [],
       variables: Array.isArray(prompt.variables) ? [...prompt.variables] : [],
       tags: Array.isArray(prompt.tags) ? [...prompt.tags] : [],
@@ -184,10 +197,10 @@ function backupOriginalPrompts() {
   }
 }
 
-function backupSelectedPrompts(agentList: string[]) {
+function backupSelectedPrompts(selections: PromptBackupSelection[]) {
   loading.value = true
   try {
-    const result = getSkillNest().backupSelectedPrompts(agentList)
+    const result = getSkillNest().backupSelectedPrompts(selections)
     if (result?.success !== false) {
       loadBackups()
       return { success: true }
@@ -210,10 +223,10 @@ function loadOriginalPrompts(): void {
   }
 }
 
-function restoreOriginalPrompt(agent: string) {
+function restoreOriginalPrompt(agent: string, fileName?: string) {
   loading.value = true
   try {
-    const result = getSkillNest().restoreOriginalPrompt(agent)
+    const result = getSkillNest().restoreOriginalPrompt(agent, fileName)
     if (result?.success !== false) {
       loadOriginalPrompts()
       return { success: true }
@@ -248,17 +261,30 @@ function restoreAllOriginalPrompts() {
 }
 
 function hasBackup(agent: string): boolean {
-  return !!(backups.value[agent]?.backedUpAt)
+  const agentBackups = backups.value[agent] as Record<string, { backedUpAt?: string }> | undefined
+  if (!agentBackups) return false
+  return Object.keys(agentBackups).some(f => !!agentBackups[f]?.backedUpAt)
 }
 
 function getBackupContent(agent: string): string {
-  return backups.value[agent]?.content || ''
+  const agentBackups = backups.value[agent] as Record<string, { content?: string }> | undefined
+  if (!agentBackups) return ''
+  const files = Object.keys(agentBackups)
+  return files.length ? (agentBackups[files[0]]?.content || '') : ''
 }
 
-function applyPromptToAgent(promptId: string, agent: string) {
+function hasFileBackup(agent: string, fileName: string): boolean {
+  return !!(backups.value[agent]?.[fileName]?.backedUpAt)
+}
+
+function getFileBackupContent(agent: string, fileName: string): string {
+  return backups.value[agent]?.[fileName]?.content || ''
+}
+
+function applyPromptToAgent(promptId: string, agent: string, fileName?: string | string[]) {
   loading.value = true
   try {
-    const result = getSkillNest().applyPromptToAgent(promptId, agent)
+    const result = getSkillNest().applyPromptToAgent(promptId, agent, fileName)
     if (result?.success !== false) {
       loadPrompts()
       return { success: true }
@@ -272,9 +298,9 @@ function applyPromptToAgent(promptId: string, agent: string) {
   }
 }
 
-function togglePromptAgent(promptId: string, agent: string) {
+function togglePromptAgent(promptId: string, agent: string, fileName?: string | string[]) {
   try {
-    const result = getSkillNest().togglePromptAgent(promptId, agent)
+    const result = getSkillNest().togglePromptAgent(promptId, agent, fileName)
     if (result?.success !== false) {
       loadPrompts()
       return { success: true, associated: result?.associated }
@@ -288,13 +314,14 @@ function togglePromptAgent(promptId: string, agent: string) {
 
 export function usePrompts() {
   return {
-    ALL_AGENTS, AGENT_LABELS,
+    ALL_AGENTS, AGENT_LABELS, OPENCLAW_PROMPT_FILES,
     prompts, activePrompt, loading, activeAgentTab, filteredPrompts,
     backups, originalPrompts,
     loadPrompts, savePrompt, deletePrompt, duplicatePrompt,
     setActivePrompt, exportPrompts, importPrompts, createFromTemplate,
     loadBackups, backupOriginalPrompts, backupSelectedPrompts,
     loadOriginalPrompts, restoreOriginalPrompt, restoreAllOriginalPrompts,
-    hasBackup, getBackupContent, applyPromptToAgent, togglePromptAgent,
+    hasBackup, getBackupContent, hasFileBackup, getFileBackupContent,
+    applyPromptToAgent, togglePromptAgent,
   }
 }

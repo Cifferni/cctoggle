@@ -28,6 +28,40 @@ export class DataMigration {
     DataMigration.migrateLastActiveApp();
     DataMigration.migrateApiKeysToProfile();
     DataMigration.cleanStaleProxyDocs();
+    DataMigration.migratePromptBackups();
+  }
+
+  /** 提示词备份迁移：旧格式 { agent: { content, backedUpAt } } → 新格式 { agent: { fileName: { content, backedUpAt } } } */
+  static migratePromptBackups(): void {
+    const BACKUP_KEY = "cctoggle_prompts_backup";
+    const DEFAULT_FILES: Record<string, string> = {
+      codex: "AGENTS.md",
+      claude: "CLAUDE.md",
+      gemini: "GEMINI.md",
+      openclaw: "AGENTS.md",
+    };
+    try {
+      const doc = utools.db.get(BACKUP_KEY);
+      if (!doc || !doc.backups || typeof doc.backups !== "object") return;
+
+      const backups = doc.backups;
+      let changed = false;
+      Object.keys(backups).forEach(function (agent) {
+        const backup = backups[agent];
+        if (!backup || typeof backup !== "object" || typeof backup.content !== "string") return;
+        const file = DEFAULT_FILES[agent];
+        if (!file) return;
+        backups[agent] = { [file]: { content: backup.content, backedUpAt: backup.backedUpAt || "" } };
+        changed = true;
+      });
+
+      if (changed) {
+        utools.db.put(doc);
+        console.log("[Cleanup] Migrated prompt backups to file-granularity");
+      }
+    } catch (e: any) {
+      console.error("[Cleanup] Prompt backups migration failed:", e.message);
+    }
   }
 
   /** skillnest → cctoggle 目录迁移 */

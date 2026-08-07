@@ -98,10 +98,19 @@ function getOpenClawWorkspaceDir() {
   try {
     if (!fs.existsSync(openclawDir)) return null;
     var entries = fs.readdirSync(openclawDir);
-    // 查找 workspace-* 目录
+    // 优先选择恰好名为 workspace 的目录（OpenClaw 默认单工作区）
     for (var i = 0; i < entries.length; i++) {
-      if (entries[i].indexOf("workspace-") === 0) {
-        var fullPath = path.join(openclawDir, entries[i]);
+      if (entries[i] === "workspace") {
+        var exactPath = path.join(openclawDir, entries[i]);
+        if (fs.statSync(exactPath).isDirectory()) {
+          return exactPath;
+        }
+      }
+    }
+    // 其次选择 workspace-* 多工作区目录（排除已知非工作区目录）
+    for (var j = 0; j < entries.length; j++) {
+      if (entries[j].indexOf("workspace-") === 0 && entries[j] !== "workspace-attestations") {
+        var fullPath = path.join(openclawDir, entries[j]);
         if (fs.statSync(fullPath).isDirectory()) {
           return fullPath;
         }
@@ -115,6 +124,26 @@ function getOpenClawAgentsMdPath() {
   var workspace = getOpenClawWorkspaceDir();
   if (!workspace) return null;
   return path.join(workspace, "AGENTS.md");
+}
+
+// OpenClaw 提示词文件清单（MEMORY.md 是运行时积累的记忆文件，不参与切换/备份）
+var OPENCLAW_PROMPT_FILES = [
+  { file: "AGENTS.md",    label: "总体行为准则 · 红线" },
+  { file: "SOUL.md",      label: "性格调性" },
+  { file: "IDENTITY.md",  label: "身份人设" },
+  { file: "USER.md",      label: "用户笔记" },
+  { file: "TOOLS.md",     label: "环境备注" },
+  { file: "HEARTBEAT.md", label: "心跳清单" },
+];
+
+function getOpenClawPromptPath(fileName) {
+  var workspace = getOpenClawWorkspaceDir();
+  if (!workspace) return null;
+  return path.join(workspace, fileName);
+}
+
+function getOpenClawPromptFiles() {
+  return OPENCLAW_PROMPT_FILES.map(function (f) { return f.file; });
 }
 
 // 纯路径展开（~ → homeDir）
@@ -567,6 +596,9 @@ export {
   getGeminiMdPath,
   getOpenClawWorkspaceDir,
   getOpenClawAgentsMdPath,
+  OPENCLAW_PROMPT_FILES,
+  getOpenClawPromptPath,
+  getOpenClawPromptFiles,
   // Agent 路径管理
   getDefaultConfigDirs,
   getAgentConfigPath,

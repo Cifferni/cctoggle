@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // @ts-nocheck TODO: 逐步添加类型注解后移除
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { usePrompts } from "../composables/usePrompts";
 import PromptCard from "../components/prompt/PromptCard.vue";
@@ -12,12 +12,13 @@ const message = useMessage();
 const dialog = useDialog();
 
 const {
-  prompts, loading, activePrompt, ALL_AGENTS, AGENT_LABELS,
-  originalPrompts,
+  prompts, loading, activePrompt, ALL_AGENTS, AGENT_LABELS, OPENCLAW_PROMPT_FILES,
+  originalPrompts, backups,
   loadPrompts, deletePrompt,
   setActivePrompt, exportPrompts, importPrompts,
   loadBackups, backupOriginalPrompts, backupSelectedPrompts, loadOriginalPrompts,
   restoreOriginalPrompt, restoreAllOriginalPrompts, hasBackup, getBackupContent,
+  hasFileBackup, getFileBackupContent,
 } = usePrompts();
 
 // UI state
@@ -28,7 +29,11 @@ const showBackupModal = ref(false);
 const editingPrompt = ref(null);
 const viewingAgent = ref(null);
 const viewingContent = ref("");
+const viewingFile = ref(null); // { agent, fileName }
+const viewingFileContent = ref("");
 const selectedBackupAgents = ref([]);
+const openclawBackupFiles = ref([]);
+const openClawExpanded = ref(false);
 
 // Load prompts on mount
 onMounted(() => {
@@ -114,10 +119,53 @@ function handleViewContent(agent) {
   viewingContent.value = getBackupContent(agent) || "";
 }
 
+// View backup content for a specific openclaw file
+function handleViewFileContent(agent, fileName) {
+  viewingFile.value = { agent, fileName };
+  viewingFileContent.value = getFileBackupContent(agent, fileName) || "";
+}
+
+// 已备份文件数（openclaw 多文件）
+function backupFileCount(agent) {
+  const agentBackups = backups.value[agent] || {};
+  return Object.keys(agentBackups).filter(f => !!agentBackups[f]?.backedUpAt).length;
+}
+
+const viewTitle = computed(() => {
+  if (viewingFile.value) return `${AGENT_LABELS[viewingFile.value.agent]}/${viewingFile.value.fileName} 备份内容`;
+  if (viewingAgent.value) return `${AGENT_LABELS[viewingAgent.value]} 备份内容`;
+  return "";
+});
+const viewBody = computed(() => (viewingFile.value ? viewingFileContent.value : viewingContent.value));
+
 // Open backup modal
 function handleBackup() {
   selectedBackupAgents.value = [];
+  openclawBackupFiles.value = [];
   showBackupModal.value = true;
+}
+
+// 勾选 / 取消某个 Agent（openclaw 选中时默认全选 6 个提示词文件）
+function toggleBackupAgent(agent) {
+  const idx = selectedBackupAgents.value.indexOf(agent);
+  if (idx === -1) {
+    selectedBackupAgents.value.push(agent);
+    if (agent === "openclaw") {
+      openclawBackupFiles.value = OPENCLAW_PROMPT_FILES.map(f => f.file);
+    }
+  } else {
+    selectedBackupAgents.value.splice(idx, 1);
+  }
+}
+
+// 勾选 / 取消 openclaw 具体文件
+function toggleOpenClawFile(file) {
+  const idx = openclawBackupFiles.value.indexOf(file);
+  if (idx === -1) {
+    openclawBackupFiles.value.push(file);
+  } else {
+    openclawBackupFiles.value.splice(idx, 1);
+  }
 }
 
 // Confirm backup selected agents
@@ -126,7 +174,13 @@ function handleConfirmBackup() {
     message.warning("请至少选择一个 Agent");
     return;
   }
-  const result = backupSelectedPrompts(selectedBackupAgents.value);
+  const selections = selectedBackupAgents.value.map(agent => {
+    if (agent === "openclaw") {
+      return { agent: "openclaw", files: [...openclawBackupFiles.value] };
+    }
+    return { agent };
+  });
+  const result = backupSelectedPrompts(selections);
   if (result.success) {
     message.success(`已备份 ${selectedBackupAgents.value.length} 个 Agent 的原始提示词`);
     showBackupModal.value = false;
@@ -135,17 +189,18 @@ function handleConfirmBackup() {
   }
 }
 
-// Restore single agent prompt
-function handleRestore(agent) {
+// Restore single agent / single file prompt
+function handleRestore(agent, fileName) {
+  const label = fileName ? `${AGENT_LABELS[agent]}/${fileName}` : AGENT_LABELS[agent];
   dialog.warning({
     title: "恢复原始提示词",
-    content: `确定恢复 ${AGENT_LABELS[agent]} 的原始提示词？当前内容将被覆盖。`,
+    content: `确定恢复 ${label} 的原始提示词？当前内容将被覆盖。`,
     positiveText: "恢复",
     negativeText: "取消",
     onPositiveClick: () => {
-      const result = restoreOriginalPrompt(agent);
+      const result = restoreOriginalPrompt(agent, fileName);
       if (result.success) {
-        message.success(`已恢复 ${AGENT_LABELS[agent]} 的原始提示词`);
+        message.success(`已恢复 ${label} 的原始提示词`);
       } else {
         message.error(`恢复失败：${result.error}`);
       }
@@ -252,34 +307,84 @@ function handleRestoreAll() {
               <span class="restore-status restore-status--none" v-else>
                 未备份
               </span>
+              <div class="restore-actions">
+                <n-button
+                  v-if="agent === 'openclaw'"
+                  size="tiny"
+                  quaternary
+                  @click="openClawExpanded = !openClawExpanded"
+                >
+                  {{ openClawExpanded ? '收起' : '按文件展开' }}
+                </n-button>
+                <n-button
+                  v-if="originalPrompts[agent]"
+                  size="tiny"
+                  quaternary
+                  @click="handleViewContent(agent)"
+                >
+                  查看
+                </n-button>
+                <n-button
+                  size="tiny"
+                  quaternary
+                  :disabled="!hasBackup(agent)"
+                  @click="handleRestore(agent)"
+                >
+                  恢复全部
+                </n-button>
+              </div>
             </div>
             <div class="restore-content" v-if="hasBackup(agent) && getBackupContent(agent)">
               <pre>{{ getBackupContent(agent).substring(0, 80) }}{{ getBackupContent(agent).length > 80 ? '...' : '' }}</pre>
             </div>
             <div class="restore-content restore-content--empty" v-else-if="hasBackup(agent)">
-              备份内容为空
+              {{ agent === 'openclaw' ? `已备份 ${backupFileCount(agent)} 个文件，点「按文件展开」查看` : '备份内容为空' }}
             </div>
             <div class="restore-content restore-content--empty" v-else>
               无备份
             </div>
-            <div class="restore-actions">
-              <n-button
-                v-if="originalPrompts[agent]"
-                size="tiny"
-                quaternary
-                @click="handleViewContent(agent)"
-              >
-                查看
-              </n-button>
-              <n-button
-                size="tiny"
-                quaternary
-                :disabled="!hasBackup(agent)"
-                @click="handleRestore(agent)"
-              >
-                恢复
-              </n-button>
-            </div>
+
+            <template v-if="agent === 'openclaw' && openClawExpanded">
+              <div class="restore-file-list">
+                <div v-for="f in OPENCLAW_PROMPT_FILES" :key="f.file" class="restore-file-item">
+                  <div class="restore-file-info">
+                    <span class="restore-file-name">{{ f.file }}</span>
+                    <span class="restore-file-label">{{ f.label }}</span>
+                    <span class="restore-status" v-if="hasFileBackup('openclaw', f.file)">
+                      已备份
+                    </span>
+                    <span class="restore-status restore-status--none" v-else>
+                      未备份
+                    </span>
+                  </div>
+                  <div class="restore-file-actions">
+                    <n-button
+                      size="tiny"
+                      quaternary
+                      :disabled="!hasFileBackup('openclaw', f.file)"
+                      @click="handleViewFileContent('openclaw', f.file)"
+                    >
+                      查看
+                    </n-button>
+                    <n-button
+                      size="tiny"
+                      quaternary
+                      :disabled="!hasFileBackup('openclaw', f.file)"
+                      @click="handleRestore('openclaw', f.file)"
+                    >
+                      恢复
+                    </n-button>
+                  </div>
+                </div>
+                <div class="restore-file-item restore-file-item--memory">
+                  <div class="restore-file-info">
+                    <span class="restore-file-name">MEMORY.md</span>
+                    <span class="restore-file-label">记忆文件</span>
+                  </div>
+                  <n-text depth="3" style="font-size: 11px;">不参与恢复</n-text>
+                </div>
+              </div>
+            </template>
           </div>
         </div>
 
@@ -301,7 +406,12 @@ function handleRestoreAll() {
         size="small"
       >
         <div class="backup-agent-list">
-          <div v-for="agent in ALL_AGENTS" :key="agent" class="backup-agent-item" @click="selectedBackupAgents.includes(agent) ? selectedBackupAgents = selectedBackupAgents.filter(a => a !== agent) : selectedBackupAgents.push(agent)">
+          <div
+            v-for="agent in ALL_AGENTS"
+            :key="agent"
+            class="backup-agent-item"
+            @click="toggleBackupAgent(agent)"
+          >
             <n-checkbox
               :checked="selectedBackupAgents.includes(agent)"
               style="pointer-events: none;"
@@ -309,6 +419,27 @@ function handleRestoreAll() {
               {{ AGENT_LABELS[agent] }}
             </n-checkbox>
             <span v-if="hasBackup(agent)" class="backup-agent-hint">已备份</span>
+          </div>
+
+          <div v-if="selectedBackupAgents.includes('openclaw')" class="backup-file-list">
+            <div
+              v-for="f in OPENCLAW_PROMPT_FILES"
+              :key="f.file"
+              class="backup-file-item"
+              @click="toggleOpenClawFile(f.file)"
+            >
+              <n-checkbox
+                :checked="openclawBackupFiles.includes(f.file)"
+                style="pointer-events: none;"
+              >
+                {{ f.file }}
+              </n-checkbox>
+              <span class="backup-file-label">{{ f.label }}</span>
+            </div>
+            <div class="backup-file-item backup-file-item--disabled">
+              <n-checkbox disabled style="pointer-events: none;">MEMORY.md</n-checkbox>
+              <span class="backup-agent-hint">记忆文件不参与备份</span>
+            </div>
           </div>
         </div>
         <template #footer>
@@ -323,17 +454,17 @@ function handleRestoreAll() {
     </n-modal>
 
     <!-- View Content Modal -->
-    <n-modal :show="!!viewingAgent" @update:show="viewingAgent = null">
+    <n-modal :show="!!viewingAgent || !!viewingFile" @update:show="(v) => { if (!v) { viewingAgent = null; viewingFile = null; } }">
       <n-card
         style="width: 600px; max-width: 90vw; max-height: 80vh;"
-        :title="viewingAgent ? AGENT_LABELS[viewingAgent] + ' 备份内容' : ''"
+        :title="viewTitle"
         :bordered="false"
         size="small"
       >
         <template #header-extra>
-          <n-button quaternary size="small" @click="viewingAgent = null">关闭</n-button>
+          <n-button quaternary size="small" @click="viewingAgent = null; viewingFile = null">关闭</n-button>
         </template>
-        <pre v-if="viewingContent" class="view-content">{{ viewingContent }}</pre>
+        <pre v-if="viewBody" class="view-content">{{ viewBody }}</pre>
         <n-text v-else depth="3" style="display: block; padding: 20px; text-align: center;">暂无提示词内容</n-text>
       </n-card>
     </n-modal>
@@ -496,5 +627,99 @@ function handleRestoreAll() {
 .backup-agent-hint {
   font-size: 11px;
   color: var(--success);
+}
+
+/* openclaw 按文件展开 */
+.restore-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-left: 8px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+}
+
+.restore-file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-card);
+  border-radius: 4px;
+}
+
+.restore-file-item--memory {
+  opacity: 0.6;
+}
+
+.restore-file-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.restore-file-name {
+  font-size: 12px;
+  font-weight: 500;
+  font-family: monospace;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.restore-file-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.restore-file-info .restore-status {
+  flex-shrink: 0;
+}
+
+.restore-file-actions {
+  flex-shrink: 0;
+}
+
+.backup-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-left: 8px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+}
+
+.backup-file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.backup-file-item:hover {
+  background: var(--bg-card);
+}
+
+.backup-file-item--disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.backup-file-item--disabled:hover {
+  background: none;
+}
+
+.backup-file-label {
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 </style>
