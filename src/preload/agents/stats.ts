@@ -1,7 +1,7 @@
 // uTools ccToggle - stats.ts
 // 用量统计（无缓存：每次直接扫描本地 CLI 会话日志）
 
-import * as utils from './utils';
+import * as utils from '../utils';
 
 const fs = utils.fs;
 const path = utils.path;

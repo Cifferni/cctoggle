@@ -1,9 +1,9 @@
 // uTools ccToggle - proxy.ts
 // 路由组、代理启停、接管/还原、端口管理
 
-import * as utils from './utils';
-import * as configRw from './config-rw';
-import { ProviderStore } from './provider-db';
+import * as utils from '../utils';
+import * as configRw from '../config/config-rw';
+import { ProviderStore } from '../providers/provider-db';
 
 const generateId = utils.generateId;
 
@@ -293,8 +293,8 @@ export class ProxyManager {
     const authToken = appType === "codex" ? "" : token;
     try {
       const win = utools.createBrowserWindow(
-        "preload/proxy-daemon.html",
-        { show: false, webPreferences: { preload: "preload/proxy-daemon.js", zoomFactor: 1 } },
+        "preload/proxy/proxy-daemon.html",
+        { show: false, webPreferences: { preload: "preload/proxy/proxy-daemon.js", zoomFactor: 1 } },
         function () {
           try {
             win.webContents.send("cfg", { group: group, members: members, authToken: authToken });

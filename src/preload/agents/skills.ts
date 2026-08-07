@@ -1,7 +1,7 @@
 // uTools ccToggle - skills.ts
 // CCToggle 技能管理、部署、搜索
 
-import utils = require("./utils");
+import utils = require("../utils");
 const fs = utils.fs;
 const path = utils.path;
 const getHomeDir = utils.getHomeDir;

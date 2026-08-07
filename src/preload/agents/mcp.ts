@@ -1,10 +1,10 @@
 // uTools ccToggle - mcp.ts
 // MCP Server 配置管理：配置文件为源 + db 仅存 apps 映射
 
-import { DataMigration } from "./cleanup";
+import { DataMigration } from "../core/cleanup";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const utils = require("./utils");
+const utils = require("../utils");
 
 const fs = utils.fs;
 const path = utils.path;

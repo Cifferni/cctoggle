@@ -1,9 +1,9 @@
 // uTools ccToggle - provider-db.ts
 // 供应商 CRUD、切换、导入导出（profile-aware）
 
-import * as utils from './utils';
-import * as configRw from './config-rw';
-import * as cryptoApi from './crypto';
+import * as utils from '../utils';
+import * as configRw from '../config/config-rw';
+import * as cryptoApi from '../core/crypto';
 import { BalanceManager } from './balance';
 
 export class ProviderStore {
@@ -230,7 +230,7 @@ export class ProviderStore {
 
     // 清理关联的路由组
     try {
-      var proxy = require("./proxy");
+      var proxy = require("../proxy/proxy");
       var groups = proxy.ProxyManager.listRouteGroups(appType);
       groups.forEach(function (g: any) {
         var before = (g.members || []).length;
@@ -320,7 +320,7 @@ export class ProviderStore {
     const apps = onlyAppType ? [onlyAppType] : ["codex", "claude", "gemini", "openclaw"];
     apps.forEach(function (appType) {
       try {
-        var proxy = require("./proxy");
+        var proxy = require("../proxy/proxy");
         const rt = proxy.ProxyManager.proxyRuntime[appType];
         if (rt && rt.running) { result[appType] = { skipped: "proxy running" }; return; }
         const id = ProviderStore.getCurrentProviderId(appType);

@@ -2,7 +2,7 @@
 // uTools ccToggle - config-rw.js
 // 各 AI 工具配置文件读写
 
-var utils = require("./utils");
+var utils = require("../utils");
 var fs = utils.fs;
 var path = utils.path;
 var getHomeDir = utils.getHomeDir;
@@ -178,7 +178,7 @@ function switchProviderClaudeDesktop(provider) {
   var proxyPort = 0;
   var proxyToken = "";
   try {
-    var proxy = require("./proxy");
+    var proxy = require("../proxy/proxy");
     var rt = proxy.getProxyStatus("claude-desktop");
     if (rt && rt.running) {
       proxyPort = rt.port || 8788;

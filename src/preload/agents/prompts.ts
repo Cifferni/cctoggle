@@ -1,8 +1,8 @@
 // uTools ccToggle - prompts.ts
 // 提示词管理：使用 utools.db 存储提示词数据
 
-const utils = require("./utils");
-const configRw = require("./config-rw");
+const utils = require("../utils");
+const configRw = require("../config/config-rw");
 const fs = utils.fs;
 const path = utils.path;
 

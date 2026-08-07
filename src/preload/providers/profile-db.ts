@@ -1,7 +1,7 @@
 // uTools ccToggle - profile-db.ts
 // 项目配置方案 CRUD、激活管理
 
-import * as utils from './utils';
+import * as utils from '../utils';
 
 const PROFILE_PREFIX = "cctoggle_profile_";
 const ACTIVE_PROFILE_KEY = "cctoggle_active_profile";
@@ -106,7 +106,7 @@ export class ProfileStore {
     try {
       // 延迟加载避免循环依赖
       const { ProviderStore } = require('./provider-db');
-      const proxy = require('./proxy');
+      const proxy = require('../proxy/proxy');
 
       // 先关闭所有运行中的代理
       const appTypes = ["codex", "claude", "claude-desktop", "openclaw", "gemini"];

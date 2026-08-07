@@ -58,13 +58,13 @@ loadDb();
 
 // 需要先加载 utils（其他模块依赖它）
 const utils = require(path.join(PRELOAD_DIR, 'utils'));
-const configRw = require(path.join(PRELOAD_DIR, 'config-rw'));
-const { ProviderStore } = require(path.join(PRELOAD_DIR, 'provider-db'));
-const { ProfileStore } = require(path.join(PRELOAD_DIR, 'profile-db'));
-const { SessionManager } = require(path.join(PRELOAD_DIR, 'sessions'));
-const { StatsCollector } = require(path.join(PRELOAD_DIR, 'stats'));
-const { PromptManager } = require(path.join(PRELOAD_DIR, 'prompts'));
-const { BalanceManager } = require(path.join(PRELOAD_DIR, 'balance'));
+const configRw = require(path.join(PRELOAD_DIR, 'config', 'config-rw'));
+const { ProviderStore } = require(path.join(PRELOAD_DIR, 'providers', 'provider-db'));
+const { ProfileStore } = require(path.join(PRELOAD_DIR, 'providers', 'profile-db'));
+const { SessionManager } = require(path.join(PRELOAD_DIR, 'agents', 'sessions'));
+const { StatsCollector } = require(path.join(PRELOAD_DIR, 'agents', 'stats'));
+const { PromptManager } = require(path.join(PRELOAD_DIR, 'agents', 'prompts'));
+const { BalanceManager } = require(path.join(PRELOAD_DIR, 'providers', 'balance'));
 
 // 启动时标记当前供应商
 try {

@@ -1,7 +1,7 @@
 // uTools ccToggle - sessions.ts
 // 会话管理：读取各 AI 应用的本地会话数据
 
-import utils = require("./utils");
+import utils = require("../utils");
 
 const fs = utils.fs;
 const path = utils.path;

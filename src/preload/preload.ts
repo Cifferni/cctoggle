@@ -1,18 +1,18 @@
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 // uTools ccToggle - preload.ts
 // 主入口：UtoolsPreload 类，统一初始化和 API 暴露
-import { ProviderStore } from './provider-db';
-import { ProxyManager } from './proxy';
-import { McpManager } from './mcp';
-import { SessionManager } from './sessions';
-import { PromptManager } from './prompts';
-import { SkillManager } from './skills';
-import { StatsCollector } from './stats';
-import { DataMigration } from './cleanup';
-import { ConnectionTester } from './test-connection';
-import { ProfileStore } from './profile-db';
-import { BalanceManager } from './balance';
-import * as configRw from './config-rw';
+import { ProviderStore } from './providers/provider-db';
+import { ProxyManager } from './proxy/proxy';
+import { McpManager } from './agents/mcp';
+import { SessionManager } from './agents/sessions';
+import { PromptManager } from './agents/prompts';
+import { SkillManager } from './agents/skills';
+import { StatsCollector } from './agents/stats';
+import { DataMigration } from './core/cleanup';
+import { ConnectionTester } from './core/test-connection';
+import { ProfileStore } from './providers/profile-db';
+import { BalanceManager } from './providers/balance';
+import * as configRw from './config/config-rw';
 import * as utils from './utils';
 class UtoolsPreload {
   constructor() {

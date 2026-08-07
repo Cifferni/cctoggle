@@ -7,7 +7,7 @@ const http = require("http");
 const https = require("https");
 const { URL } = require("url");
 const { ipcRenderer } = require("electron");
-const { getLogger } = require("./utils.js");
+const { getLogger } = require("../utils.js");
 
 let group = null;              // 当前路由组配置
 let members = [];              // { providerId, name, baseUrl, apiKey, priority, weight, state, fails, openUntil, latency, up }
@@ -194,7 +194,7 @@ function pickMember() {
 
 // —— 协议转换器 ——
 let converter = null;
-try { converter = require("./proxy-converter.js"); } catch (e) {}
+try { converter = require("../config/proxy-converter.js"); } catch (e) {}
 
 function joinUrl(baseUrl, reqPath) {
   // 保留 baseUrl 的路径前缀（如 /v1），再拼上 reqPath
