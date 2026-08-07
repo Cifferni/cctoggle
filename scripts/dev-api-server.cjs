@@ -63,6 +63,7 @@ const { ProviderStore } = require(path.join(PRELOAD_DIR, 'provider-db'));
 const { ProfileStore } = require(path.join(PRELOAD_DIR, 'profile-db'));
 const { SessionManager } = require(path.join(PRELOAD_DIR, 'sessions'));
 const { StatsCollector } = require(path.join(PRELOAD_DIR, 'stats'));
+const { PromptManager } = require(path.join(PRELOAD_DIR, 'prompts'));
 
 // 启动时标记当前供应商
 try {
@@ -230,6 +231,75 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/stats/clear' && req.method === 'POST') {
       const body = await parseBody(req);
       return sendJson(res, StatsCollector.clearStats(body.appType));
+    }
+
+    // ─── 提示词管理 ───
+    if (pathname === '/api/prompts' && req.method === 'GET') {
+      return sendJson(res, PromptManager.listPrompts());
+    }
+
+    if (pathname === '/api/prompts' && req.method === 'POST') {
+      const body = await parseBody(req);
+      return sendJson(res, PromptManager.savePrompt(body));
+    }
+
+    if (pathname === '/api/prompts/delete' && req.method === 'POST') {
+      const body = await parseBody(req);
+      return sendJson(res, PromptManager.deletePrompt(body.id));
+    }
+
+    if (pathname === '/api/prompts/duplicate' && req.method === 'POST') {
+      const body = await parseBody(req);
+      return sendJson(res, PromptManager.duplicatePrompt(body.id));
+    }
+
+    if (pathname === '/api/prompts/original' && req.method === 'GET') {
+      const agent = url.searchParams.get('agent') || '';
+      return sendJson(res, PromptManager.readOriginalPrompt(agent));
+    }
+
+    if (pathname === '/api/prompts/original-all' && req.method === 'GET') {
+      return sendJson(res, PromptManager.readAllOriginalPrompts());
+    }
+
+    if (pathname === '/api/prompts/openclaw-files' && req.method === 'GET') {
+      return sendJson(res, PromptManager.getOpenClawPromptFiles());
+    }
+
+    if (pathname === '/api/prompts/openclaw-files/read' && req.method === 'GET') {
+      return sendJson(res, PromptManager.readOpenClawPromptFiles());
+    }
+
+    if (pathname === '/api/prompts/backup-original' && req.method === 'POST') {
+      return sendJson(res, PromptManager.backupOriginalPrompts());
+    }
+
+    if (pathname === '/api/prompts/backup-selected' && req.method === 'POST') {
+      const body = await parseBody(req);
+      return sendJson(res, PromptManager.backupSelectedPrompts(body.selections));
+    }
+
+    if (pathname === '/api/prompts/backups' && req.method === 'GET') {
+      return sendJson(res, PromptManager.getBackups());
+    }
+
+    if (pathname === '/api/prompts/restore' && req.method === 'POST') {
+      const body = await parseBody(req);
+      return sendJson(res, PromptManager.restoreOriginalPrompt(body.agent, body.fileName));
+    }
+
+    if (pathname === '/api/prompts/restore-all' && req.method === 'POST') {
+      return sendJson(res, PromptManager.restoreAllOriginalPrompts());
+    }
+
+    if (pathname === '/api/prompts/apply' && req.method === 'POST') {
+      const body = await parseBody(req);
+      return sendJson(res, PromptManager.applyPromptToAgent(body.promptId, body.agent, body.fileName));
+    }
+
+    if (pathname === '/api/prompts/toggle' && req.method === 'POST') {
+      const body = await parseBody(req);
+      return sendJson(res, PromptManager.togglePromptAgent(body.promptId, body.agent, body.fileName));
     }
 
     sendError(res, 'Not found: ' + pathname);

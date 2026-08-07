@@ -167,6 +167,8 @@ class UtoolsPreload {
       importPrompts: PromptManager.importPrompts,
       readOriginalPrompt: PromptManager.readOriginalPrompt,
       readAllOriginalPrompts: PromptManager.readAllOriginalPrompts,
+      getOpenClawPromptFiles: PromptManager.getOpenClawPromptFiles,
+      readOpenClawPromptFiles: PromptManager.readOpenClawPromptFiles,
       backupOriginalPrompts: PromptManager.backupOriginalPrompts,
       backupSelectedPrompts: PromptManager.backupSelectedPrompts,
       getBackups: PromptManager.getBackups,

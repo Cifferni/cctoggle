@@ -192,22 +192,36 @@ export function createBrowserApi() {
     clearSessionCache: () => {},
 
     // Prompt management
-    listPrompts: () => [],
-    getPrompt: () => null,
-    savePrompt: () => ({ success: true }),
-    deletePrompt: () => ({ success: true }),
-    duplicatePrompt: () => ({ success: true }),
-    exportPrompts: () => '[]',
+    listPrompts: () => {
+      const result = fetchApiSync('/prompts');
+      return Array.isArray(result) ? result : [];
+    },
+    getPrompt: (id: string) => {
+      const prompts = fetchApiSync('/prompts');
+      return (Array.isArray(prompts) ? prompts : []).find((p: any) => p.id === id) || null;
+    },
+    savePrompt: (data: any) => postApiSync('/prompts', data),
+    deletePrompt: (id: string) => postApiSync('/prompts/delete', { id }),
+    duplicatePrompt: (id: string) => postApiSync('/prompts/duplicate', { id }),
+    exportPrompts: () => {
+      const result = fetchApiSync('/prompts');
+      return JSON.stringify(Array.isArray(result) ? result : [], null, 2);
+    },
     importPrompts: () => ({ success: true, count: 0 }),
-    readOriginalPrompt: () => '',
-    readAllOriginalPrompts: () => ({}),
-    backupOriginalPrompts: () => ({ success: true, backups: {} }),
-    backupSelectedPrompts: () => ({ success: true, backups: {} }),
-    getBackups: () => ({}),
-    restoreOriginalPrompt: () => ({ success: true }),
-    restoreAllOriginalPrompts: () => ({}),
-    applyPromptToAgent: () => ({ success: true }),
-    togglePromptAgent: () => ({ success: true }),
+    readOriginalPrompt: (agent: string) => fetchApiSync(`/prompts/original?agent=${agent}`) || '',
+    readAllOriginalPrompts: () => fetchApiSync('/prompts/original-all') || {},
+    getOpenClawPromptFiles: () => {
+      const result = fetchApiSync('/prompts/openclaw-files');
+      return Array.isArray(result) ? result : ['AGENTS.md', 'SOUL.md', 'IDENTITY.md', 'USER.md', 'TOOLS.md', 'HEARTBEAT.md'];
+    },
+    readOpenClawPromptFiles: () => fetchApiSync('/prompts/openclaw-files/read') || {},
+    backupOriginalPrompts: () => postApiSync('/prompts/backup-original', {}),
+    backupSelectedPrompts: (selections: any) => postApiSync('/prompts/backup-selected', { selections }),
+    getBackups: () => fetchApiSync('/prompts/backups') || {},
+    restoreOriginalPrompt: (agent: string, fileName?: string) => postApiSync('/prompts/restore', { agent, fileName }),
+    restoreAllOriginalPrompts: () => postApiSync('/prompts/restore-all', {}),
+    applyPromptToAgent: (promptId: string, agent: string, fileName?: string) => postApiSync('/prompts/apply', { promptId, agent, fileName }),
+    togglePromptAgent: (promptId: string, agent: string, fileName?: string) => postApiSync('/prompts/toggle', { promptId, agent, fileName }),
 
     // Profile 管理
     listProfiles: () => {
