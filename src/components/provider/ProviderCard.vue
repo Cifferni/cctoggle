@@ -2,7 +2,7 @@
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { computed } from "vue";
 const props = defineProps({ provider: Object, compact: Boolean });
-const emit = defineEmits(["switch", "edit", "delete"]);
+const emit = defineEmits(["switch", "edit", "copy", "delete"]);
 const contentStyle = computed(() => props.compact ? { padding: '12px 12px' } : { padding: '8px 12px' });
 
 const proxyHint = computed(() => {
@@ -62,6 +62,7 @@ const CAT_COLORS = {
           @click="emit('switch', provider.id, $event)"
         >{{ provider.isCurrent ? '已激活' : '切换' }}</n-button>
         <n-button quaternary size="tiny" @click="emit('edit', provider.id)">编辑</n-button>
+        <n-button quaternary size="tiny" @click="emit('copy', provider.id)">复制</n-button>
         <n-popconfirm @positive-click="emit('delete', provider.id)">
           <template #trigger>
             <n-button quaternary type="error" size="tiny">删除</n-button>
@@ -89,6 +90,7 @@ const CAT_COLORS = {
           @click="emit('switch', provider.id, $event)"
         >{{ provider.isCurrent ? '已激活' : '切换' }}</n-button>
         <n-button quaternary size="tiny" @click="emit('edit', provider.id)">编辑</n-button>
+        <n-button quaternary size="tiny" @click="emit('copy', provider.id)">复制</n-button>
         <n-popconfirm @positive-click="emit('delete', provider.id)">
           <template #trigger>
             <n-button quaternary type="error" size="tiny">删除</n-button>
@@ -169,8 +171,14 @@ const CAT_COLORS = {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex-shrink: 0;
+  min-width: 0;
   color: var(--text-primary);
+}
+.compact-row1 .meta-model {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 .compact-name-model .meta-model {
   color: var(--primary-color);

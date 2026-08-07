@@ -7,6 +7,7 @@ import { themeVars } from "../composables/useTheme";
 import EChart from "../components/common/EChart.vue";
 
 const dialog = useDialog();
+const message = useMessage();
 
 const router = useRouter();
 const { APP_TYPES, APP_LABELS, filter, stats, rawDaily, refreshing, initialLoading, refresh, setAppType, setDays, clearStats, cacheHitRate } = useStats();
@@ -18,7 +19,7 @@ const DAY_OPTIONS = [
 ];
 
 // 无缓存：进页直接扫描本地日志（异步不卡 UI），切换 agent/天数在内存中过滤
-onMounted(() => { refresh(); });
+onMounted(() => { refresh().then(r => { if (r.error) message.error(r.error); }); });
 
 function fmt(n) {
   n = Number(n) || 0;
@@ -37,7 +38,10 @@ function onClear() {
     positiveText: "清除",
     negativeText: "取消",
     onPositiveClick: function () {
-      clearStats(filter.appType);
+      clearStats(filter.appType).then(function (r) {
+        if (r.success) message.success("已清除统计数据");
+        else message.error("清除失败" + (r.error ? "：" + r.error : ""));
+      });
     },
   });
 }

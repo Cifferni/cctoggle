@@ -1,5 +1,4 @@
 import { ref } from 'vue'
-import { appMessage } from './useAppMessage'
 import { PRESETS as BUILT_IN_PRESETS } from '../data/presets'
 import { useRoutes } from './useRoutes'
 import { APP_TYPES, APP_LABELS, APP_ICONS, getSkillNest, toPlain } from './shared'
@@ -64,14 +63,18 @@ function switchProvider(id: string) {
   if (r.success) {
     try { getSkillNest().setLastActiveApp?.(tab) } catch (e) { /* ignore */ }
     loadProviders()
-    appMessage.success('已切换到 ' + r.providerName)
   }
   return r
 }
 
 function saveProvider(data: Partial<Provider>): void {
-  getSkillNest().saveProvider(activeTab(), toPlain(data))
+  const tab = activeTab()
+  const r = getSkillNest().saveProvider(tab, toPlain(data))
   loadProviders()
+  // 有实际改动且编辑的是当前激活供应商时，立即重写 CLI 配置使改动生效
+  if (r?.changed && data.id && providers.value.find(p => p.id === data.id)?.isCurrent) {
+    getSkillNest().reapplyCurrent?.(tab)
+  }
 }
 
 function deleteProvider(id: string): void {
@@ -131,6 +134,22 @@ function getFullProvider(id: string): Provider | null {
   return getSkillNest().getProvider(activeTab(), id)
 }
 
+function copyProvider(id: string): { success: boolean; name?: string; error?: string } {
+  const full = getFullProvider(id)
+  if (!full) {
+    return { success: false, error: '未找到该供应商' }
+  }
+  const copy: Partial<Provider> = Object.assign({}, full)
+  delete copy.id
+  delete copy.appType
+  copy.isCurrent = false
+  copy.name = (full.name || 'Unnamed') + ' (copy)'
+  copy.createdAt = ''
+  copy.sortOrder = 0
+  saveProvider(copy)
+  return { success: true, name: copy.name }
+}
+
 const paths = {
   get codexAuth(): string { return getSkillNest().paths?.codexAuth || '' },
   get codexConfig(): string { return getSkillNest().paths?.codexConfig || '' },
@@ -154,7 +173,7 @@ export function useProviders() {
     APP_TYPES, APP_LABELS, APP_ICONS, PRESETS,
     activeTab, setActiveTab, providers, paths,
     loadProviders, switchProvider,
-    saveProvider, deleteProvider, importPreset, getFullProvider,
+    saveProvider, deleteProvider, copyProvider, importPreset, getFullProvider,
     presetToProviderData,
   }
 }

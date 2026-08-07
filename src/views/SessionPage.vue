@@ -87,7 +87,9 @@ function onDelete(session) {
     positiveText: "删除",
     negativeText: "取消",
     onPositiveClick: function () {
-      deleteSession(session);
+      const result = deleteSession(session);
+      if (result.success) message.success("会话已删除");
+      else message.error("删除失败：" + (result.error || "未知错误"));
     },
   });
 }
@@ -100,7 +102,12 @@ function onClear() {
     positiveText: "清空",
     negativeText: "取消",
     onPositiveClick: function () {
-      clearSessions();
+      clearSessions().then(function (r) {
+        if (!r) return;
+        if (r.empty) { message.info("没有可清空的会话"); return; }
+        if (r.success) message.success("已清空 " + r.count + " 个会话");
+        else message.error("清空失败");
+      });
     },
   });
 }
@@ -110,7 +117,15 @@ function onView(session) {
 }
 
 function onExport(session) {
-  exportSession(session, "json");
+  const r = exportSession(session, "json");
+  if (r && r.success) message.success(r.clipboard ? "已复制到剪贴板" : "导出成功");
+  else if (r && r.error) message.error(r.error);
+}
+
+function onExportAll() {
+  const r = exportAllSessions("json");
+  if (r && r.success) message.success(r.clipboard ? "已复制到剪贴板" : "导出成功");
+  else if (r && r.error) message.error(r.error);
 }
 
 function onCopyTo(targetApp) {
@@ -132,7 +147,7 @@ function onCopyTo(targetApp) {
     <n-page-header title="会话管理" @back="router.back()">
       <template #extra>
         <n-space :size="6">
-          <n-button size="small" quaternary @click="exportAllSessions('json')">导出</n-button>
+          <n-button size="small" quaternary @click="onExportAll">导出</n-button>
           <n-button size="small" quaternary type="error" @click="onClear">清空</n-button>
         </n-space>
       </template>

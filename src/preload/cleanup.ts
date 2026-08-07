@@ -1,6 +1,8 @@
 // uTools ccToggle - cleanup.ts
 // 数据清理 / 迁移逻辑（幂等，无需版本号）
 
+import * as cryptoApi from './crypto';
+
 export class DataMigration {
   static cleanMcpMapping(mapping: any, configs: any, allApps: string[]): boolean {
     let changed = false;
@@ -24,6 +26,7 @@ export class DataMigration {
     DataMigration.migrateSkillnestDir();
     DataMigration.migrateToProfileStructure();
     DataMigration.migrateLastActiveApp();
+    DataMigration.migrateApiKeysToProfile();
     DataMigration.cleanStaleProxyDocs();
   }
 
@@ -141,6 +144,54 @@ export class DataMigration {
       console.log("[Cleanup] Migrated lastActiveApp into profiles");
     } catch (e: any) {
       console.error("[Cleanup] lastActiveApp migration failed:", e.message);
+    }
+  }
+
+  /** API Key 从 dbCryptoStorage 迁入 profile（幂等）：
+   *  profile 中已有 encryptedApiKey → 跳过；无则从旧 Key 加密写入，最后统一删除旧 Key（先写后删） */
+  static migrateApiKeysToProfile(): void {
+    try {
+      const docs = utools.db.allDocs("cctoggle_profile_") || [];
+      const keysToRemove: string[] = [];
+      let migratedKeys = 0;
+
+      docs.forEach(function (doc: any) {
+        const providers = doc.providers || {};
+        let changed = false;
+
+        Object.keys(providers).forEach(function (appType) {
+          const appProviders = providers[appType] || {};
+          Object.keys(appProviders).forEach(function (providerId) {
+            const provider = appProviders[providerId];
+            if (!provider || provider.encryptedApiKey) return; // 已迁移/无 provider
+
+            let oldKey = "";
+            try {
+              oldKey = utools.dbCryptoStorage.getItem("apikey_" + appType + "_" + providerId) || "";
+            } catch (e) {}
+            if (!oldKey) return; // 无旧 Key → 跳过
+
+            provider.encryptedApiKey = cryptoApi.encryptSecret(oldKey);
+            if (keysToRemove.indexOf("apikey_" + appType + "_" + providerId) === -1) {
+              keysToRemove.push("apikey_" + appType + "_" + providerId);
+            }
+            migratedKeys++;
+            changed = true;
+          });
+        });
+
+        if (changed) utools.db.put(doc); // 先写 profile
+      });
+
+      // 后删旧 Key
+      if (migratedKeys > 0) {
+        keysToRemove.forEach(function (key) {
+          try { utools.dbCryptoStorage.removeItem(key); } catch (e) {}
+        });
+        console.log("[Cleanup] Migrated " + migratedKeys + " api keys into profiles, removed " + keysToRemove.length + " old keys");
+      }
+    } catch (e: any) {
+      console.error("[Cleanup] api key migration failed:", e.message);
     }
   }
 

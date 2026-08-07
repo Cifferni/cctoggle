@@ -3,6 +3,7 @@
 
 import * as utils from './utils';
 import * as configRw from './config-rw';
+import * as cryptoApi from './crypto';
 
 export class ProviderStore {
   /** 延迟加载 ProfileStore 避免循环依赖 */
@@ -53,7 +54,21 @@ export class ProviderStore {
       const profile = ProviderStore.ProfileStore.getActiveProfile();
       const p = ((profile.providers || {})[appType] || {})[providerId];
       if (!p) return null;
-      const apiKey = utools.dbCryptoStorage.getItem("apikey_" + appType + "_" + providerId) || "";
+
+      // 从 profile 中的密文解密；失败/无密文时兜底回读旧 dbCryptoStorage Key
+      let apiKey = "";
+      if (p.encryptedApiKey) {
+        try {
+          apiKey = cryptoApi.decryptSecret(p.encryptedApiKey);
+        } catch (e: any) {
+          console.error("[ProviderStore] Failed to decrypt apiKey:", appType, providerId, e.message);
+          apiKey = "";
+        }
+      }
+      if (!apiKey && cryptoApi.isCryptoStorageKey(appType, providerId)) {
+        apiKey = cryptoApi.getCryptoStorageKey(appType, providerId);
+      }
+
       return {
         id: providerId,
         appType: appType,
@@ -100,13 +115,31 @@ export class ProviderStore {
     }
   }
 
-  /** 将单个供应商写入 active profile */
-  static saveProvider(appType: string, providerData: any): string {
+  /** 将单个供应商写入 active profile，返回 { id, changed }；数据无改动时跳过写入 */
+  static saveProvider(appType: string, providerData: any): { id: string; changed: boolean } {
     const id = providerData.id || utils.generateId();
     const apiKey = providerData.apiKey || "";
 
     const profile = ProviderStore.ProfileStore.getActiveProfile();
     const existing = ((profile.providers || {})[appType] || {})[id];
+
+    // 计算加密后的 Key：
+    // - 明文未变化（含未填写）时沿用现有密文，避免无效重加密导致误判为"已改动"
+    // - 明文变化/无现有时才重新加密，写入 profile
+    let encryptedApiKey = "";
+    if (apiKey) {
+      let oldPlain = "";
+      if (existing && existing.encryptedApiKey) {
+        try { oldPlain = cryptoApi.decryptSecret(existing.encryptedApiKey); } catch (e) { oldPlain = ""; }
+      }
+      if (oldPlain === apiKey) {
+        encryptedApiKey = existing.encryptedApiKey || "";
+      } else {
+        encryptedApiKey = cryptoApi.encryptSecret(apiKey);
+      }
+    } else if (existing && existing.encryptedApiKey) {
+      encryptedApiKey = existing.encryptedApiKey;
+    }
 
     const provider: Record<string, any> = {
       name: providerData.name || "Unnamed",
@@ -145,7 +178,15 @@ export class ProviderStore {
       isCurrent: providerData.isCurrent !== undefined ? providerData.isCurrent : (existing ? existing.isCurrent : false),
       sortOrder: providerData.sortOrder !== undefined ? providerData.sortOrder : (existing ? existing.sortOrder : 0),
       createdAt: providerData.createdAt || (existing ? existing.createdAt : new Date().toISOString()),
+      encryptedApiKey: encryptedApiKey,
     };
+
+    // 数据与加密 Key 均无改动时跳过写入，避免触发无意义的配置重应用
+    if (existing) {
+      if (JSON.stringify(provider) === JSON.stringify(existing)) {
+        return { id: id, changed: false };
+      }
+    }
 
     // 更新 profile 中的供应商
     const providers = Object.assign({}, profile.providers || {});
@@ -160,12 +201,7 @@ export class ProviderStore {
       providers: providers,
     });
 
-    // API Key 独立加密存储
-    if (apiKey) {
-      utools.dbCryptoStorage.setItem("apikey_" + appType + "_" + id, apiKey);
-    }
-
-    return id;
+    return { id: id, changed: true };
   }
 
   static deleteProvider(appType: string, providerId: string): boolean {
@@ -182,9 +218,6 @@ export class ProviderStore {
         providers: providers,
       });
     }
-
-    // 清理加密存储的 API Key
-    utools.dbCryptoStorage.removeItem("apikey_" + appType + "_" + providerId);
 
     // 清理关联的路由组
     try {

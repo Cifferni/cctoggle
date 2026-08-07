@@ -145,8 +145,8 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === '/api/provider' && req.method === 'POST') {
       const body = await parseBody(req);
-      const id = ProviderStore.saveProvider(body.appType, body.data);
-      return sendJson(res, { success: true, id });
+      const result = ProviderStore.saveProvider(body.appType, body.data);
+      return sendJson(res, { success: true, id: result.id, changed: result.changed });
     }
 
     if (pathname === '/api/provider-delete' && req.method === 'POST') {

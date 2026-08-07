@@ -2,7 +2,7 @@
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { computed, onMounted, ref, h } from "vue";
 import { useRouter } from "vue-router";
-import { BuildOutline, SettingsOutline, CubeOutline, StatsChartOutline, ChatbubblesOutline, DocumentTextOutline, FolderOutline, GlobeOutline, ChevronDownOutline, AddOutline, ListOutline, BriefcaseOutline, CodeOutline, RocketOutline, StarOutline, FlagOutline, BookmarkOutline, HomeOutline, TerminalOutline, CloudOutline, FlashOutline, TrophyOutline } from "@vicons/ionicons5";
+import { BuildOutline, SettingsOutline, CubeOutline, StatsChartOutline, ChatbubblesOutline, DocumentTextOutline, FolderOutline, GlobeOutline, ChevronDownOutline, AddOutline, ListOutline, BriefcaseOutline, CodeOutline, RocketOutline, StarOutline, FlagOutline, BookmarkOutline, HomeOutline, TerminalOutline, CloudOutline, FlashOutline, TrophyOutline, DesktopOutline } from "@vicons/ionicons5";
 import { useProviders } from "../../composables/useProviders";
 import { useRoutes } from "../../composables/useRoutes";
 import { useProfiles } from "../../composables/useProfiles";
@@ -178,6 +178,20 @@ function providerSummary(p) {
   }).join(" | ");
 }
 
+// ── 更多导航 ──
+
+const moreNavOptions = [
+  { label: "用量统计", key: "/stats", icon: () => h(NIcon, { size: 14 }, { default: () => h(StatsChartOutline) }) },
+  { label: "提示词管理", key: "/prompts", icon: () => h(NIcon, { size: 14 }, { default: () => h(DocumentTextOutline) }) },
+  { label: "Skill管理", key: "/skills", icon: () => h(NIcon, { size: 14 }, { default: () => h(BuildOutline) }) },
+  { label: "MCP管理", key: "/mcp", icon: () => h(NIcon, { size: 14 }, { default: () => h(CubeOutline) }) },
+  { label: "会话管理", key: "/sessions", icon: () => h(NIcon, { size: 14 }, { default: () => h(ChatbubblesOutline) }) },
+];
+
+function onMoreNavSelect(key) {
+  router.push(key);
+}
+
 // ── 代理 ──
 
 const proxyOn = computed(() => !!runtime[activeTab()]?.running);
@@ -229,10 +243,22 @@ function onToggleProxy() {
         :tab="APP_LABELS[t]"
       >
         <template #tab>
-          <span class="tab-label">
-            <img :src="APP_ICONS[t]" :alt="APP_LABELS[t]" class="tab-icon-img" />
+          <n-tooltip :theme-overrides="{ color: 'var(--primary)', textColor: '#fff' }" placement="bottom" :show-arrow="false">
+            <template #trigger>
+              <span class="tab-label">
+                <span class="tab-icon-wrap">
+                  <img :src="APP_ICONS[t]" :alt="APP_LABELS[t]" class="tab-icon-img" />
+                  <span v-if="t === 'claude'" class="tab-icon-badge" title="CLI">
+                    <n-icon :size="9"><terminal-outline /></n-icon>
+                  </span>
+                  <span v-else-if="t === 'claude-desktop'" class="tab-icon-badge" title="桌面端">
+                    <n-icon :size="9"><desktop-outline /></n-icon>
+                  </span>
+                </span>
+              </span>
+            </template>
             {{ APP_LABELS[t] }}
-          </span>
+          </n-tooltip>
         </template>
       </n-tab-pane>
     </n-tabs>
@@ -263,21 +289,12 @@ function onToggleProxy() {
       </div>
     </label>
 
-    <button class="nav-btn" title="用量统计" @click="router.push('/stats')">
-      <n-icon :size="15"><stats-chart-outline /></n-icon>
-    </button>
-    <button class="nav-btn" title="提示词管理" @click="router.push('/prompts')">
-      <n-icon :size="15"><document-text-outline /></n-icon>
-    </button>
-    <button class="nav-btn" title="Skill管理" @click="router.push('/skills')">
-      <n-icon :size="15"><build-outline /></n-icon>
-    </button>
-    <button class="nav-btn" title="MCP管理" @click="router.push('/mcp')">
-      <n-icon :size="15"><cube-outline /></n-icon>
-    </button>
-    <button class="nav-btn" title="会话管理" @click="router.push('/sessions')">
-      <n-icon :size="15"><chatbubbles-outline /></n-icon>
-    </button>
+    <n-dropdown :options="moreNavOptions" trigger="hover" placement="bottom-end" @select="onMoreNavSelect">
+      <button class="nav-btn nav-btn--text" title="工具">
+        <span class="nav-btn-label">工具</span>
+        <n-icon :size="10" class="nav-btn-caret"><chevron-down-outline /></n-icon>
+      </button>
+    </n-dropdown>
     <button class="nav-btn" title="设置" @click="router.push('/settings')">
       <n-icon :size="15"><settings-outline /></n-icon>
     </button>
@@ -401,7 +418,26 @@ function onToggleProxy() {
 .app-tabs :deep(.n-tabs-nav-scroll-content) { height: 36px; border: none !important; }
 .app-tabs :deep(.n-tabs-bar) { background-color: var(--primary) !important; }
 .tab-label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
-.tab-icon-img { width: 14px; height: 14px; vertical-align: middle; object-fit: contain; }
+.tab-icon-wrap { position: relative; display: inline-flex; flex-shrink: 0; }
+.tab-icon-img {
+  width: 16px; height: 16px;
+  vertical-align: middle; object-fit: contain;
+  display: block;
+}
+.tab-icon-badge {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--border);
+  line-height: 1;
+}
 .tab-divider { flex: 1; min-width: 4px; }
 .nav-btn {
   display: inline-flex;
@@ -412,8 +448,16 @@ function onToggleProxy() {
   color: var(--text-secondary);
   cursor: pointer; border-radius: 6px;
   transition: all .15s;
+  flex-shrink: 0;
 }
 .nav-btn:hover { background: var(--bg-card); color: var(--text); }
+.nav-btn--text {
+  width: auto;
+  padding: 0 8px;
+  gap: 3px;
+}
+.nav-btn-label { font-size: 12px; font-weight: 500; white-space: nowrap; }
+.nav-btn-caret { flex-shrink: 0; opacity: 0.6; }
 .proxy-switch { display: flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; }
 .proxy-label { font-size: 12px; font-weight: 500; color: var(--text-secondary); white-space: nowrap; }
 

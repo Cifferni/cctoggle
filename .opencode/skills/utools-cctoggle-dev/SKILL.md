@@ -123,6 +123,7 @@ uTools 预加载环境提供：
 - TypeScript 类型注解，移除 `@ts-nocheck`
 - `config-rw.ts` 和 `utils.ts` 使用 ES `export` 语法
 - proxy-daemon.ts 和 proxy-converter.ts 在独立 BrowserWindow 中运行，保持函数式
+- 提示/弹窗统一用 useMessage()/useDialog()，composable 不弹提示只返回结果（详见 references/frontend.md）
 - API 接口保持不变，前端无需修改
 
 ## ⚠️ API 同步规则（重要）

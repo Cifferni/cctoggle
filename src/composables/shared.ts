@@ -14,7 +14,7 @@ export const APP_OPTIONS = [
 export const APP_LABELS: Record<string, string> = {
   codex: 'Codex',
   claude: 'Claude',
-  'claude-desktop': 'Desktop',
+  'claude-desktop': 'Claude Desktop',
   openclaw: 'OpenClaw',
   gemini: 'Gemini',
   all: '全部',

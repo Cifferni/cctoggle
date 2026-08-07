@@ -23,6 +23,7 @@ export interface Provider {
   name: string
   baseUrl: string
   apiKey?: string
+  encryptedApiKey?: string
   model: string
   models: string[]
   websiteUrl: string
@@ -430,7 +431,7 @@ export interface UtoolsCctoggle {
   // 供应商 CRUD
   listProviders(appType: AppType): Provider[]
   getProvider(appType: AppType, providerId: string): Provider | null
-  saveProvider(appType: AppType, providerData: Partial<Provider>): string
+  saveProvider(appType: AppType, providerData: Partial<Provider>): { id: string; changed: boolean }
   deleteProvider(appType: AppType, providerId: string): void
 
   // 供应商切换

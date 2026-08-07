@@ -1,6 +1,5 @@
 // composables/useSession.ts
 import { ref, computed, nextTick } from 'vue'
-import { appMessage } from './useAppMessage'
 import { getSkillNest, APP_ICONS } from './shared'
 import type { SessionMeta, SessionMessage, ScanSessionsResult } from '../types/utools-cctoggle'
 
@@ -189,31 +188,24 @@ export function useSession() {
     if (result.success) {
       sessions.value = sessions.value.filter(s => s.id !== session.id)
       total.value = Math.max(0, total.value - 1)
-      appMessage.success('会话已删除')
-    } else {
-      appMessage.error('删除失败：' + (result.error || '未知错误'))
     }
     return result
   }
 
-  async function clearSessions(app?: string): Promise<void> {
+  // 返回 { empty } 表示无可清空的会话，由调用方提示
+  async function clearSessions(app?: string) {
     const target = app || activeApp.value
     const toDelete = sessions.value.filter(s => s.app === target)
     if (toDelete.length === 0) {
-      appMessage.info('没有可清空的会话')
-      return
+      return { success: false, empty: true }
     }
     const filePaths = toDelete.map(s => s.filePath)
     const result = getSkillNest().clearAllSessions(filePaths)
     await loadPage()
-    if (result.success) {
-      appMessage.success('已清空 ' + result.count + ' 个会话')
-    } else {
-      appMessage.error('清空失败')
-    }
+    return result
   }
 
-  function exportSession(session: SessionMeta, format: string): void {
+  function exportSession(session: SessionMeta, format: string) {
     let data: string
     let ext: string
     if (format === 'markdown') {
@@ -235,19 +227,20 @@ export function useSession() {
       })
       if (savePath) {
         require('fs').writeFileSync(savePath, data, 'utf8')
-        appMessage.success('导出成功')
+        return { success: true }
       }
+      return { success: false }
     } catch (e) {
       try {
         utools.copyText(data)
-        appMessage.success('已复制到剪贴板')
+        return { success: true, clipboard: true }
       } catch (e2) {
-        appMessage.error('导出失败')
+        return { success: false, error: '导出失败' }
       }
     }
   }
 
-  function exportAllSessions(format: string): void {
+  function exportAllSessions(format: string) {
     const allData = sessions.value.map(s => Object.assign({}, s, { filePath: undefined }))
     const data = JSON.stringify({
       exportedAt: new Date().toISOString(),
@@ -261,14 +254,15 @@ export function useSession() {
       })
       if (savePath) {
         require('fs').writeFileSync(savePath, data, 'utf8')
-        appMessage.success('导出成功')
+        return { success: true }
       }
+      return { success: false }
     } catch (e) {
       try {
         utools.copyText(data)
-        appMessage.success('已复制到剪贴板')
+        return { success: true, clipboard: true }
       } catch (e2) {
-        appMessage.error('导出失败')
+        return { success: false, error: '导出失败' }
       }
     }
   }

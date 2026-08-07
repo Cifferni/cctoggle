@@ -2,11 +2,13 @@
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { ref, computed, onMounted, onUnmounted, nextTick } from "vue";
 import { useProviders } from "../composables/useProviders";
+import { getSkillNest } from "../composables/shared";
 import TabBar from "../components/common/TabBar.vue";
 import ProviderCard from "../components/provider/ProviderCard.vue";
 import ProviderForm from "../components/provider/ProviderForm.vue";
 
-const { providers, loadProviders, switchProvider, saveProvider, deleteProvider, getFullProvider } = useProviders();
+const message = useMessage();
+const { providers, activeTab, loadProviders, switchProvider, saveProvider, deleteProvider, copyProvider, getFullProvider } = useProviders();
 const showForm = ref(false), editingId = ref(null), formInitialData = ref(null);
 
 const currentProvider = computed(() => providers.value.find(p => p.isCurrent));
@@ -22,18 +24,33 @@ let flipTimer = null;
 onUnmounted(() => { if (flipTimer) clearTimeout(flipTimer); });
 
 function onAdd() { editingId.value = null; formInitialData.value = null; showForm.value = true; }
-function onEdit(id) { editingId.value = id; formInitialData.value = getFullProvider(id); showForm.value = true; }
+function onEdit(id) {
+  // 代理运行中禁止编辑已激活供应商：保存不会重写 CLI 配置，改动不生效，避免误导
+  const p = providers.value.find(x => x.id === id);
+  if (p?.isCurrent && getSkillNest().getProxyStatus?.(activeTab())?.running) {
+    message.warning("代理运行中，已激活供应商不可编辑，请先停止代理");
+    return;
+  }
+  editingId.value = id; formInitialData.value = getFullProvider(id); showForm.value = true;
+}
 function onSave(data) {
   if (editingId.value) { data.id = editingId.value; data.sortOrder = providers.value.find(p => p.id === editingId.value)?.sortOrder || 0; }
   saveProvider(data); showForm.value = false; editingId.value = null;
 }
 
+function onCopy(id) {
+  const r = copyProvider(id);
+  if (r.success) message.success("已复制 " + r.name);
+  else message.warning(r.error);
+}
+
 function onSwitch(id, event) {
-  if (!event) return switchProvider(id);
+  const r = switchProvider(id);
+  if (r?.success) message.success("已切换到 " + r.providerName);
+  if (!event) return r;
 
   const clickedCard = event.currentTarget.closest('.provider-card') || event.currentTarget;
   const firstRect = clickedCard.getBoundingClientRect();
-  switchProvider(id);
 
   nextTick(() => {
     const heroEl = document.querySelector('.hero-card .provider-card');
@@ -70,7 +87,7 @@ function onSwitch(id, event) {
 
       <template v-else>
         <div class="hero-card" :class="{ 'is-flipping': isFlipping }" :style="isFlipping ? flipStyle : {}">
-          <ProviderCard v-if="currentProvider" :key="currentProvider.id" :provider="currentProvider" @switch="onSwitch" @edit="onEdit" @delete="deleteProvider" />
+          <ProviderCard v-if="currentProvider" :key="currentProvider.id" :provider="currentProvider" @switch="onSwitch" @edit="onEdit" @copy="onCopy" @delete="deleteProvider" />
         </div>
 
         <div v-if="otherProviders.length" class="providers-section">
@@ -80,7 +97,7 @@ function onSwitch(id, event) {
           </div>
           <n-grid :cols="2" :x-gap="8" :y-gap="8" responsive="screen" :item-responsive="true">
             <n-gi v-for="p in otherProviders" :key="p.id" :span="1">
-              <ProviderCard :provider="p" compact @switch="onSwitch" @edit="onEdit" @delete="deleteProvider" />
+              <ProviderCard :provider="p" compact @switch="onSwitch" @edit="onEdit" @copy="onCopy" @delete="deleteProvider" />
             </n-gi>
           </n-grid>
         </div>

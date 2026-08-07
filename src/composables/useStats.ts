@@ -1,5 +1,4 @@
 import { reactive, ref } from 'vue'
-import { appMessage } from './useAppMessage'
 import { APP_TYPES, APP_LABELS, getSkillNest } from './shared'
 import type { DailyUsage, UsageBucket } from '../types/utools-cctoggle'
 
@@ -93,18 +92,19 @@ function applyFilter(): void {
   stats.value = { totals, daily, models: modelList }
 }
 
-// 扫描本地 CLI 日志
-async function refresh(): Promise<void> {
-  if (refreshing.value) return
+// 扫描本地 CLI 日志，返回 { error? } 由调用方提示
+async function refresh(): Promise<{ error?: string }> {
+  if (refreshing.value) return {}
   refreshing.value = true
   try {
     const api = getSkillNest()
     const r = (await api.scanUsageLogs()) || { daily: [] }
-    if (r.error) { appMessage.error('扫描出错：' + r.error); return }
+    if (r.error) { return { error: '扫描出错：' + r.error } }
     rawDaily.value = r.daily || []
     applyFilter()
+    return {}
   } catch (e: any) {
-    appMessage.error('扫描失败：' + (e?.message || String(e)))
+    return { error: '扫描失败：' + (e?.message || String(e)) }
   } finally {
     refreshing.value = false
     initialLoading.value = false
@@ -117,10 +117,7 @@ function setDays(d: number): void { filter.days = d; applyFilter() }
 async function clearStats(appType?: string) {
   const r = getSkillNest().clearStats(appType || 'all') || { success: false }
   if (r.success) {
-    appMessage.success('已清除统计数据')
     await refresh()
-  } else {
-    appMessage.error('清除失败' + (r.error ? '：' + r.error : ''))
   }
   return r
 }

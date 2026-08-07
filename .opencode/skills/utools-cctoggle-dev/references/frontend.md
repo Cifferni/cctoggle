@@ -79,3 +79,10 @@ if (import.meta.env.DEV) {
 - `utools.onPluginEnter` / `utools.onPluginOut` 处理生命周期
 
 `src/utils/openUrl.ts` 处理外部链接打开（uTools 环境 vs 浏览器）。
+
+## 提示 / 弹窗规范
+
+- 统一用 `useMessage()` / `useDialog()`（App.vue 中 `<n-message-provider>` / `<n-dialog-provider>` 的注入实例，naive-ui auto-import，无需手写 import）
+- **composable 禁止弹提示**：只返回结果对象（如 `{ success, error?, ... }`），由组件根据返回值自行 `message.xxx()`
+- 禁止 `createDiscreteApi`：它挂载独立容器，与注入实例混用时提示互相重叠，且不跟随主题
+- 全局单例桥接（setup 外持有注入实例）同样禁止，保持单向数据流：composable 返回 → 组件提示
