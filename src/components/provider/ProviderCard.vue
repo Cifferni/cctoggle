@@ -1,13 +1,23 @@
 <script setup lang="ts">
 // @ts-nocheck TODO: 逐步添加类型注解后移除
 import { computed } from "vue";
-import { EllipsisHorizontalOutline } from "@vicons/ionicons5";
+import { EllipsisHorizontalOutline, SwapHorizontalOutline, CreateOutline, CopyOutline, TrashOutline, RefreshOutline } from "@vicons/ionicons5";
 import { NIcon } from "naive-ui";
 import BalanceCard from "./BalanceCard.vue";
 const props = defineProps({ provider: Object, compact: Boolean, balance: Object, lowThreshold: Number });
 const emit = defineEmits(["switch", "edit", "copy", "delete", "refresh"]);
 const dialog = useDialog();
-const contentStyle = computed(() => props.compact ? { padding: '12px 12px' } : { padding: '8px 12px' });
+const contentStyle = computed(() => {
+  if (props.provider?.isCurrent) return { padding: '6px 12px' };
+  return props.compact ? { padding: '12px 12px' } : { padding: '8px 12px' };
+});
+
+const balanceLow = computed(() => {
+  const r = props.balance?.result;
+  if (!r?.success || r.balance == null) return false;
+  const threshold = props.lowThreshold != null ? Number(props.lowThreshold) : 5;
+  return r.balance < threshold;
+});
 
 const moreOptions = [
   { label: "复制", key: "copy" },
@@ -78,54 +88,154 @@ const CAT_COLORS = {
           </div>
         </div>
         <n-space :size="4" align="center" :wrap="false" class="provider-actions">
-          <n-button
-            :type="provider.isCurrent ? 'default' : 'primary'"
-            :secondary="provider.isCurrent"
-            size="tiny"
-            :disabled="provider.isCurrent"
-            @click="emit('switch', provider.id, $event)"
-          >{{ provider.isCurrent ? '已激活' : '切换' }}</n-button>
-          <n-button quaternary size="tiny" @click="emit('edit', provider.id)">编辑</n-button>
-          <n-button quaternary size="tiny" @click="emit('copy', provider.id)">复制</n-button>
+          <n-tooltip v-if="provider.balance && provider.balance.enabled" :theme-overrides="{ color: 'var(--primary)', textColor: '#fff' }" trigger="hover" placement="top">
+            <template #trigger>
+              <n-button
+                circle
+                quaternary
+                size="tiny"
+                :disabled="balance?.loading"
+                @click="emit('refresh', provider.id)"
+              >
+                <n-icon :size="14"><RefreshOutline /></n-icon>
+              </n-button>
+            </template>
+            {{ balance?.loading ? '查询中' : '刷新余额' }}
+          </n-tooltip>
+          <n-tooltip :theme-overrides="{ color: 'var(--primary)', textColor: '#fff' }" trigger="hover" placement="top">
+            <template #trigger>
+              <n-button
+                circle
+                quaternary
+                :type="provider.isCurrent ? 'default' : 'primary'"
+                :secondary="provider.isCurrent"
+                size="tiny"
+                :disabled="provider.isCurrent"
+                @click="emit('switch', provider.id, $event)"
+              >
+                <n-icon :size="14"><SwapHorizontalOutline /></n-icon>
+              </n-button>
+            </template>
+            {{ provider.isCurrent ? '已激活' : '切换' }}
+          </n-tooltip>
+          <n-tooltip :theme-overrides="{ color: 'var(--primary)', textColor: '#fff' }" trigger="hover" placement="top">
+            <template #trigger>
+              <n-button circle quaternary size="tiny" @click="emit('edit', provider.id)">
+                <n-icon :size="14"><CreateOutline /></n-icon>
+              </n-button>
+            </template>
+            编辑
+          </n-tooltip>
+          <n-tooltip :theme-overrides="{ color: 'var(--primary)', textColor: '#fff' }" trigger="hover" placement="top">
+            <template #trigger>
+              <n-button circle quaternary size="tiny" @click="emit('copy', provider.id)">
+                <n-icon :size="14"><CopyOutline /></n-icon>
+              </n-button>
+            </template>
+            复制
+          </n-tooltip>
           <n-popconfirm @positive-click="emit('delete', provider.id)">
             <template #trigger>
-              <n-button quaternary type="error" size="tiny">删除</n-button>
+              <n-tooltip :theme-overrides="{ color: 'var(--primary)', textColor: '#fff' }" trigger="hover" placement="top">
+                <template #trigger>
+                  <n-button circle quaternary type="error" size="tiny">
+                    <n-icon :size="14"><TrashOutline /></n-icon>
+                  </n-button>
+                </template>
+                删除
+              </n-tooltip>
             </template>
             确定删除该供应商？
           </n-popconfirm>
         </n-space>
       </div>
 
-      <!-- Compact grid layout -->
-      <div v-else class="compact-grid">
-        <div class="compact-info">
-          <div class="compact-row1">
+      <!-- Compact layout: 信息在上，底部一行 = 余额(含刷新) + 操作按钮 -->
+      <div v-else class="compact-layout">
+        <div class="compact-row1">
+          <div class="compact-name-wrap">
             <n-text strong class="compact-name">{{ provider.name }}</n-text>
-            <span class="meta-model">{{ provider.model }}</span>
+            <template v-if="provider.isCurrent">
+              <n-tag type="success" size="tiny" round :bordered="false">当前</n-tag>
+              <n-tag
+                v-if="provider.category && provider.category !== 'custom'"
+                size="tiny" round :bordered="false"
+                :color="CAT_COLORS[provider.category]"
+              >{{ CAT_LABELS[provider.category] }}</n-tag>
+              <n-tag size="tiny" :bordered="false">{{ provider.configType }}</n-tag>
+              <n-tooltip v-if="proxyHint" trigger="hover">
+                <template #trigger>
+                  <n-tag size="tiny" round :bordered="false" :type="proxyHint.level === 'required' ? 'error' : 'info'">{{ proxyHint.label }}</n-tag>
+                </template>
+                {{ proxyHint.tip }}
+              </n-tooltip>
+            </template>
           </div>
-          <div class="compact-row2" :title="provider.remark">{{ provider.remark || '' }}</div>
+          <span class="meta-model">{{ provider.model }}</span>
         </div>
-        <n-space :size="4" align="center" :wrap="false" class="compact-actions">
-          <n-button
-            :type="provider.isCurrent ? 'default' : 'primary'"
-            :secondary="provider.isCurrent"
-            size="tiny"
-            :disabled="provider.isCurrent"
-            @click="emit('switch', provider.id, $event)"
-          >{{ provider.isCurrent ? '已激活' : '切换' }}</n-button>
-          <n-button quaternary size="tiny" @click="emit('edit', provider.id)">编辑</n-button>
-          <n-dropdown :options="moreOptions" trigger="click" size="small" @select="onMoreSelect">
-            <n-button quaternary size="tiny" circle>
-              <n-icon :size="14"><EllipsisHorizontalOutline /></n-icon>
-            </n-button>
-          </n-dropdown>
-        </n-space>
+        <div class="compact-row2" :title="provider.remark">{{ provider.remark || '' }}</div>
+        <div class="compact-bottom" :class="{ 'compact-bottom--low': balanceLow }">
+          <BalanceCard
+            v-if="provider.balance && provider.balance.enabled"
+            class="compact-balance"
+            :provider="provider"
+            :balance="balance"
+            :low-threshold="lowThreshold"
+            :compact="compact"
+            @refresh="emit('refresh', provider.id)"
+          />
+          <n-space :size="4" align="center" :wrap="false" class="compact-actions">
+            <n-tooltip v-if="provider.balance && provider.balance.enabled" :theme-overrides="{ color: 'var(--primary)', textColor: '#fff' }" trigger="hover" placement="top">
+              <template #trigger>
+                <n-button
+                  circle
+                  quaternary
+                  size="tiny"
+                  :disabled="balance?.loading"
+                  @click="emit('refresh', provider.id)"
+                >
+                  <n-icon :size="14"><RefreshOutline /></n-icon>
+                </n-button>
+              </template>
+              {{ balance?.loading ? '查询中' : '刷新余额' }}
+            </n-tooltip>
+            <n-tooltip :theme-overrides="{ color: 'var(--primary)', textColor: '#fff' }" trigger="hover" placement="top">
+              <template #trigger>
+                <n-button
+                  circle
+                  quaternary
+                  :type="provider.isCurrent ? 'default' : 'primary'"
+                  :secondary="provider.isCurrent"
+                  size="tiny"
+                  :disabled="provider.isCurrent"
+                  @click="emit('switch', provider.id, $event)"
+                >
+                  <n-icon :size="14"><SwapHorizontalOutline /></n-icon>
+                </n-button>
+              </template>
+              {{ provider.isCurrent ? '已激活' : '切换' }}
+            </n-tooltip>
+            <n-tooltip :theme-overrides="{ color: 'var(--primary)', textColor: '#fff' }" trigger="hover" placement="top">
+              <template #trigger>
+                <n-button circle quaternary size="tiny" @click="emit('edit', provider.id)">
+                  <n-icon :size="14"><CreateOutline /></n-icon>
+                </n-button>
+              </template>
+              编辑
+            </n-tooltip>
+            <n-dropdown :options="moreOptions" trigger="click" size="small" @select="onMoreSelect">
+              <n-button circle quaternary size="tiny">
+                <n-icon :size="14"><EllipsisHorizontalOutline /></n-icon>
+              </n-button>
+            </n-dropdown>
+          </n-space>
+        </div>
       </div>
     </div>
 
-    <!-- 余额区块 -->
+    <!-- 余额区块（全宽布局时展示，紧凑布局已内嵌） -->
     <BalanceCard
-      v-if="provider.balance && provider.balance.enabled"
+      v-if="!compact && provider.balance && provider.balance.enabled"
       :provider="provider"
       :balance="balance"
       :low-threshold="lowThreshold"
@@ -196,23 +306,49 @@ const CAT_COLORS = {
   white-space: nowrap;
 }
 
-/* ── Compact grid layout ── */
-.compact-grid {
+/* ── Compact layout: 信息在上，底部一行 = 余额 + 操作 ── */
+.compact-layout {
   display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.compact-info {
-  flex: 1;
-  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
 }
 .compact-row1 {
   display: flex;
   align-items: baseline;
+  justify-content: space-between;
   gap: 6px;
+}
+.compact-bottom {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+.compact-bottom--low {
+  border-top-color: var(--error, #d03050);
+}
+.compact-bottom .compact-balance {
+  flex: 1;
+  min-width: 0;
 }
 .compact-actions {
   flex-shrink: 0;
+  margin-left: auto;
+}
+.compact-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.provider-card--active .compact-name-wrap {
+  flex-wrap: nowrap;
+}
+.provider-card--active .compact-name-wrap .compact-name {
+  flex-shrink: 0;
+  max-width: 50%;
 }
 .compact-name {
   font-size: 13px;
@@ -222,11 +358,12 @@ const CAT_COLORS = {
   min-width: 0;
   color: var(--text-primary);
 }
+.compact-name-wrap .n-tag {
+  flex-shrink: 0;
+}
 .compact-row1 .meta-model {
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
+  flex-shrink: 0;
 }
 .compact-name-model .meta-model {
   color: var(--primary-color);
@@ -240,7 +377,6 @@ const CAT_COLORS = {
   white-space: nowrap;
   line-height: 16px;
   height: 16px;
-  margin-top: 4px;
 }
 
 /* ── Hover effect (compact cards only) ── */

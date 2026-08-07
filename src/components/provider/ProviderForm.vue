@@ -288,6 +288,12 @@ function copyConfigToml() {
   setTimeout(() => { copied.value = false; }, 1500);
 }
 
+// config.toml 预览展开/收起
+const tomlExpanded = ref(false);
+function toggleToml() {
+  tomlExpanded.value = !tomlExpanded.value;
+}
+
 function save() {
   const t = activeTab();
   const modelCatalog = catalogRows.value
@@ -625,22 +631,24 @@ const openclawColumns = [
         </n-card>
 
         <!-- Codex config.toml 预览 -->
-        <n-collapse v-if="tab === 'codex'" class="toml-preview">
-          <n-collapse-item name="preview">
-            <template #header>
-              <n-text depth="2" style="font-size: 11px; font-weight: 600;">config.toml 预览</n-text>
-            </template>
-            <template #header-extra>
-              <n-button quaternary size="tiny" type="primary" @click.stop="copyConfigToml">
-                {{ copied ? '✓ 已复制' : '复制' }}
-              </n-button>
-            </template>
-            <div class="toml-preview__code">
-              <n-code :code="codexConfigPreview" language="toml" />
-            </div>
-            <n-text depth="3" style="font-size: 10px; margin-top: 4px; display: block;">由表单实时生成，切换供应商时写入 ~/.codex/config.toml</n-text>
-          </n-collapse-item>
-        </n-collapse>
+        <div v-if="tab === 'codex'" class="toml-preview" :class="{ 'toml-preview--collapsed': !tomlExpanded }">
+          <div class="toml-preview__head">
+            <div class="toml-preview__dots"><i></i><i></i><i></i></div>
+            <span class="toml-preview__file">config.toml</span>
+            <n-button quaternary size="tiny" @click="toggleToml">
+              {{ tomlExpanded ? '收起' : '展开' }}
+            </n-button>
+            <n-button quaternary size="tiny" type="primary" @click="copyConfigToml">
+              {{ copied ? '✓ 已复制' : '复制' }}
+            </n-button>
+          </div>
+          <div v-show="tomlExpanded" class="toml-preview__code">
+            <n-code :code="codexConfigPreview" language="toml" />
+          </div>
+          <div v-show="tomlExpanded" class="toml-preview__foot">
+            <n-text depth="3" style="font-size: 10px;">由表单实时生成，切换供应商时写入 ~/.codex/config.toml</n-text>
+          </div>
+        </div>
 
         <!-- 连接配置与认证（合并） -->
         <n-card title="连接配置" size="small" :bordered="true" class="section-card">
@@ -1132,24 +1140,97 @@ const openclawColumns = [
   overflow: hidden;
 }
 
-.toml-preview :deep(.n-collapse-item .n-collapse-item__header) {
-  align-items: center;
+.toml-preview--collapsed {
+  border-radius: var(--radius);
 }
 
-.toml-preview :deep(.n-collapse-item .n-collapse-item__header-main) {
+.toml-preview--collapsed .toml-preview__head {
+  border-bottom: none;
+}
+
+.toml-preview__head {
   display: flex;
   align-items: center;
-  color: var(--text);
+  gap: 8px;
+  padding: 5px 8px 5px 10px;
+  background: var(--bg-hover);
+  border-bottom: 1px solid var(--border);
+}
+
+.toml-preview__dots {
+  display: flex;
+  gap: 4px;
+}
+
+.toml-preview__dots i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: block;
+}
+
+.toml-preview__dots i:nth-child(1) { background: #ff5f57; }
+.toml-preview__dots i:nth-child(2) { background: #febc2e; }
+.toml-preview__dots i:nth-child(3) { background: #28c840; }
+
+.toml-preview__file {
+  flex: 1;
+  font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 
 .toml-preview__code {
-  background: var(--primary-light);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px 10px;
+  background: var(--bg-card);
+  padding: 8px 12px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.toml-preview__code :deep(.n-code) {
+  background: transparent;
   font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
   font-size: 12px;
-  line-height: 1.5;
-  overflow-x: auto;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.toml-preview__code :deep(.n-code pre) {
+  margin: 0;
+}
+
+.toml-preview__code :deep(.n-code .hljs-comment),
+.toml-preview__code :deep(.n-code .hljs-quote) {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.toml-preview__code :deep(.n-code .hljs-attr) {
+  color: var(--primary);
+}
+
+.toml-preview__code :deep(.n-code .hljs-string) {
+  color: var(--success);
+}
+
+.toml-preview__code :deep(.n-code .hljs-literal),
+.toml-preview__code :deep(.n-code .hljs-number) {
+  color: var(--danger);
+}
+
+.toml-preview__code :deep(.n-code .hljs-section),
+.toml-preview__code :deep(.n-code .hljs-title) {
+  color: var(--primary-hover);
+}
+
+.toml-preview__code :deep(.n-code .hljs-keyword),
+.toml-preview__code :deep(.n-code .hljs-built_in) {
+  color: var(--primary-pressed);
+}
+
+.toml-preview__foot {
+  padding: 4px 10px 6px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-hover);
 }
 </style>

@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { RefreshOutline } from "@vicons/ionicons5";
-import { NIcon } from "naive-ui";
 import { formatBalance, type BalanceView } from "../../composables/useBalance";
 
 const props = defineProps<{
@@ -10,7 +8,6 @@ const props = defineProps<{
   lowThreshold?: number
   compact?: boolean
 }>();
-const emit = defineEmits(["refresh"]);
 
 const view = computed<BalanceView>(() => props.balance || { loading: false });
 const loading = computed(() => !!view.value.loading);
@@ -30,12 +27,6 @@ const usedText = computed(() => {
   if (!props.provider?.balance?.usedPath) return "";
   return "已用 " + formatBalance(result.value!.used, result.value!.currency);
 });
-const tipText = computed(() => {
-  if (failed.value) return "查询失败：" + failed.value;
-  if (!hasResult.value) return "暂无余额数据，点击刷新";
-  const base = "余额 " + amountText.value;
-  return usedText.value ? base + "，" + usedText.value : base;
-});
 </script>
 
 <template>
@@ -54,21 +45,6 @@ const tipText = computed(() => {
         <span v-if="usedText && !failed" class="balance-used">{{ usedText }}</span>
       </template>
     </div>
-    <n-tooltip trigger="hover" placement="top">
-      <template #trigger>
-        <n-button
-          quaternary
-          size="tiny"
-          circle
-          :disabled="loading"
-          :title="loading ? '查询中' : '刷新余额'"
-          @click="emit('refresh')"
-        >
-          <n-icon :size="13"><RefreshOutline /></n-icon>
-        </n-button>
-      </template>
-      {{ tipText }}
-    </n-tooltip>
   </div>
 </template>
 
@@ -130,8 +106,9 @@ const tipText = computed(() => {
   text-overflow: ellipsis;
 }
 .balance-block--compact {
-  margin-top: 4px;
-  padding-top: 4px;
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
 }
 .balance-block--compact .balance-amount {
   font-size: 12px;

@@ -103,7 +103,7 @@ function onSwitch(id, event) {
 
       <template v-else>
         <div class="hero-card" :class="{ 'is-flipping': isFlipping }" :style="isFlipping ? flipStyle : {}">
-          <ProviderCard v-if="currentProvider" :key="currentProvider.id" :provider="currentProvider" :balance="balanceViews[currentProvider.id]" :low-threshold="thresholdFor(currentProvider)" @switch="onSwitch" @edit="onEdit" @copy="onCopy" @delete="onDelete" @refresh="onBalanceRefresh" />
+          <ProviderCard v-if="currentProvider" :key="currentProvider.id" :provider="currentProvider" compact :balance="balanceViews[currentProvider.id]" :low-threshold="thresholdFor(currentProvider)" @switch="onSwitch" @edit="onEdit" @copy="onCopy" @delete="onDelete" @refresh="onBalanceRefresh" />
         </div>
 
         <div v-if="otherProviders.length" class="providers-section">
@@ -173,11 +173,15 @@ function onSwitch(id, event) {
 }
 
 /* ── Hero card FLIP ── */
+
 .hero-card {
   will-change: transform, opacity;
 }
 .hero-card.is-flipping {
   z-index: 10;
   pointer-events: none;
+}
+:deep(.hero-card .compact-bottom){
+  padding-top: 3px;
 }
 </style>
