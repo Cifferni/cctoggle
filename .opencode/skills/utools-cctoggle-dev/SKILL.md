@@ -126,6 +126,14 @@ uTools 预加载环境提供：
 - 提示/弹窗统一用 useMessage()/useDialog()，composable 不弹提示只返回结果（详见 references/frontend.md）
 - API 接口保持不变，前端无需修改
 
+## 关键功能
+
+### 快速切换 Agent（Quick Switch）
+
+uTools 搜索框内输入 `cc {Agent显示名}` 直接打开插件并切到对应 Agent 页签。命令 code 前缀为 `ccs_switch_`（避开旧 `switch_` 清理逻辑），核心在 `src/composables/useQuickSwitch.ts`，无 preload API 变更。
+
+**详见 [references/quick-switch.md](references/quick-switch.md)**
+
 ## ⚠️ API 同步规则（重要）
 
 **新增或修改 preload API 方法时，必须同步更新以下 3 个文件：**

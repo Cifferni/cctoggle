@@ -4,12 +4,16 @@ import { ref, onMounted } from "vue";
 import { getSkillNest, APP_ICONS, APP_LABELS } from "../../composables/shared";
 import { useSkills } from "../../composables/useSkills";
 import { useTheme } from "../../composables/useTheme";
+import { useQuickSwitch } from "../../composables/useQuickSwitch";
 
 const message = useMessage();
 const { currentThemeName, themes, setTheme } = useTheme();
 
 const skipOnboarding = ref(false);
 const loading = ref(false);
+
+// 快速切换配置
+const { config: quickSwitchConfig, loadQuickSwitchConfig, saveQuickSwitchConfig } = useQuickSwitch();
 
 // Agent 路径配置
 const {
@@ -50,6 +54,7 @@ function load() {
     skipOnboarding.value = false;
   }
   loadConfigPaths();
+  loadQuickSwitchConfig();
 }
 
 onMounted(load);
@@ -66,6 +71,17 @@ function onChange(val) {
   } finally {
     loading.value = false;
   }
+}
+
+// 快速切换配置变更
+function onQuickSwitchEnabled(val) {
+  saveQuickSwitchConfig({ ...quickSwitchConfig.value, enabled: !!val });
+  message.success(val ? "已开启快速切换命令" : "已关闭快速切换命令");
+}
+
+function onQuickSwitchPrefix(val) {
+  saveQuickSwitchConfig({ ...quickSwitchConfig.value, prefix: val });
+  message.success("命令前缀已更新");
 }
 </script>
 
@@ -165,6 +181,37 @@ function onChange(val) {
             :value="t.name"
           >{{ t.label }}</n-radio-button>
         </n-radio-group>
+      </n-space>
+    </n-card>
+
+    <!-- 快速切换 -->
+    <n-card size="small" :bordered="true">
+      <template #header>
+        <n-text depth="2" style="font-size: 12px; font-weight: 600;">快速切换</n-text>
+      </template>
+      <n-space vertical :size="10">
+        <n-space align="center" :size="12">
+          <div style="flex: 1; min-width: 0;">
+            <n-text strong style="font-size: 12px; display: block;">快捷命令</n-text>
+            <n-text depth="3" style="font-size: 11px;">
+              在 uTools 搜索框输入 <n-text code>cc {'{'}Agent名{'}'}</n-text> 直接打开并切换到对应 Agent
+            </n-text>
+          </div>
+          <n-switch
+            :value="quickSwitchConfig.enabled"
+            @update:value="onQuickSwitchEnabled"
+          />
+        </n-space>
+        <n-space v-if="quickSwitchConfig.enabled" align="center" :size="12">
+          <n-text style="font-size: 12px; flex-shrink: 0;">命令前缀</n-text>
+          <n-input
+            :value="quickSwitchConfig.prefix"
+            size="small"
+            style="width: 160px;"
+            :maxlength="12"
+            @update:value="onQuickSwitchPrefix"
+          />
+        </n-space>
       </n-space>
     </n-card>
   </n-space>

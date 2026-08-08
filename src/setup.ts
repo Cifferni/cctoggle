@@ -1,13 +1,23 @@
 // @ts-nocheck utools API 类型需逐步适配
 import { refreshOnEnter } from "./composables/useProviders";
+import { useQuickSwitch } from "./composables/useQuickSwitch";
 
 export function setupDynamicCommands() {
   if (typeof utools === "undefined" || typeof utools.onPluginEnter !== "function") return;
+
+  const quickSwitch = useQuickSwitch();
 
   // 插件加载即清理历史动态注册的供应商快捷命令（曾经通过 setFeature 注册的 switch_*）
   cleanupDynamicFeatures();
 
   utools.onPluginEnter(({ code, type, payload }) => {
+    // 快速切换命令：ccs_switch_{appType}，打开插件并切到对应 Agent 页签
+    if (code && code.startsWith("ccs_switch_")) {
+      quickSwitch.executeSwitch(code);
+      return;
+    }
+
+    // 兼容旧命令：switch_{appType}_{providerId}
     if (code && code.startsWith("switch_")) {
       const parts = code.replace("switch_", "").split("_");
       const app = parts[0];
@@ -24,6 +34,9 @@ export function setupDynamicCommands() {
     cleanupDynamicFeatures();
 
     if (!window.utoolsCctoggle) return;
+
+    // 进入插件：全量重注册快速切换命令（先清后注册，幂等）
+    quickSwitch.reconcile();
 
     // 进入插件：重新应用已激活供应商并刷新列表
     refreshOnEnter();
